@@ -14,6 +14,9 @@ coverage/
 .env.*
 !.env.example
 
+# Local agent workspace files
+AGENTS.md
+
 # Logs
 *.log
 npm-debug.log*
@@ -29,4 +32,3 @@ pnpm-debug.log*
 # OS files
 .DS_Store
 Thumbs.db
-
