@@ -43,6 +43,7 @@ type GlobalHeaderProps = {
   onCloseProfileMenu?: () => void;
   isProfileMenuOpen?: boolean;
   onLogout?: () => void;
+  profileLabel?: string;
 };
 
 export function GlobalHeader({
@@ -52,6 +53,7 @@ export function GlobalHeader({
   onCloseProfileMenu,
   isProfileMenuOpen = false,
   onLogout,
+  profileLabel = "내 프로필",
 }: GlobalHeaderProps) {
   // 프로필 버튼과 메뉴 영역을 함께 참조해 바깥 클릭을 판별.
   const profileMenuRef = useRef<HTMLSpanElement>(null);
@@ -135,7 +137,8 @@ export function GlobalHeader({
               )}
               {label === "내 프로필" && isProfileMenuOpen && onLogout && (
                 <div className="absolute right-0 top-11 z-[60] w-44 rounded-lg border border-slate-200 bg-white p-1.5 text-slate-800 shadow-lg">
-                  <p className="px-3 py-2 text-xs text-slate-500">관리자 계정</p>
+                  {/* 로그인 API에서 받은 사용자 이름과 역할을 표시. */}
+                  <p className="px-3 py-2 text-xs text-slate-500">{profileLabel}</p>
                   <button
                     type="button"
                     onClick={onLogout}

@@ -3,13 +3,9 @@
 import { GlobalHeader } from "@/components/common/global-header";
 import { Toast } from "@/components/common/toast";
 import { LoginForm } from "@/components/login/login-form";
-import {
-  consumeAuthenticationRequired,
-  isDemoAuthenticated,
-  isDemoCredential,
-  saveDemoAuthentication,
-  type DemoLoginInput,
-} from "@/lib/demo-auth";
+import { useAuth } from "@/components/auth/auth-provider";
+import { ApiClientError, type LoginInput } from "@/lib/api/auth-api";
+import { consumeAuthenticationRequired } from "@/lib/auth-required-notice";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -18,10 +14,11 @@ export default function Home() {
   // Next.js 페이지 이동과 공통 토스트 기능을 사용.
   const router = useRouter();
   const { toast, showToast, dismissToast } = useToast();
+  const { status, login } = useAuth();
 
   useEffect(() => {
     // 이미 로그인한 사용자는 로그인 화면을 다시 보지 않도록 홈으로 이동.
-    if (isDemoAuthenticated()) {
+    if (status === "authenticated") {
       router.replace("/home");
       return;
     }
@@ -30,18 +27,21 @@ export default function Home() {
     if (consumeAuthenticationRequired()) {
       showToast("로그인이 필요합니다. 로그인 후 이용해 주세요.");
     }
-  }, [router, showToast]);
+  }, [router, showToast, status]);
 
-  const handleLogin = ({ userId, password, rememberMe }: DemoLoginInput) => {
-    // 현재는 API 호출 대신 임시 계정 정보만 검증.
-    if (!isDemoCredential(userId, password)) {
-      showToast("아이디 또는 비밀번호를 확인해 주세요.");
-      return;
+  const handleLogin = async (input: LoginInput) => {
+    try {
+      await login(input);
+      router.replace("/home");
+    } catch (error) {
+      // 인증 실패와 네트워크 오류 모두 서버가 전달한 안내 문구를 우선 표시.
+      if (error instanceof ApiClientError) {
+        showToast(error.message);
+        return;
+      }
+
+      showToast("로그인 처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.");
     }
-
-    // 브라우저에 로그인 상태를 저장한 뒤 홈 화면으로 이동.
-    saveDemoAuthentication(rememberMe);
-    router.push("/home");
   };
 
   return (

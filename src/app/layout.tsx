@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AuthProvider } from "@/components/auth/auth-provider";
 import { Geist } from "next/font/google";
 import "./globals.css";
 
@@ -18,7 +19,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     // 모든 페이지가 공통으로 사용하는 HTML 언어·높이·글꼴 설정.
     <html lang="ko" className={`${geistSans.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {/* 모든 화면이 동일한 메모리 인증 상태를 공유. */}
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }

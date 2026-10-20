@@ -5,12 +5,12 @@ import { FormEvent, useState } from "react";
 import { FcGoogle } from "react-icons/fc";
 import { RiKakaoTalkFill } from "react-icons/ri";
 import { SiNaver } from "react-icons/si";
-import type { DemoLoginInput } from "@/lib/demo-auth";
+import type { LoginInput } from "@/lib/api/auth-api";
 
 // 부모 화면이 로그인 결과와 안내 토스트를 처리하도록 콜백만 전달받음.
 type LoginFormProps = {
   onToast: (message: string) => void;
-  onLogin: (input: DemoLoginInput) => void;
+  onLogin: (input: LoginInput) => Promise<void>;
 };
 
 // 실제 소셜 인증 전까지 사용하는 로그인 버튼 표시 정보.
@@ -22,22 +22,30 @@ const socialProviders = [
 
 export function LoginForm({ onToast, onLogin }: LoginFormProps) {
   // 입력창과 UI 상태는 로그인 화면 내부에서 관리.
-  const [userId, setUserId] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     // 폼 제출로 페이지가 새로고침되는 기본 동작을 막음.
     event.preventDefault();
 
-    if (!userId.trim() || !password) {
-      onToast("아이디와 비밀번호를 입력해 주세요.");
+    if (!email.trim() || !password) {
+      onToast("이메일과 비밀번호를 입력해 주세요.");
       return;
     }
 
-    // 실제 인증 판단은 부모 페이지의 데모 인증 로직에 위임.
-    onLogin({ userId, password, rememberMe });
+    setIsSubmitting(true);
+
+    try {
+      // API 요청과 성공 후 화면 이동은 부모 페이지가 담당.
+      await onLogin({ email: email.trim(), password, rememberMe });
+    } finally {
+      // 성공 시에는 페이지가 이동하고, 실패 시에는 버튼을 다시 활성화.
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -50,13 +58,14 @@ export function LoginForm({ onToast, onLogin }: LoginFormProps) {
 
       <form className="space-y-4" onSubmit={handleSubmit}>
         <label className="block">
-          <span className="mb-2 block text-sm font-medium text-slate-700">아이디</span>
+          <span className="mb-2 block text-sm font-medium text-slate-700">이메일</span>
           <input
-            type="text"
-            value={userId}
-            onChange={(event) => setUserId(event.target.value)}
-            placeholder="아이디를 입력해 주세요"
-            autoComplete="username"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="이메일을 입력해 주세요"
+            autoComplete="email"
+            disabled={isSubmitting}
             className="h-12 w-full rounded-lg border border-slate-300 px-3.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
           />
         </label>
@@ -70,6 +79,7 @@ export function LoginForm({ onToast, onLogin }: LoginFormProps) {
               onChange={(event) => setPassword(event.target.value)}
               placeholder="비밀번호를 입력해 주세요"
               autoComplete="current-password"
+              disabled={isSubmitting}
               className="h-12 w-full rounded-lg border border-slate-300 px-3.5 pr-12 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
             />
             <span className="group absolute inset-y-0 right-0 flex w-12 items-center justify-center">
@@ -77,6 +87,7 @@ export function LoginForm({ onToast, onLogin }: LoginFormProps) {
                 type="button"
                 aria-label={isPasswordVisible ? "비밀번호 숨기기" : "비밀번호 보기"}
                 onClick={() => setIsPasswordVisible((visible) => !visible)}
+                disabled={isSubmitting}
                 className="flex h-full w-full cursor-pointer items-center justify-center text-slate-500 transition hover:text-blue-600 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-600"
               >
                 {isPasswordVisible ? <EyeOff size={19} /> : <Eye size={19} />}
@@ -96,6 +107,7 @@ export function LoginForm({ onToast, onLogin }: LoginFormProps) {
           role="checkbox"
           aria-checked={rememberMe}
           onClick={() => setRememberMe((isRemembered) => !isRemembered)}
+          disabled={isSubmitting}
           className="custom-checkbox-button group flex cursor-pointer items-center gap-2 rounded-md pt-1 text-sm text-slate-600"
         >
           <span
@@ -119,9 +131,10 @@ export function LoginForm({ onToast, onLogin }: LoginFormProps) {
 
         <button
           type="submit"
-          className="flex h-12 w-full cursor-pointer items-center justify-center rounded-lg bg-blue-600 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          disabled={isSubmitting}
+          className="flex h-12 w-full cursor-pointer items-center justify-center rounded-lg bg-blue-600 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-md disabled:cursor-wait disabled:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
         >
-          로그인
+          {isSubmitting ? "로그인 중..." : "로그인"}
         </button>
       </form>
 
@@ -170,7 +183,7 @@ export function LoginForm({ onToast, onLogin }: LoginFormProps) {
 
       <p className="mt-7 flex items-center justify-center gap-1 text-xs text-slate-400">
         <LoaderCircle size={13} aria-hidden="true" />
-        인증 서버 연동 전 데모 화면입니다.
+        이메일 계정으로 로그인해 주세요.
       </p>
     </section>
   );
