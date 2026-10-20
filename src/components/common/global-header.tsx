@@ -14,11 +14,13 @@ import {
   UserRound,
   type LucideIcon,
 } from "lucide-react";
+import type { AuthMember } from "@/lib/api/auth-api";
 
 // 상단 헤더에서 반복 렌더링할 서비스 아이콘 정보.
 type HeaderAction = {
   label: string;
   icon: LucideIcon;
+  requiresAdmin?: boolean;
 };
 
 // 아직 구현되지 않은 서비스도 동일한 헤더 구조로 먼저 제공.
@@ -27,7 +29,7 @@ const headerActions: HeaderAction[] = [
   { label: "메신저", icon: MessageCircle },
   { label: "캘린더", icon: CalendarDays },
   { label: "주소록", icon: BookUser },
-  { label: "관리자", icon: ShieldCheck },
+  { label: "관리자", icon: ShieldCheck, requiresAdmin: true },
   { label: "전체 서비스", icon: Grid2X2 },
   { label: "알림", icon: Bell },
   { label: "조직도", icon: Building2 },
@@ -44,6 +46,7 @@ type GlobalHeaderProps = {
   isProfileMenuOpen?: boolean;
   onLogout?: () => void;
   profileLabel?: string;
+  role: AuthMember["role"];
 };
 
 export function GlobalHeader({
@@ -54,6 +57,7 @@ export function GlobalHeader({
   isProfileMenuOpen = false,
   onLogout,
   profileLabel = "내 프로필",
+  role,
 }: GlobalHeaderProps) {
   // 프로필 버튼과 메뉴 영역을 함께 참조해 바깥 클릭을 판별.
   const profileMenuRef = useRef<HTMLSpanElement>(null);
@@ -109,7 +113,7 @@ export function GlobalHeader({
 
       <nav className="flex min-w-0 items-center gap-1 overflow-x-auto sm:overflow-visible" aria-label="주요 서비스">
         {/* 서비스 목록을 순회해 동일한 스타일의 아이콘 버튼을 생성. */}
-        {headerActions.map(({ label, icon: Icon }) => {
+        {headerActions.filter(({ requiresAdmin }) => !requiresAdmin || role === "ADMIN").map(({ label, icon: Icon }) => {
           // 홈과 프로필만 별도 동작, 나머지는 준비 중 토스트를 표시.
           const onClick = label === "홈" ? onHomeAction : label === "내 프로필" ? onProfileAction : () => onServiceAction(label);
 

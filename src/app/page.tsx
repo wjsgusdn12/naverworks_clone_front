@@ -47,6 +47,7 @@ export default function Home() {
   return (
     <div className="flex min-h-screen flex-col bg-slate-100">
       <GlobalHeader
+        role="USER"
         onHomeAction={() => showToast("로그인이 필요합니다. 로그인 후 이용해 주세요.")}
         onServiceAction={() => showToast("로그인이 필요합니다. 로그인 후 이용해 주세요.")}
         onProfileAction={() => showToast("로그인이 필요합니다. 로그인 후 이용해 주세요.")}

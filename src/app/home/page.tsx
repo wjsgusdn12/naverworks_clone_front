@@ -40,6 +40,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-slate-100">
       <GlobalHeader
+        role={member.role}
         isProfileMenuOpen={isProfileMenuOpen}
         onHomeAction={() => router.push("/home")}
         onServiceAction={(label) => showToast(`${label} 기능은 준비 중입니다.`)}
