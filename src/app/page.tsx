@@ -37,10 +37,12 @@ export default function Home() {
       // 인증 실패와 네트워크 오류 모두 서버가 전달한 안내 문구를 우선 표시.
       if (error instanceof ApiClientError) {
         showToast(error.message);
-        return;
+        // LoginForm이 인증 실패 입력칸을 빨간색으로 표시할 수 있게 오류를 다시 전달.
+        throw error;
       }
 
       showToast("로그인 처리 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.");
+      throw error;
     }
   };
 

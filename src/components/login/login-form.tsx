@@ -5,7 +5,12 @@ import { FormEvent, useState } from "react";
 import { FcGoogle } from "react-icons/fc";
 import { RiKakaoTalkFill } from "react-icons/ri";
 import { SiNaver } from "react-icons/si";
-import type { LoginInput } from "@/lib/api/auth-api";
+import { ApiClientError, type LoginInput } from "@/lib/api/auth-api";
+
+type LoginFieldError = {
+  email?: boolean;
+  password?: boolean;
+};
 
 // 부모 화면이 로그인 결과와 안내 토스트를 처리하도록 콜백만 전달받음.
 type LoginFormProps = {
@@ -27,21 +32,42 @@ export function LoginForm({ onToast, onLogin }: LoginFormProps) {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // 토스트와 함께 어느 입력값을 수정해야 하는지 시각적으로 표시.
+  const [fieldErrors, setFieldErrors] = useState<LoginFieldError>({});
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     // 폼 제출로 페이지가 새로고침되는 기본 동작을 막음.
     event.preventDefault();
 
-    if (!email.trim() || !password) {
-      onToast("이메일과 비밀번호를 입력해 주세요.");
+    const normalizedEmail = email.trim();
+    const nextFieldErrors: LoginFieldError = {
+      email: !normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail),
+      password: !password,
+    };
+
+    if (nextFieldErrors.email || nextFieldErrors.password) {
+      setFieldErrors(nextFieldErrors);
+      onToast(
+        nextFieldErrors.email && nextFieldErrors.password
+          ? "이메일과 비밀번호를 확인해 주세요."
+          : nextFieldErrors.email
+            ? "올바른 이메일 주소를 입력해 주세요."
+            : "비밀번호를 입력해 주세요.",
+      );
       return;
     }
 
+    setFieldErrors({});
     setIsSubmitting(true);
 
     try {
       // API 요청과 성공 후 화면 이동은 부모 페이지가 담당.
-      await onLogin({ email: email.trim(), password, rememberMe });
+      await onLogin({ email: normalizedEmail, password, rememberMe });
+    } catch (error) {
+      // 인증 실패는 어느 값이 틀렸는지 노출하지 않고 두 입력칸을 함께 표시.
+      if (error instanceof ApiClientError && error.code === "AUTHENTICATION_FAILED") {
+        setFieldErrors({ email: true, password: true });
+      }
     } finally {
       // 성공 시에는 페이지가 이동하고, 실패 시에는 버튼을 다시 활성화.
       setIsSubmitting(false);
@@ -56,17 +82,26 @@ export function LoginForm({ onToast, onLogin }: LoginFormProps) {
         <p className="mt-2 text-sm text-slate-500">업무를 시작하려면 로그인해 주세요.</p>
       </div>
 
-      <form className="space-y-4" onSubmit={handleSubmit}>
+      {/* noValidate로 브라우저 기본 팝업을 끄고 프로젝트 토스트 UX만 사용. */}
+      <form className="space-y-4" noValidate onSubmit={handleSubmit}>
         <label className="block">
           <span className="mb-2 block text-sm font-medium text-slate-700">이메일</span>
           <input
             type="email"
             value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              setFieldErrors((currentErrors) => ({ ...currentErrors, email: false }));
+            }}
             placeholder="이메일을 입력해 주세요"
             autoComplete="email"
             disabled={isSubmitting}
-            className="h-12 w-full rounded-lg border border-slate-300 px-3.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
+            aria-invalid={fieldErrors.email || undefined}
+            className={`h-12 w-full rounded-lg border px-3.5 text-sm outline-none transition placeholder:text-slate-400 focus:ring-4 ${
+              fieldErrors.email
+                ? "border-red-500 bg-red-50 focus:border-red-600 focus:ring-red-100"
+                : "border-slate-300 focus:border-blue-600 focus:ring-blue-100"
+            }`}
           />
         </label>
 
@@ -76,11 +111,19 @@ export function LoginForm({ onToast, onLogin }: LoginFormProps) {
             <input
               type={isPasswordVisible ? "text" : "password"}
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={(event) => {
+                setPassword(event.target.value);
+                setFieldErrors((currentErrors) => ({ ...currentErrors, password: false }));
+              }}
               placeholder="비밀번호를 입력해 주세요"
               autoComplete="current-password"
               disabled={isSubmitting}
-              className="h-12 w-full rounded-lg border border-slate-300 px-3.5 pr-12 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
+              aria-invalid={fieldErrors.password || undefined}
+              className={`h-12 w-full rounded-lg border px-3.5 pr-12 text-sm outline-none transition placeholder:text-slate-400 focus:ring-4 ${
+                fieldErrors.password
+                  ? "border-red-500 bg-red-50 focus:border-red-600 focus:ring-red-100"
+                  : "border-slate-300 focus:border-blue-600 focus:ring-blue-100"
+              }`}
             />
             <span className="group absolute inset-y-0 right-0 flex w-12 items-center justify-center">
               <button

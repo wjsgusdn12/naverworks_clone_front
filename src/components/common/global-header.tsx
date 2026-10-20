@@ -46,6 +46,8 @@ type GlobalHeaderProps = {
   isProfileMenuOpen?: boolean;
   onLogout?: () => void;
   profileLabel?: string;
+  profileName?: string;
+  isAuthenticated?: boolean;
   role: AuthMember["role"];
 };
 
@@ -57,10 +59,14 @@ export function GlobalHeader({
   isProfileMenuOpen = false,
   onLogout,
   profileLabel = "내 프로필",
+  profileName = "",
+  isAuthenticated = false,
   role,
 }: GlobalHeaderProps) {
   // 프로필 버튼과 메뉴 영역을 함께 참조해 바깥 클릭을 판별.
   const profileMenuRef = useRef<HTMLSpanElement>(null);
+  // 한글·영문·이모지 모두 글자 단위가 깨지지 않도록 앞 세 글자만 사용.
+  const profileAvatarText = Array.from(profileName).slice(0, 3).join("") || "사용자";
 
   useEffect(() => {
     if (!isProfileMenuOpen || !onCloseProfileMenu) {
@@ -127,9 +133,16 @@ export function GlobalHeader({
                 type="button"
                 aria-label={label}
                 onClick={onClick}
-                className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-zinc-300 transition hover:-translate-y-0.5 hover:bg-zinc-800 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                className={`flex h-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-zinc-300 transition hover:-translate-y-0.5 hover:bg-zinc-800 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${label === "내 프로필" && isAuthenticated ? "min-w-9 px-0.5" : "w-9"}`}
               >
-                <Icon size={19} strokeWidth={1.9} aria-hidden="true" />
+                {label === "내 프로필" && isAuthenticated ? (
+                  // 사진 업로드 전에는 이름 길이에 맞는 기본 아바타를 사용.
+                  <span className="flex h-8 min-w-8 items-center justify-center whitespace-nowrap rounded-full bg-slate-100 px-0 text-[11px] font-bold tracking-[-0.1em] leading-none text-slate-900 shadow-sm">
+                    {profileAvatarText}
+                  </span>
+                ) : (
+                  <Icon size={19} strokeWidth={1.9} aria-hidden="true" />
+                )}
               </button>
               {!(label === "내 프로필" && isProfileMenuOpen) && (
                 <span

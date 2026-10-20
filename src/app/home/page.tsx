@@ -48,6 +48,8 @@ export default function HomePage() {
         onCloseProfileMenu={() => setIsProfileMenuOpen(false)}
         onLogout={() => void handleLogout()}
         profileLabel={`${member.displayName} · ${member.role === "ADMIN" ? "관리자" : "일반 사용자"}`}
+        profileName={member.displayName}
+        isAuthenticated
       />
       {/* 아직 연결되지 않은 홈 기능은 공통 안내 토스트로 처리. */}
       <HomeDashboard onFeatureClick={(featureName) => showToast(`${featureName} 기능은 준비 중입니다.`)} />
