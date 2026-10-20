@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import {
   Bell,
   BookUser,
@@ -33,44 +34,112 @@ const headerActions: HeaderAction[] = [
 ];
 
 type GlobalHeaderProps = {
-  onProtectedAction: () => void;
+  onHomeAction: () => void;
+  onServiceAction: (label: string) => void;
+  onProfileAction: () => void;
+  onCloseProfileMenu?: () => void;
+  isProfileMenuOpen?: boolean;
+  onLogout?: () => void;
 };
 
-export function GlobalHeader({ onProtectedAction }: GlobalHeaderProps) {
+export function GlobalHeader({
+  onHomeAction,
+  onServiceAction,
+  onProfileAction,
+  onCloseProfileMenu,
+  isProfileMenuOpen = false,
+  onLogout,
+}: GlobalHeaderProps) {
+  const profileMenuRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!isProfileMenuOpen || !onCloseProfileMenu) {
+      return;
+    }
+
+    const closeProfileMenuOnOutsideClick = (event: MouseEvent) => {
+      if (!profileMenuRef.current?.contains(event.target as Node)) {
+        onCloseProfileMenu();
+      }
+    };
+
+    const closeProfileMenuOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onCloseProfileMenu();
+      }
+    };
+
+    document.addEventListener("mousedown", closeProfileMenuOnOutsideClick);
+    document.addEventListener("keydown", closeProfileMenuOnEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", closeProfileMenuOnOutsideClick);
+      document.removeEventListener("keydown", closeProfileMenuOnEscape);
+    };
+  }, [isProfileMenuOpen, onCloseProfileMenu]);
+
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-6 bg-zinc-950 px-5 text-white shadow-sm sm:px-8">
+    <header className="relative z-50 flex h-14 shrink-0 items-center justify-between gap-6 bg-zinc-950 px-5 text-white shadow-sm sm:px-8">
       <div className="flex min-w-fit items-center gap-8">
         <button
           type="button"
           aria-label="홈으로 이동"
-          className="text-left"
-          onClick={onProtectedAction}
+          className="cursor-pointer rounded-md text-left transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+          onClick={onHomeAction}
         >
           <span className="block text-xs font-bold tracking-[0.16em]">NAVER WORKS</span>
           <span className="block text-[8px] tracking-[0.28em] text-zinc-400">COLLABORATION</span>
         </button>
         <button
           type="button"
-          className="text-lg font-semibold"
-          onClick={onProtectedAction}
+          className="cursor-pointer rounded-md text-lg font-semibold transition-colors hover:text-blue-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+          onClick={onHomeAction}
         >
           홈
         </button>
       </div>
 
-      <nav className="flex min-w-0 items-center gap-1 overflow-x-auto" aria-label="주요 서비스">
-        {headerActions.map(({ label, icon: Icon }) => (
-          <button
-            key={label}
-            type="button"
-            aria-label={label}
-            title={label}
-            onClick={onProtectedAction}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-zinc-300 transition hover:bg-zinc-800 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-          >
-            <Icon size={19} strokeWidth={1.9} aria-hidden="true" />
-          </button>
-        ))}
+      <nav className="flex min-w-0 items-center gap-1 overflow-x-auto sm:overflow-visible" aria-label="주요 서비스">
+        {headerActions.map(({ label, icon: Icon }) => {
+          const onClick = label === "홈" ? onHomeAction : label === "내 프로필" ? onProfileAction : () => onServiceAction(label);
+
+          return (
+            <span
+              key={label}
+              ref={label === "내 프로필" ? profileMenuRef : undefined}
+              className="group relative"
+            >
+              <button
+                type="button"
+                aria-label={label}
+                onClick={onClick}
+                className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-zinc-300 transition hover:-translate-y-0.5 hover:bg-zinc-800 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+              >
+                <Icon size={19} strokeWidth={1.9} aria-hidden="true" />
+              </button>
+              {!(label === "내 프로필" && isProfileMenuOpen) && (
+                <span
+                  role="tooltip"
+                  className="pointer-events-none absolute left-1/2 top-11 z-[70] hidden -translate-x-1/2 whitespace-nowrap rounded bg-zinc-700 px-2 py-1 text-[11px] font-medium text-white shadow-md sm:group-hover:block"
+                >
+                  {label}
+                </span>
+              )}
+              {label === "내 프로필" && isProfileMenuOpen && onLogout && (
+                <div className="absolute right-0 top-11 z-[60] w-44 rounded-lg border border-slate-200 bg-white p-1.5 text-slate-800 shadow-lg">
+                  <p className="px-3 py-2 text-xs text-slate-500">관리자 계정</p>
+                  <button
+                    type="button"
+                    onClick={onLogout}
+                    className="w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm font-medium transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-blue-600"
+                  >
+                    로그아웃
+                  </button>
+                </div>
+              )}
+            </span>
+          );
+        })}
       </nav>
     </header>
   );

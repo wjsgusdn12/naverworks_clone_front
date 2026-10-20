@@ -8,7 +8,7 @@ export function Toast({ message, phase }: ToastProps) {
     <div
       role="status"
       aria-live="polite"
-      className={`toast-${phase} fixed bottom-6 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md rounded-xl bg-slate-900 px-5 py-3.5 text-center text-sm font-medium text-white shadow-xl`}
+      className={`toast-${phase} fixed bottom-6 left-1/2 z-[70] w-[calc(100%-2rem)] max-w-md rounded-xl bg-slate-900 px-5 py-3.5 text-center text-sm font-medium text-white shadow-xl`}
     >
       {message}
     </div>

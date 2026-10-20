@@ -3,9 +3,11 @@
 import { Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { SiGoogle, SiKakaotalk, SiNaver } from "react-icons/si";
+import type { DemoLoginInput } from "@/lib/demo-auth";
 
 type LoginFormProps = {
   onToast: (message: string) => void;
+  onLogin: (input: DemoLoginInput) => void;
 };
 
 const socialProviders = [
@@ -14,20 +16,21 @@ const socialProviders = [
   { name: "Google", icon: SiGoogle, className: "bg-white text-[#4285f4]" },
 ];
 
-export function LoginForm({ onToast }: LoginFormProps) {
-  const [email, setEmail] = useState("");
+export function LoginForm({ onToast, onLogin }: LoginFormProps) {
+  const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!email.trim() || !password) {
-      onToast("이메일과 비밀번호를 입력해 주세요.");
+    if (!userId.trim() || !password) {
+      onToast("아이디와 비밀번호를 입력해 주세요.");
       return;
     }
 
-    onToast("로그인 기능은 인증 API와 연동 후 제공됩니다.");
+    onLogin({ userId, password, rememberMe });
   };
 
   return (
@@ -40,13 +43,13 @@ export function LoginForm({ onToast }: LoginFormProps) {
 
       <form className="space-y-4" onSubmit={handleSubmit}>
         <label className="block">
-          <span className="mb-2 block text-sm font-medium text-slate-700">이메일</span>
+          <span className="mb-2 block text-sm font-medium text-slate-700">아이디</span>
           <input
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="name@company.com"
-            autoComplete="email"
+            type="text"
+            value={userId}
+            onChange={(event) => setUserId(event.target.value)}
+            placeholder="아이디를 입력해 주세요"
+            autoComplete="username"
             className="h-12 w-full rounded-lg border border-slate-300 px-3.5 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
           />
         </label>
@@ -66,7 +69,7 @@ export function LoginForm({ onToast }: LoginFormProps) {
               type="button"
               aria-label={isPasswordVisible ? "비밀번호 숨기기" : "비밀번호 보기"}
               onClick={() => setIsPasswordVisible((visible) => !visible)}
-              className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-slate-500 hover:text-slate-800"
+              className="absolute inset-y-0 right-0 flex w-12 cursor-pointer items-center justify-center rounded-r-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
             >
               {isPasswordVisible ? <EyeOff size={19} /> : <Eye size={19} />}
             </button>
@@ -74,13 +77,18 @@ export function LoginForm({ onToast }: LoginFormProps) {
         </label>
 
         <label className="flex cursor-pointer items-center gap-2 pt-1 text-sm text-slate-600">
-          <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-blue-600" />
+          <input
+            type="checkbox"
+            checked={rememberMe}
+            onChange={(event) => setRememberMe(event.target.checked)}
+            className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+          />
           로그인 상태 유지
         </label>
 
         <button
           type="submit"
-          className="flex h-12 w-full items-center justify-center rounded-lg bg-blue-600 text-sm font-semibold text-white transition hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          className="flex h-12 w-full cursor-pointer items-center justify-center rounded-lg bg-blue-600 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
         >
           로그인
         </button>
@@ -100,7 +108,7 @@ export function LoginForm({ onToast }: LoginFormProps) {
             aria-label={`${name} 로그인`}
             title={`${name} 로그인`}
             onClick={() => onToast(`${name} 로그인은 준비 중입니다.`)}
-            className={`flex h-10 items-center justify-center rounded-lg border transition hover:-translate-y-0.5 hover:shadow-sm ${className} ${
+            className={`flex h-10 cursor-pointer items-center justify-center rounded-lg border transition hover:-translate-y-0.5 hover:shadow-sm ${className} ${
               name === "Google" ? "border-slate-200" : "border-transparent"
             }`}
           >
@@ -115,7 +123,7 @@ export function LoginForm({ onToast }: LoginFormProps) {
             key={label}
             type="button"
             onClick={() => onToast(`${label} 기능은 준비 중입니다.`)}
-            className="transition hover:text-blue-600 hover:underline"
+            className="cursor-pointer rounded-sm transition hover:text-blue-600 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
           >
             {label}
           </button>
