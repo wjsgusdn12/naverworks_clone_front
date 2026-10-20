@@ -43,7 +43,7 @@ export default function HomePage() {
         role={member.role}
         isProfileMenuOpen={isProfileMenuOpen}
         onHomeAction={() => router.push("/home")}
-        onServiceAction={(label) => showToast(`${label} 기능은 준비 중입니다.`)}
+        onServiceAction={(label) => ["주소록", "조직도"].includes(label) ? router.push("/addressBook") : showToast(`${label} 기능은 준비 중입니다.`)}
         onProfileAction={() => setIsProfileMenuOpen((open) => !open)}
         onCloseProfileMenu={() => setIsProfileMenuOpen(false)}
         onLogout={() => void handleLogout()}

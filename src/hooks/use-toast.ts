@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // 토스트가 화면에 머무르는 시간.
 const TOAST_DURATION_MS = 5_000;
@@ -21,7 +21,7 @@ export function useToast() {
   const toastRemoveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastSequenceRef = useRef(0);
 
-  const clearToastTimers = () => {
+  const clearToastTimers = useCallback(() => {
     if (toastHideTimerRef.current) {
       clearTimeout(toastHideTimerRef.current);
       toastHideTimerRef.current = null;
@@ -31,16 +31,16 @@ export function useToast() {
       clearTimeout(toastRemoveTimerRef.current);
       toastRemoveTimerRef.current = null;
     }
-  };
+  }, []);
 
   useEffect(() => {
     // 화면을 떠날 때 남아 있는 타이머를 정리.
     return () => {
       clearToastTimers();
     };
-  }, []);
+  }, [clearToastTimers]);
 
-  const showToast = (message: string) => {
+  const showToast = useCallback((message: string) => {
     // 연속 클릭 시 이전 종료 예약을 취소하고 새 토스트 시간을 시작.
     clearToastTimers();
 
@@ -64,9 +64,9 @@ export function useToast() {
     toastRemoveTimerRef.current = setTimeout(() => {
       setToast((currentToast) => (currentToast?.id === toastId ? null : currentToast));
     }, TOAST_DURATION_MS);
-  };
+  }, [clearToastTimers]);
 
-  const dismissToast = () => {
+  const dismissToast = useCallback(() => {
     // 수동 닫기 후 이전 자동 종료 타이머가 다시 실행되지 않게 제거.
     clearToastTimers();
 
@@ -81,7 +81,7 @@ export function useToast() {
     toastRemoveTimerRef.current = setTimeout(() => {
       setToast((activeToast) => (activeToast?.id === toastId ? null : activeToast));
     }, TOAST_EXIT_DURATION_MS);
-  };
+  }, [clearToastTimers, toast]);
 
   return { toast, showToast, dismissToast };
 }
