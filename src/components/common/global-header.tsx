@@ -15,11 +15,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+// 상단 헤더에서 반복 렌더링할 서비스 아이콘 정보.
 type HeaderAction = {
   label: string;
   icon: LucideIcon;
 };
 
+// 아직 구현되지 않은 서비스도 동일한 헤더 구조로 먼저 제공.
 const headerActions: HeaderAction[] = [
   { label: "홈", icon: Home },
   { label: "메신저", icon: MessageCircle },
@@ -33,6 +35,7 @@ const headerActions: HeaderAction[] = [
   { label: "내 프로필", icon: UserRound },
 ];
 
+// 화면마다 다른 이동·토스트 동작을 부모로부터 전달받음.
 type GlobalHeaderProps = {
   onHomeAction: () => void;
   onServiceAction: (label: string) => void;
@@ -50,6 +53,7 @@ export function GlobalHeader({
   isProfileMenuOpen = false,
   onLogout,
 }: GlobalHeaderProps) {
+  // 프로필 버튼과 메뉴 영역을 함께 참조해 바깥 클릭을 판별.
   const profileMenuRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
@@ -57,12 +61,14 @@ export function GlobalHeader({
       return;
     }
 
+    // 메뉴 영역 밖을 클릭하면 열린 프로필 메뉴를 닫음.
     const closeProfileMenuOnOutsideClick = (event: MouseEvent) => {
       if (!profileMenuRef.current?.contains(event.target as Node)) {
         onCloseProfileMenu();
       }
     };
 
+    // 키보드 사용자도 Esc로 메뉴를 닫을 수 있게 처리.
     const closeProfileMenuOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         onCloseProfileMenu();
@@ -100,7 +106,9 @@ export function GlobalHeader({
       </div>
 
       <nav className="flex min-w-0 items-center gap-1 overflow-x-auto sm:overflow-visible" aria-label="주요 서비스">
+        {/* 서비스 목록을 순회해 동일한 스타일의 아이콘 버튼을 생성. */}
         {headerActions.map(({ label, icon: Icon }) => {
+          // 홈과 프로필만 별도 동작, 나머지는 준비 중 토스트를 표시.
           const onClick = label === "홈" ? onHomeAction : label === "내 프로필" ? onProfileAction : () => onServiceAction(label);
 
           return (

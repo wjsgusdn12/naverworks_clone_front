@@ -11,10 +11,12 @@ import {
   UsersRound,
 } from "lucide-react";
 
+// 카드와 버튼이 눌렸을 때 부모 페이지가 토스트를 표시하도록 전달하는 함수.
 type HomeDashboardProps = {
   onFeatureClick: (featureName: string) => void;
 };
 
+// API 연동 전 홈 화면 구조를 확인하기 위한 임시 요약 데이터.
 const summaryCards = [
   { label: "오늘 일정", value: "3", suffix: "건", icon: CalendarDays, accent: "bg-blue-50 text-blue-600" },
   { label: "안 읽은 메시지", value: "12", suffix: "건", icon: MessageCircleMore, accent: "bg-violet-50 text-violet-600" },
@@ -22,18 +24,21 @@ const summaryCards = [
   { label: "회의실 예약", value: "2", suffix: "건", icon: DoorOpen, accent: "bg-amber-50 text-amber-600" },
 ];
 
+// 오늘 일정 영역에 표시할 임시 일정 데이터.
 const scheduleItems = [
   { time: "10:00", title: "주간 개발팀 싱크", place: "회의실 A · 30분" },
   { time: "13:30", title: "프로젝트 UI 리뷰", place: "온라인 미팅 · 1시간" },
   { time: "16:00", title: "스프린트 회고", place: "회의실 B · 1시간" },
 ];
 
+// 최근 활동 영역에 표시할 임시 활동 데이터.
 const activityItems = [
   { title: "신규 공지사항이 등록되었습니다.", detail: "서비스 운영 정책 안내", time: "방금 전" },
   { title: "김하늘님이 메시지를 보냈습니다.", detail: "개발팀 · 프로젝트 논의방", time: "18분 전" },
   { title: "회의실 A 예약이 승인되었습니다.", detail: "오늘 16:00 ~ 17:00", time: "1시간 전" },
 ];
 
+// 조직 구성원 영역에 표시할 임시 구성원 데이터.
 const teamMembers = [
   { name: "김하늘", team: "개발팀", online: true },
   { name: "박민수", team: "기획팀", online: true },
@@ -41,6 +46,7 @@ const teamMembers = [
 ];
 
 export function HomeDashboard({ onFeatureClick }: HomeDashboardProps) {
+  // 사용자 브라우저의 한국어 형식으로 오늘 날짜를 만듦.
   const today = new Intl.DateTimeFormat("ko-KR", {
     month: "long",
     day: "numeric",
@@ -66,6 +72,7 @@ export function HomeDashboard({ onFeatureClick }: HomeDashboardProps) {
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {/* 요약 카드 데이터만 추가하면 같은 디자인의 카드가 자동으로 늘어남. */}
         {summaryCards.map(({ label, value, suffix, icon: Icon, accent }) => (
           <article key={label} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-start justify-between">
@@ -98,6 +105,7 @@ export function HomeDashboard({ onFeatureClick }: HomeDashboardProps) {
             </button>
           </div>
           <div className="mt-5 space-y-4">
+            {/* 일정 배열을 시간 순서대로 반복 표시. */}
             {scheduleItems.map((schedule) => (
               <div key={schedule.time} className="flex gap-4">
                 <time className="w-11 pt-0.5 text-sm font-semibold text-blue-600">{schedule.time}</time>
@@ -120,6 +128,7 @@ export function HomeDashboard({ onFeatureClick }: HomeDashboardProps) {
             <BellRing size={19} className="text-slate-400" />
           </div>
           <div className="mt-4 divide-y divide-slate-100">
+            {/* 활동 항목 전체를 클릭 가능하게 만들어 추후 상세 화면으로 연결 가능. */}
             {activityItems.map((activity) => (
               <button
                 key={activity.title}
@@ -154,6 +163,7 @@ export function HomeDashboard({ onFeatureClick }: HomeDashboardProps) {
             </button>
           </div>
           <div className="mt-4 space-y-4">
+            {/* 구성원별 온라인 상태와 메시지 버튼을 반복 표시. */}
             {teamMembers.map((member) => (
               <div key={member.name} className="flex items-center gap-3">
                 <span className="relative flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-600">

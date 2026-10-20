@@ -5,11 +5,13 @@ import { FormEvent, useState } from "react";
 import { SiGoogle, SiKakaotalk, SiNaver } from "react-icons/si";
 import type { DemoLoginInput } from "@/lib/demo-auth";
 
+// 부모 화면이 로그인 결과와 안내 토스트를 처리하도록 콜백만 전달받음.
 type LoginFormProps = {
   onToast: (message: string) => void;
   onLogin: (input: DemoLoginInput) => void;
 };
 
+// 실제 소셜 인증 전까지 사용하는 로그인 버튼 표시 정보.
 const socialProviders = [
   { name: "NAVER", icon: SiNaver, className: "bg-[#03c75a] text-white" },
   { name: "KAKAO", icon: SiKakaotalk, className: "bg-[#fee500] text-[#191919]" },
@@ -17,12 +19,14 @@ const socialProviders = [
 ];
 
 export function LoginForm({ onToast, onLogin }: LoginFormProps) {
+  // 입력창과 UI 상태는 로그인 화면 내부에서 관리.
   const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    // 폼 제출로 페이지가 새로고침되는 기본 동작을 막음.
     event.preventDefault();
 
     if (!userId.trim() || !password) {
@@ -30,6 +34,7 @@ export function LoginForm({ onToast, onLogin }: LoginFormProps) {
       return;
     }
 
+    // 실제 인증 판단은 부모 페이지의 데모 인증 로직에 위임.
     onLogin({ userId, password, rememberMe });
   };
 

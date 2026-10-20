@@ -1,11 +1,14 @@
+/* 한국어 화면에 사용할 Pretendard 웹 폰트와 Tailwind 기본 스타일. */
 @import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable.css");
 @import "tailwindcss";
 
+/* 프로젝트 전체에서 공유하는 기본 색상 변수. */
 :root {
   --background: #ffffff;
   --foreground: #171717;
 }
 
+/* Tailwind 유틸리티 클래스가 사용할 프로젝트 테마 변수. */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -13,12 +16,14 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* 모든 화면에 공통으로 적용할 배경색과 기본 글꼴. */
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: "Pretendard Variable", Pretendard, var(--font-geist-sans), sans-serif;
 }
 
+/* 토스트가 아래에서 자연스럽게 나타나는 애니메이션. */
 @keyframes toast-enter {
   0% {
     opacity: 0;
@@ -31,6 +36,7 @@ body {
   }
 }
 
+/* 같은 기능을 다시 눌렀을 때 토스트가 반응하는 애니메이션. */
 @keyframes toast-replay {
   0% {
     transform: translate(-50%, 0) scale(1);
@@ -49,6 +55,7 @@ body {
   }
 }
 
+/* 토스트가 사라지기 직전의 애니메이션. */
 @keyframes toast-exit {
   0% {
     opacity: 1;
