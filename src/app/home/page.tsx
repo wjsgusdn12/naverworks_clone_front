@@ -19,7 +19,7 @@ const getServerAuthenticationSnapshot = () => false;
 
 export default function HomePage() {
   const router = useRouter();
-  const { toast, showToast } = useToast();
+  const { toast, showToast, dismissToast } = useToast();
   // 서버·클라이언트 렌더링 차이 없이 현재 인증 상태를 읽음.
   const isAuthorized = useSyncExternalStore(
     subscribeToDemoAuthentication,
@@ -63,7 +63,7 @@ export default function HomePage() {
       />
       {/* 아직 연결되지 않은 홈 기능은 공통 안내 토스트로 처리. */}
       <HomeDashboard onFeatureClick={(featureName) => showToast(`${featureName} 기능은 준비 중입니다.`)} />
-      {toast && <Toast key={toast.id} message={toast.message} phase={toast.phase} />}
+      {toast && <Toast key={toast.id} message={toast.message} phase={toast.phase} onClose={dismissToast} />}
     </div>
   );
 }

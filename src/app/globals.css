@@ -79,3 +79,46 @@ body {
 .toast-exit {
   animation: toast-exit 0.3s ease-in both;
 }
+
+/* 체크 시 아이콘이 튀어나오는 짧은 피드백 모션. */
+@keyframes checkbox-check {
+  0% {
+    opacity: 0;
+    transform: scale(0.35) rotate(-18deg);
+  }
+
+  65% {
+    opacity: 1;
+    transform: scale(1.18) rotate(3deg);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+/* 숨긴 기본 input과 연결된 프로젝트 전용 체크박스 UI. */
+.custom-checkbox-control {
+  transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.checkbox-check-mark {
+  display: block;
+  animation: checkbox-check 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.custom-checkbox-button:focus-visible .custom-checkbox-control {
+  box-shadow: 0 0 0 4px rgb(219 234 254);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .custom-checkbox-control {
+    transition: none;
+  }
+
+  .checkbox-check-mark {
+    animation: none;
+  }
+}

@@ -17,7 +17,7 @@ import { useEffect } from "react";
 export default function Home() {
   // Next.js 페이지 이동과 공통 토스트 기능을 사용.
   const router = useRouter();
-  const { toast, showToast } = useToast();
+  const { toast, showToast, dismissToast } = useToast();
 
   useEffect(() => {
     // 이미 로그인한 사용자는 로그인 화면을 다시 보지 않도록 홈으로 이동.
@@ -54,7 +54,7 @@ export default function Home() {
       <main className="flex flex-1 items-center justify-center px-5 py-12 sm:px-8">
         <LoginForm onToast={showToast} onLogin={handleLogin} />
       </main>
-      {toast && <Toast key={toast.id} message={toast.message} phase={toast.phase} />}
+      {toast && <Toast key={toast.id} message={toast.message} phase={toast.phase} onClose={dismissToast} />}
     </div>
   );
 }

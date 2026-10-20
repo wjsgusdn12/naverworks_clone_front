@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 
 // 토스트가 화면에 머무르는 시간.
-const TOAST_DURATION_MS = 3_000;
+const TOAST_DURATION_MS = 5_000;
+const TOAST_EXIT_DURATION_MS = 300;
 
 // 화면에 표시할 토스트 데이터와 현재 애니메이션 단계.
 export type ToastState = {
@@ -20,28 +21,28 @@ export function useToast() {
   const toastRemoveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastSequenceRef = useRef(0);
 
+  const clearToastTimers = () => {
+    if (toastHideTimerRef.current) {
+      clearTimeout(toastHideTimerRef.current);
+      toastHideTimerRef.current = null;
+    }
+
+    if (toastRemoveTimerRef.current) {
+      clearTimeout(toastRemoveTimerRef.current);
+      toastRemoveTimerRef.current = null;
+    }
+  };
+
   useEffect(() => {
     // 화면을 떠날 때 남아 있는 타이머를 정리.
     return () => {
-      if (toastHideTimerRef.current) {
-        clearTimeout(toastHideTimerRef.current);
-      }
-
-      if (toastRemoveTimerRef.current) {
-        clearTimeout(toastRemoveTimerRef.current);
-      }
+      clearToastTimers();
     };
   }, []);
 
   const showToast = (message: string) => {
     // 연속 클릭 시 이전 종료 예약을 취소하고 새 토스트 시간을 시작.
-    if (toastHideTimerRef.current) {
-      clearTimeout(toastHideTimerRef.current);
-    }
-
-    if (toastRemoveTimerRef.current) {
-      clearTimeout(toastRemoveTimerRef.current);
-    }
+    clearToastTimers();
 
     // 재클릭하면 key를 바꿔 애니메이션을 다시 재생.
     toastSequenceRef.current += 1;
@@ -58,12 +59,29 @@ export function useToast() {
       setToast((currentToast) =>
         currentToast?.id === toastId ? { ...currentToast, phase: "exit" } : currentToast,
       );
-    }, TOAST_DURATION_MS - 300);
+    }, TOAST_DURATION_MS - TOAST_EXIT_DURATION_MS);
 
     toastRemoveTimerRef.current = setTimeout(() => {
       setToast((currentToast) => (currentToast?.id === toastId ? null : currentToast));
     }, TOAST_DURATION_MS);
   };
 
-  return { toast, showToast };
+  const dismissToast = () => {
+    // 수동 닫기 후 이전 자동 종료 타이머가 다시 실행되지 않게 제거.
+    clearToastTimers();
+
+    if (!toast) {
+      return;
+    }
+
+    const toastId = toast.id;
+
+    // 자동 종료와 같은 퇴장 애니메이션을 재사용.
+    setToast({ ...toast, phase: "exit" });
+    toastRemoveTimerRef.current = setTimeout(() => {
+      setToast((activeToast) => (activeToast?.id === toastId ? null : activeToast));
+    }, TOAST_EXIT_DURATION_MS);
+  };
+
+  return { toast, showToast, dismissToast };
 }

@@ -2,7 +2,9 @@
 
 import { Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { FormEvent, useState } from "react";
-import { SiGoogle, SiKakaotalk, SiNaver } from "react-icons/si";
+import { FcGoogle } from "react-icons/fc";
+import { RiKakaoTalkFill } from "react-icons/ri";
+import { SiNaver } from "react-icons/si";
 import type { DemoLoginInput } from "@/lib/demo-auth";
 
 // 부모 화면이 로그인 결과와 안내 토스트를 처리하도록 콜백만 전달받음.
@@ -13,9 +15,9 @@ type LoginFormProps = {
 
 // 실제 소셜 인증 전까지 사용하는 로그인 버튼 표시 정보.
 const socialProviders = [
-  { name: "NAVER", icon: SiNaver, className: "bg-[#03c75a] text-white" },
-  { name: "KAKAO", icon: SiKakaotalk, className: "bg-[#fee500] text-[#191919]" },
-  { name: "Google", icon: SiGoogle, className: "bg-white text-[#4285f4]" },
+  { name: "NAVER", tooltip: "네이버 로그인", icon: SiNaver, iconSize: 20, className: "bg-[#03c75a] text-white" },
+  { name: "KAKAO", tooltip: "카카오 로그인", icon: RiKakaoTalkFill, iconSize: 24, className: "bg-[#fee500] text-[#191919]" },
+  { name: "Google", tooltip: "Google 로그인", icon: FcGoogle, iconSize: 24, className: "bg-white" },
 ];
 
 export function LoginForm({ onToast, onLogin }: LoginFormProps) {
@@ -70,26 +72,50 @@ export function LoginForm({ onToast, onLogin }: LoginFormProps) {
               autoComplete="current-password"
               className="h-12 w-full rounded-lg border border-slate-300 px-3.5 pr-12 text-sm outline-none transition placeholder:text-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
             />
-            <button
-              type="button"
-              aria-label={isPasswordVisible ? "비밀번호 숨기기" : "비밀번호 보기"}
-              onClick={() => setIsPasswordVisible((visible) => !visible)}
-              className="absolute inset-y-0 right-0 flex w-12 cursor-pointer items-center justify-center rounded-r-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
-            >
-              {isPasswordVisible ? <EyeOff size={19} /> : <Eye size={19} />}
-            </button>
+            <span className="group absolute inset-y-0 right-0 flex w-12 items-center justify-center">
+              <button
+                type="button"
+                aria-label={isPasswordVisible ? "비밀번호 숨기기" : "비밀번호 보기"}
+                onClick={() => setIsPasswordVisible((visible) => !visible)}
+                className="flex h-full w-full cursor-pointer items-center justify-center text-slate-500 transition hover:text-blue-600 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-600"
+              >
+                {isPasswordVisible ? <EyeOff size={19} /> : <Eye size={19} />}
+              </button>
+              <span
+                role="tooltip"
+                className="pointer-events-none absolute right-0 top-12 z-10 hidden whitespace-nowrap rounded bg-zinc-700 px-2 py-1 text-[11px] font-medium text-white shadow-md sm:group-hover:block"
+              >
+                {isPasswordVisible ? "비밀번호 숨기기" : "비밀번호 보기"}
+              </span>
+            </span>
           </span>
         </label>
 
-        <label className="flex cursor-pointer items-center gap-2 pt-1 text-sm text-slate-600">
-          <input
-            type="checkbox"
-            checked={rememberMe}
-            onChange={(event) => setRememberMe(event.target.checked)}
-            className="h-4 w-4 rounded border-slate-300 accent-blue-600"
-          />
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={rememberMe}
+          onClick={() => setRememberMe((isRemembered) => !isRemembered)}
+          className="custom-checkbox-button group flex cursor-pointer items-center gap-2 rounded-md pt-1 text-sm text-slate-600"
+        >
+          <span
+            aria-hidden="true"
+            className={`custom-checkbox-control flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-white group-hover:border-blue-400 ${
+              rememberMe ? "border-blue-600 bg-blue-600 scale-105" : "border-slate-300 bg-white"
+            }`}
+          >
+            {rememberMe && (
+              <span
+                aria-hidden="true"
+                className="checkbox-check-mark"
+                style={{ color: "#ffffff", fontSize: "15px", fontWeight: 800, lineHeight: 1 }}
+              >
+                ✓
+              </span>
+            )}
+          </span>
           로그인 상태 유지
-        </label>
+        </button>
 
         <button
           type="submit"
@@ -106,19 +132,26 @@ export function LoginForm({ onToast, onLogin }: LoginFormProps) {
       </div>
 
       <div className="grid grid-cols-3 gap-2">
-        {socialProviders.map(({ name, icon: Icon, className }) => (
-          <button
-            key={name}
-            type="button"
-            aria-label={`${name} 로그인`}
-            title={`${name} 로그인`}
-            onClick={() => onToast(`${name} 로그인은 준비 중입니다.`)}
-            className={`flex h-10 cursor-pointer items-center justify-center rounded-lg border transition hover:-translate-y-0.5 hover:shadow-sm ${className} ${
-              name === "Google" ? "border-slate-200" : "border-transparent"
-            }`}
-          >
-            <Icon size={19} aria-hidden="true" />
-          </button>
+        {socialProviders.map(({ name, tooltip, icon: Icon, iconSize, className }) => (
+          <span key={name} className="group relative block">
+            <button
+              type="button"
+              aria-label={tooltip}
+              onClick={() => onToast(`${name} 로그인은 준비 중입니다.`)}
+              className={`flex h-10 w-full cursor-pointer items-center justify-center rounded-lg border transition hover:-translate-y-0.5 hover:shadow-sm ${className} ${
+                name === "Google" ? "border-slate-200" : "border-transparent"
+              }`}
+            >
+              <Icon size={iconSize} aria-hidden="true" />
+            </button>
+            {/* 브라우저 기본 title 대신 프로젝트 공통 스타일의 안내를 표시. */}
+            <span
+              role="tooltip"
+              className="pointer-events-none absolute left-1/2 top-12 z-10 hidden -translate-x-1/2 whitespace-nowrap rounded bg-zinc-700 px-2 py-1 text-[11px] font-medium text-white shadow-md sm:group-hover:block"
+            >
+              {tooltip}
+            </span>
+          </span>
         ))}
       </div>
 
