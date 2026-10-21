@@ -1,0 +1,10 @@
+/* 주소록 목록의 행 구분선은 선택·호버 배경만 보이도록 숨김. */
+tbody > tr {
+  border-color: transparent;
+}
+
+/* 주소록 상단 검색창은 헤더 중앙 정렬 여백 없이 시작. */
+header .relative.mx-auto {
+  margin-left: 0;
+  margin-right: 0;
+}
