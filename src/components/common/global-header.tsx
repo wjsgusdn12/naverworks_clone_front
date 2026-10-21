@@ -111,7 +111,7 @@ export function GlobalHeader({
   return (
     <header className="relative z-50 flex h-14 shrink-0 items-center justify-between gap-6 bg-zinc-950 px-5 text-white shadow-sm sm:px-8">
       <div className="flex min-w-fit items-center gap-8">
-        {onSidebarToggle && <button type="button" aria-label={isSidebarCollapsed ? "사이드바 펼치기" : "사이드바 접기"} className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-white/40 text-white transition duration-200 hover:scale-105 hover:bg-zinc-800 active:scale-95" onClick={onSidebarToggle}><Menu size={21} /></button>}
+        {onSidebarToggle && <button type="button" aria-label={isSidebarCollapsed ? "사이드바 펼치기" : "사이드바 접기"} className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-transparent text-white transition duration-200 hover:scale-105 hover:bg-zinc-800 active:scale-95" onClick={onSidebarToggle}><Menu size={21} /></button>}
         <button
           type="button"
           aria-label="홈으로 이동"

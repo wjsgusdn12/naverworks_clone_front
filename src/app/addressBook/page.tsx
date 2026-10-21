@@ -316,6 +316,9 @@ export default function AddressBookPage() {
     setCompanyId(targetCompanyId);
     setDepartmentId(null);
     setView("company");
+  };
+
+  const toggleCompanyExpanded = (targetCompanyId: number) => {
     setExpandedCompanyIds((current) => current.includes(targetCompanyId) ? current.filter((id) => id !== targetCompanyId) : [...current, targetCompanyId]);
   };
 
@@ -336,12 +339,12 @@ export default function AddressBookPage() {
               <button className={`cursor-pointer rounded-md py-2 ${view === "favorite" ? "text-blue-600" : "text-slate-600"}`} onClick={() => { setView("favorite"); setDepartmentId(null); }}><Star className="mx-auto mb-1" size={18} />즐겨찾기</button>
               <button className={`cursor-pointer rounded-md py-2 ${view === "group" ? "text-blue-600" : "text-slate-600"}`} onClick={() => { setView("group"); setDepartmentId(null); }}><UsersRound className="mx-auto mb-1" size={18} />그룹</button>
             </div>
-            <div className="mt-4 text-sm"><button className="mb-2 flex w-full cursor-pointer items-center gap-1 rounded-md px-1 py-1 text-left font-medium text-slate-600 transition hover:bg-slate-100" onClick={() => setIsOrganizationExpanded((expanded) => !expanded)}>{isOrganizationExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}조직도</button>
+            <div className="mt-4 text-sm"><div className="mb-2 flex items-center gap-1 px-1 py-1 font-medium text-slate-600"><button type="button" aria-label={`조직도 ${isOrganizationExpanded ? "접기" : "펼치기"}`} className="flex h-5 w-5 cursor-pointer items-center justify-center rounded transition hover:bg-slate-200 active:scale-90" onClick={() => setIsOrganizationExpanded((expanded) => !expanded)}>{isOrganizationExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button><span>조직도</span></div>
               {isOrganizationExpanded && organizations.map((organization) => {
                 const isCompanyExpanded = expandedCompanyIds.includes(organization.companyId);
                 return <div key={organization.companyId}>
-                  <button className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left ${view === "company" && companyId === organization.companyId ? "bg-blue-50 text-blue-700" : "hover:bg-slate-100"}`} onClick={() => selectCompany(organization.companyId)}>{isCompanyExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}<Building2 size={17} />{organization.companyName}</button>
-                  {isCompanyExpanded && organization.departments.map((department) => <button key={department.id} className={`ml-5 flex w-[calc(100%-1.25rem)] cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left ${view === "department" && departmentId === department.id ? "bg-blue-50 text-blue-700" : "hover:bg-slate-100"}`} onClick={() => selectDepartment(organization.companyId, department.id)}><ChevronRight size={14} className={view === "department" && departmentId === department.id ? "rotate-90 transition-transform" : "transition-transform"} /><UsersRound size={16} />{department.name}</button>)}
+                  <div className={`flex w-full items-center rounded-md ${view === "company" && companyId === organization.companyId ? "bg-blue-50 text-blue-700" : "hover:bg-slate-100"}`}><button type="button" aria-label={`${organization.companyName} ${isCompanyExpanded ? "접기" : "펼치기"}`} className="ml-1 flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded transition hover:bg-blue-100 active:scale-90" onClick={() => toggleCompanyExpanded(organization.companyId)}>{isCompanyExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}</button><button type="button" className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 py-2 pr-3 text-left" onClick={() => selectCompany(organization.companyId)}><Building2 size={17} />{organization.companyName}</button></div>
+                  {isCompanyExpanded && organization.departments.map((department) => <button key={department.id} className={`ml-8 flex w-[calc(100%-2rem)] cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left ${view === "department" && departmentId === department.id ? "bg-blue-50 text-blue-700" : "hover:bg-slate-100"}`} onClick={() => selectDepartment(organization.companyId, department.id)}><UsersRound size={16} />{department.name}</button>)}
                 </div>;
               })}
             </div>
