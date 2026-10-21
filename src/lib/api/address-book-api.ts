@@ -42,6 +42,12 @@ export type AddressBookMemberDetail = AddressBookMember & {
   awayUntil: string | null;
 };
 
+export type AddressBookSearchHistory = {
+  id: number;
+  keyword: string;
+  updatedAt: string;
+};
+
 const getApiBaseUrl = () => {
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
   if (!apiBaseUrl) {
@@ -58,7 +64,9 @@ const request = async <T>(path: string, accessToken: string, init: RequestInit =
       credentials: "include",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}`, ...init.headers },
     });
-  } catch {
+  } catch (error) {
+    // 입력값이 바뀌어 취소한 이전 자동완성 요청은 오류 토스트로 보이지 않게 전달.
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
     throw new ApiClientError("서버에 연결할 수 없습니다. 서버 상태를 확인해 주세요.", 0, "NETWORK_ERROR");
   }
 
@@ -73,6 +81,15 @@ export const addressBookApi = {
   organization: (accessToken: string) => request<AddressBookOrganization>("/api/v1/addressBook/organization", accessToken),
   member: (accessToken: string, parameters: URLSearchParams) =>
     request<AddressBookMemberPage>(`/api/v1/addressBook/member?${parameters.toString()}`, accessToken),
+  memberSuggest: (accessToken: string, keyword: string, page: number, signal?: AbortSignal) =>
+    request<AddressBookMemberPage>(`/api/v1/addressBook/member/suggest?${new URLSearchParams({ keyword, page: String(page), size: "50" }).toString()}`, accessToken, { signal }),
+  searchHistory: (accessToken: string) => request<AddressBookSearchHistory[]>("/api/v1/addressBook/searchHistory", accessToken),
+  createSearchHistory: (accessToken: string, keyword: string) =>
+    request<void>("/api/v1/addressBook/searchHistory/create", accessToken, { method: "POST", body: JSON.stringify({ keyword }) }),
+  deleteSearchHistory: (accessToken: string) =>
+    request<void>("/api/v1/addressBook/searchHistory/delete", accessToken, { method: "POST" }),
+  deleteSearchHistoryItem: (accessToken: string, searchHistoryId: number) =>
+    request<void>(`/api/v1/addressBook/searchHistory/delete/${searchHistoryId}`, accessToken, { method: "POST" }),
   memberDetail: (accessToken: string, membershipId: number) =>
     request<AddressBookMemberDetail>(`/api/v1/addressBook/member/detail?membershipId=${membershipId}`, accessToken),
   createFavorite: (accessToken: string, targetMembershipId: number) =>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import {
   Bell,
   BookUser,
@@ -8,6 +8,7 @@ import {
   CalendarDays,
   Grid2X2,
   Home,
+  Menu,
   MessageCircle,
   Settings,
   ShieldCheck,
@@ -48,6 +49,10 @@ type GlobalHeaderProps = {
   profileLabel?: string;
   profileName?: string;
   isAuthenticated?: boolean;
+  headerContent?: ReactNode;
+  pageTitle?: string;
+  onSidebarToggle?: () => void;
+  isSidebarCollapsed?: boolean;
   role: AuthMember["role"];
 };
 
@@ -61,6 +66,10 @@ export function GlobalHeader({
   profileLabel = "내 프로필",
   profileName = "",
   isAuthenticated = false,
+  headerContent,
+  pageTitle = "홈",
+  onSidebarToggle,
+  isSidebarCollapsed = false,
   role,
 }: GlobalHeaderProps) {
   // 프로필 버튼과 메뉴 영역을 함께 참조해 바깥 클릭을 판별.
@@ -99,6 +108,7 @@ export function GlobalHeader({
   return (
     <header className="relative z-50 flex h-14 shrink-0 items-center justify-between gap-6 bg-zinc-950 px-5 text-white shadow-sm sm:px-8">
       <div className="flex min-w-fit items-center gap-8">
+        {onSidebarToggle && <button type="button" aria-label={isSidebarCollapsed ? "사이드바 펼치기" : "사이드바 접기"} className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border border-white/40 text-white transition duration-200 hover:scale-105 hover:bg-zinc-800 active:scale-95" onClick={onSidebarToggle}><Menu size={21} /></button>}
         <button
           type="button"
           aria-label="홈으로 이동"
@@ -113,9 +123,11 @@ export function GlobalHeader({
           className="cursor-pointer rounded-md text-lg font-semibold transition-colors hover:text-blue-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
           onClick={onHomeAction}
         >
-          홈
+          {pageTitle}
         </button>
       </div>
+
+      {headerContent && <div className="min-w-0 flex-1">{headerContent}</div>}
 
       <nav className="flex min-w-0 items-center gap-1 overflow-x-auto sm:overflow-visible" aria-label="주요 서비스">
         {/* 서비스 목록을 순회해 동일한 스타일의 아이콘 버튼을 생성. */}

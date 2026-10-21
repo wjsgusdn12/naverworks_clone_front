@@ -3,12 +3,12 @@
 import { GlobalHeader } from "@/components/common/global-header";
 import { Toast } from "@/components/common/toast";
 import { useAuth } from "@/components/auth/auth-provider";
-import { addressBookApi, type AddressBookMember, type AddressBookMemberDetail } from "@/lib/api/address-book-api";
+import { addressBookApi, type AddressBookMember, type AddressBookMemberDetail, type AddressBookSearchHistory } from "@/lib/api/address-book-api";
 import { markAuthenticationRequired } from "@/lib/auth-required-notice";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, ChevronDown, Mail, MessageCircle, Search, Star, UsersRound, X } from "lucide-react";
+import { Building2, CalendarDays, Check, ChevronDown, Clock3, Mail, MessageCircle, Search, Star, UsersRound, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject, type UIEvent } from "react";
 
 type AddressBookView = "favorite" | "group" | "company" | "department";
 
@@ -22,7 +22,7 @@ const statusClassName = {
 export default function AddressBookPage() {
   const router = useRouter();
   const { accessToken, member, status, logout } = useAuth();
-  const { toast, showToast, dismissToast } = useToast();
+  const { toast, showToast, dismissToast, resetToast } = useToast();
   const [view, setView] = useState<AddressBookView>("company");
   const [departmentId, setDepartmentId] = useState<number | null>(null);
   const [companyName, setCompanyName] = useState("");
@@ -30,22 +30,37 @@ export default function AddressBookPage() {
   const [members, setMembers] = useState<AddressBookMember[]>([]);
   const [selectedMember, setSelectedMember] = useState<AddressBookMemberDetail | null>(null);
   const [keyword, setKeyword] = useState("");
+  const [executedKeyword, setExecutedKeyword] = useState("");
   const [sort, setSort] = useState("name");
   const [direction, setDirection] = useState("asc");
+  const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([]);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [saveSearchEnabled, setSaveSearchEnabled] = useState(true);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [showPreviewProfileImage, setShowPreviewProfileImage] = useState(true);
+  const [previewMembers, setPreviewMembers] = useState<AddressBookMember[]>([]);
+  const [previewPage, setPreviewPage] = useState(0);
+  const [hasMorePreview, setHasMorePreview] = useState(false);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<AddressBookSearchHistory[]>([]);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const previewRequestIdRef = useRef(0);
 
   const loadMembers = useCallback(async () => {
     if (!accessToken) return;
     const parameters = new URLSearchParams({ page: "0", size: "50", sort, direction });
-    if (keyword.trim()) parameters.set("keyword", keyword.trim());
+    if (executedKeyword.trim()) parameters.set("keyword", executedKeyword.trim());
     if (view === "department" && departmentId) parameters.set("departmentId", String(departmentId));
     if (view === "favorite") parameters.set("favoriteOnly", "true");
     const result = await addressBookApi.member(accessToken, parameters);
     setMembers(result.content);
-  }, [accessToken, departmentId, direction, keyword, sort, view]);
+  }, [accessToken, departmentId, direction, executedKeyword, sort, view]);
 
   useEffect(() => {
     if (status === "unauthenticated") {
-      markAuthenticationRequired();
+      if (!isLoggingOut) markAuthenticationRequired();
       router.replace("/");
       return;
     }
@@ -59,7 +74,14 @@ export default function AddressBookPage() {
         showToast(error instanceof Error ? error.message : "주소록을 불러오지 못했습니다.");
       }
     })();
-  }, [accessToken, router, showToast, status]);
+  }, [accessToken, isLoggingOut, router, showToast, status]);
+
+  useEffect(() => {
+    if (!accessToken || !isSearchFocused || keyword.trim() || !saveSearchEnabled) return;
+    void addressBookApi.searchHistory(accessToken)
+      .then(setRecentSearches)
+      .catch((error: unknown) => showToast(error instanceof Error ? error.message : "최근 검색어를 불러오지 못했습니다."));
+  }, [accessToken, isSearchFocused, keyword, saveSearchEnabled, showToast]);
 
   useEffect(() => {
     if (status !== "authenticated" || !accessToken || view === "group") return;
@@ -68,6 +90,54 @@ export default function AddressBookPage() {
       showToast(error instanceof Error ? error.message : "주소록을 불러오지 못했습니다.");
     });
   }, [accessToken, loadMembers, showToast, status, view]);
+
+  useEffect(() => {
+    const closeSearchPreview = (event: MouseEvent) => {
+      if (!searchContainerRef.current?.contains(event.target as Node)) setIsSearchFocused(false);
+    };
+    const closeSearchPreviewOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsSearchFocused(false);
+    };
+    document.addEventListener("mousedown", closeSearchPreview);
+    document.addEventListener("keydown", closeSearchPreviewOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeSearchPreview);
+      document.removeEventListener("keydown", closeSearchPreviewOnEscape);
+    };
+  }, []);
+
+  useEffect(() => {
+    const normalizedKeyword = keyword.trim();
+    const requestId = ++previewRequestIdRef.current;
+    if (!isSearchFocused || !accessToken || !normalizedKeyword) {
+      return;
+    }
+
+    const abortController = new AbortController();
+    const timer = window.setTimeout(() => {
+      setIsPreviewLoading(true);
+      addressBookApi.memberSuggest(accessToken, normalizedKeyword, 0, abortController.signal)
+        .then((result) => {
+          // 늦게 도착한 이전 검색어의 응답은 현재 미리보기를 덮어쓰지 않음.
+          if (requestId !== previewRequestIdRef.current) return;
+          setPreviewMembers(result.content);
+          setPreviewPage(result.page);
+          setHasMorePreview(result.page + 1 < result.totalPages);
+        })
+        .catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === "AbortError") return;
+          if (requestId === previewRequestIdRef.current) showToast(error instanceof Error ? error.message : "검색 미리보기를 불러오지 못했습니다.");
+        })
+        .finally(() => {
+          if (requestId === previewRequestIdRef.current) setIsPreviewLoading(false);
+        });
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timer);
+      abortController.abort();
+    };
+  }, [accessToken, isSearchFocused, keyword, showToast]);
 
   const selectMember = async (target: AddressBookMember) => {
     if (!accessToken) return;
@@ -110,15 +180,121 @@ export default function AddressBookPage() {
     }
   };
 
+  const toggleMemberSelection = (membershipId: number) => {
+    setSelectedMemberIds((currentIds) => currentIds.includes(membershipId)
+      ? currentIds.filter((id) => id !== membershipId)
+      : [...currentIds, membershipId]);
+  };
+
+  const toggleAllMemberSelection = () => {
+    setSelectedMemberIds((currentIds) => currentIds.length === members.length ? [] : members.map((target) => target.membershipId));
+  };
+
+  const executeSearch = () => {
+    const normalizedKeyword = keyword.trim();
+    setExecutedKeyword(normalizedKeyword);
+    setIsSearchFocused(false);
+    if (accessToken && saveSearchEnabled && normalizedKeyword) {
+      void addressBookApi.createSearchHistory(accessToken, normalizedKeyword)
+        .then(() => addressBookApi.searchHistory(accessToken))
+        .then(setRecentSearches)
+        .catch((error: unknown) => showToast(error instanceof Error ? error.message : "최근 검색어를 저장하지 못했습니다."));
+    }
+  };
+
+  const clearSearch = () => {
+    setKeyword("");
+    setExecutedKeyword("");
+    setPreviewMembers([]);
+    setPreviewPage(0);
+    setHasMorePreview(false);
+    setIsSearchFocused(false);
+  };
+
+  const changeKeyword = (nextKeyword: string) => {
+    // 새 키워드는 기존 결과와 섞이지 않도록 즉시 미리보기 목록을 초기화.
+    setPreviewMembers([]);
+    setPreviewPage(0);
+    setHasMorePreview(false);
+    setKeyword(nextKeyword);
+  };
+
+  const clearRecentSearches = async () => {
+    if (!accessToken) return;
+    try {
+      await addressBookApi.deleteSearchHistory(accessToken);
+      setRecentSearches([]);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "최근 검색어를 삭제하지 못했습니다.");
+    }
+  };
+
+  const deleteRecentSearch = async (searchHistoryId: number) => {
+    if (!accessToken) return;
+    try {
+      await addressBookApi.deleteSearchHistoryItem(accessToken, searchHistoryId);
+      setRecentSearches((currentSearches) => currentSearches.filter((search) => search.id !== searchHistoryId));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "최근 검색어를 삭제하지 못했습니다.");
+    }
+  };
+
+  const selectRecentSearch = (searchKeyword: string) => {
+    changeKeyword(searchKeyword);
+    setExecutedKeyword(searchKeyword);
+    setIsSearchFocused(false);
+  };
+
+  const resetAddressBookState = () => {
+    previewRequestIdRef.current += 1;
+    setIsProfileMenuOpen(false);
+    setSelectedMember(null);
+    setSelectedMemberIds([]);
+    setKeyword("");
+    setExecutedKeyword("");
+    setPreviewMembers([]);
+    setRecentSearches([]);
+    setIsSearchFocused(false);
+    resetToast();
+  };
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    resetAddressBookState();
+    await logout();
+    router.replace("/");
+  };
+
+  const loadMorePreview = useCallback(async () => {
+    const normalizedKeyword = keyword.trim();
+    if (!accessToken || !normalizedKeyword || isPreviewLoading || !hasMorePreview) return;
+
+    const requestId = previewRequestIdRef.current;
+    setIsPreviewLoading(true);
+    try {
+      const result = await addressBookApi.memberSuggest(accessToken, normalizedKeyword, previewPage + 1);
+      // 다음 페이지를 받을 때 새 검색이 시작됐으면 결과를 추가하지 않음.
+      if (requestId !== previewRequestIdRef.current) return;
+      setPreviewMembers((currentMembers) => [...currentMembers, ...result.content]);
+      setPreviewPage(result.page);
+      setHasMorePreview(result.page + 1 < result.totalPages);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "검색 미리보기를 불러오지 못했습니다.");
+    } finally {
+      if (requestId === previewRequestIdRef.current) setIsPreviewLoading(false);
+    }
+  }, [accessToken, hasMorePreview, isPreviewLoading, keyword, previewPage, showToast]);
+
   if (status !== "authenticated" || !member) return <div className="min-h-screen bg-slate-100" />;
 
   const sectionTitle = view === "favorite" ? "즐겨찾기" : view === "group" ? "그룹" : companyName || "주소록";
 
   return (
     <div className="min-h-screen bg-white text-slate-900">
-      <GlobalHeader role={member.role} isAuthenticated profileName={member.displayName} profileLabel={`${member.displayName} · ${member.role === "ADMIN" ? "관리자" : "일반 사용자"}`} onHomeAction={() => router.push("/home")} onServiceAction={(label) => ["주소록", "조직도"].includes(label) ? router.push("/addressBook") : showToast(`${label} 기능은 준비 중입니다.`)} onProfileAction={() => showToast("내 프로필 기능은 준비 중입니다.")} onLogout={() => void logout().then(() => router.replace("/"))} />
+      <GlobalHeader role={member.role} pageTitle="주소록" isAuthenticated profileName={member.displayName} profileLabel={`${member.displayName} · ${member.role === "ADMIN" ? "관리자" : "일반 사용자"}`} isProfileMenuOpen={isProfileMenuOpen} onHomeAction={() => router.push("/home")} onServiceAction={(label) => ["주소록", "조직도"].includes(label) ? router.push("/addressBook") : showToast(`${label} 기능은 준비 중입니다.`)} onProfileAction={() => setIsProfileMenuOpen((open) => !open)} onCloseProfileMenu={() => setIsProfileMenuOpen(false)} onLogout={() => void handleLogout()} onSidebarToggle={() => setIsSidebarCollapsed((collapsed) => !collapsed)} isSidebarCollapsed={isSidebarCollapsed} headerContent={<AddressBookSearch containerRef={searchContainerRef} keyword={keyword} isFocused={isSearchFocused} saveSearchEnabled={saveSearchEnabled} previewMembers={previewMembers} recentSearches={recentSearches} isPreviewLoading={isPreviewLoading} showPreviewProfileImage={showPreviewProfileImage} onChange={changeKeyword} onFocus={() => setIsSearchFocused(true)} onClear={clearSearch} onClearHistory={() => void clearRecentSearches()} onDeleteHistory={(searchHistoryId) => void deleteRecentSearch(searchHistoryId)} onSaveToggle={() => setSaveSearchEnabled((enabled) => !enabled)} onProfileImageToggle={() => setShowPreviewProfileImage((visible) => !visible)} onSearch={executeSearch} onLoadMore={loadMorePreview} onRecentSearchSelect={selectRecentSearch} onPreviewSelect={(target) => { changeKeyword(target.displayName); setExecutedKeyword(target.displayName); setIsSearchFocused(false); }} />} />
       <main className="flex min-h-[calc(100vh-3.5rem)]">
-        <aside className="w-64 shrink-0 border-r border-slate-200 bg-slate-50 p-3">
+        <aside className={`shrink-0 overflow-hidden border-r border-slate-200 bg-slate-50 transition-[width] duration-300 ease-out ${isSidebarCollapsed ? "w-20 p-2" : "w-64 p-3"}`}>
+          {isSidebarCollapsed ? <div className="flex flex-col items-center gap-4 pt-2"><button className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-full bg-slate-950 text-2xl text-white transition hover:scale-105 active:scale-95" onClick={() => showToast("새로 만들기 기능은 준비 중입니다.")}>+</button><SidebarIcon label="조직도" icon={<Building2 size={20} />} onClick={() => { setView("company"); setDepartmentId(null); }} /><SidebarIcon label="즐겨찾기" icon={<Star size={20} />} onClick={() => { setView("favorite"); setDepartmentId(null); }} /><SidebarIcon label="그룹" icon={<UsersRound size={20} />} onClick={() => { setView("group"); setDepartmentId(null); }} /></div> : <>
           <button className="mb-3 flex h-11 w-full cursor-pointer items-center justify-center rounded-lg bg-slate-950 text-sm font-bold text-white transition hover:bg-slate-800" onClick={() => showToast("그룹 생성 기능은 준비 중입니다.")}>새로 만들기 <ChevronDown className="ml-1" size={15} /></button>
           <div className="grid grid-cols-2 border-b border-slate-200 pb-3 text-sm">
             <button className={`cursor-pointer rounded-md py-2 ${view === "favorite" ? "text-blue-600" : "text-slate-600"}`} onClick={() => { setView("favorite"); setDepartmentId(null); }}><Star className="mx-auto mb-1" size={18} />즐겨찾기</button>
@@ -128,16 +304,60 @@ export default function AddressBookPage() {
             <button className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left ${view === "company" ? "bg-blue-50 text-blue-700" : "hover:bg-slate-100"}`} onClick={() => { setView("company"); setDepartmentId(null); }}><Building2 size={17} />{companyName || "회사"}</button>
             {departments.map((department) => <button key={department.id} className={`ml-5 flex w-[calc(100%-1.25rem)] cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left ${view === "department" && departmentId === department.id ? "bg-blue-50 text-blue-700" : "hover:bg-slate-100"}`} onClick={() => { setView("department"); setDepartmentId(department.id); }}><UsersRound size={16} />{department.name}</button>)}
           </div>
+          </>}
         </aside>
         <section className="min-w-0 flex-1 p-6">
-          <div className="mb-5 flex items-center justify-between gap-4"><h1 className="text-xl font-bold">{sectionTitle}</h1><label className="flex h-10 w-full max-w-md items-center gap-2 rounded-full bg-slate-100 px-4 text-slate-500"><Search size={18} /><input className="w-full bg-transparent text-sm outline-none" value={keyword} onChange={(event) => setKeyword(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void loadMembers()} placeholder="연락처, 이메일 검색" /></label></div>
-          {view === "group" ? <GroupPlaceholder showToast={showToast} /> : <div className="overflow-hidden rounded-xl border border-slate-200"><table className="w-full min-w-[850px] border-collapse text-left text-sm"><thead className="border-b border-slate-200 bg-slate-50 text-slate-600"><tr>{[["name", "이름"], ["jobGrade", "직책/직급"], ["department", "부서"], ["company", "소속"], ["email", "이메일"], ["phone", "전화번호"]].map(([key, label]) => <th key={key} className="px-4 py-3 font-semibold"><button className="cursor-pointer hover:text-blue-600" onClick={() => selectSort(key)}>{label}{sort === key ? (direction === "asc" ? " ↑" : " ↓") : ""}</button></th>)}</tr></thead><tbody>{members.map((target) => <tr key={target.membershipId} className="cursor-pointer border-b border-slate-100 transition hover:bg-blue-50" onClick={() => void selectMember(target)}><td className="px-4 py-3"><button aria-label="즐겨찾기 변경" className="mr-2 cursor-pointer align-middle text-amber-400" onClick={(event) => { event.stopPropagation(); void toggleFavorite(target); }}><Star size={17} fill={target.favorite ? "currentColor" : "none"} /></button><span className={`mr-2 inline-flex h-4 w-4 items-center justify-center rounded-full ${statusClassName[target.presenceStatus]}`}>{(target.presenceStatus === "AWAY" || target.presenceStatus === "INACTIVE") && <X size={11} />}</span><b>{target.displayName}</b></td><td className="px-4 py-3">{[target.jobTitle, target.jobGradeName].filter(Boolean).join(" / ") || "-"}</td><td className="px-4 py-3">{target.departmentName ?? "-"}</td><td className="px-4 py-3">{target.companyName}</td><td className="px-4 py-3">{target.email}</td><td className="px-4 py-3">{target.phoneNumber ?? "-"}</td></tr>)}</tbody></table>{members.length === 0 && <p className="p-12 text-center text-sm text-slate-500">표시할 구성원이 없습니다.</p>}</div>}
+          <div className="mb-5 flex items-center justify-between gap-4"><h1 className="text-xl font-bold">{sectionTitle}</h1></div>
+          {view === "group" ? <GroupPlaceholder showToast={showToast} /> : <>
+            <div className="mb-4 flex h-9 items-center gap-2">
+              <CustomCheckbox label="전체 구성원 선택" checked={members.length > 0 && selectedMemberIds.length === members.length} onChange={toggleAllMemberSelection} />
+              <button disabled={selectedMemberIds.length === 0} className="h-9 rounded-md border border-slate-200 px-4 text-sm text-slate-600 transition enabled:cursor-pointer enabled:hover:border-blue-300 enabled:hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40" onClick={() => showToast("메일 기능은 준비 중입니다.")}>메일</button>
+              <button disabled={selectedMemberIds.length === 0} className="h-9 rounded-md border border-slate-200 px-4 text-sm text-slate-600 transition enabled:cursor-pointer enabled:hover:border-blue-300 enabled:hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40" onClick={() => showToast("메신저 기능은 준비 중입니다.")}>메시지</button>
+            </div>
+            <div className="flex min-h-[calc(100vh-15rem)] border-y border-slate-200">
+              <div className="min-w-0 flex-1 overflow-auto">
+                <table className="w-full min-w-[900px] border-collapse text-left text-sm"><thead className="border-b border-slate-200 bg-white text-slate-700"><tr><th className="w-11 px-3 py-3" />{[["name", "이름"], ["jobGrade", "직책/직급"], ["department", "부서"], ["company", "소속"], ["email", "이메일"], ["phone", "전화번호"]].map(([key, label]) => <th key={key} className="px-4 py-3 font-semibold"><button className="cursor-pointer hover:text-blue-600" onClick={() => selectSort(key)}>{label}{sort === key ? (direction === "asc" ? " ↓" : " ↑") : ""}</button></th>)}</tr></thead><tbody>{members.map((target) => <tr key={target.membershipId} className={`cursor-pointer border-b border-slate-100 transition hover:bg-blue-50 ${selectedMember?.membershipId === target.membershipId ? "bg-blue-50" : ""}`} onClick={() => void selectMember(target)}><td className="px-3 py-3"><span onClick={(event) => event.stopPropagation()}><CustomCheckbox label={`${target.displayName} 선택`} checked={selectedMemberIds.includes(target.membershipId)} onChange={() => toggleMemberSelection(target.membershipId)} /></span></td><td className="px-4 py-3"><div className="flex items-center gap-2"><button aria-label="즐겨찾기 변경" className={`flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full transition ${target.favorite ? "bg-emerald-500 text-white hover:bg-emerald-600" : "bg-slate-200 text-slate-500 hover:bg-emerald-100 hover:text-emerald-600"}`} onClick={(event) => { event.stopPropagation(); void toggleFavorite(target); }}><Star size={12} fill={target.favorite ? "currentColor" : "none"} /></button><MemberAvatar member={target} /><b>{target.displayName}</b></div></td><td className="px-4 py-3">{[target.jobTitle, target.jobGradeName].filter(Boolean).join(" / ") || "-"}</td><td className="px-4 py-3">{target.departmentName ?? "-"}</td><td className="px-4 py-3">{target.companyName}</td><td className="px-4 py-3">{target.email}</td><td className="px-4 py-3">{target.phoneNumber ?? "-"}</td></tr>)}</tbody></table>{members.length === 0 && <p className="p-12 text-center text-sm text-slate-500">표시할 구성원이 없습니다.</p>}</div>
+              {selectedMember && <MemberPanel member={selectedMember} onClose={() => setSelectedMember(null)} onToggleFavorite={() => void toggleFavorite(selectedMember)} showToast={showToast} />}
+            </div>
+          </>}
         </section>
-        {selectedMember && <MemberPanel member={selectedMember} onClose={() => setSelectedMember(null)} showToast={showToast} />}
       </main>
       {toast && <Toast key={toast.id} message={toast.message} phase={toast.phase} onClose={dismissToast} />}
     </div>
   );
+}
+
+function AddressBookSearch({ containerRef, keyword, isFocused, saveSearchEnabled, previewMembers, recentSearches, isPreviewLoading, showPreviewProfileImage, onChange, onFocus, onClear, onClearHistory, onDeleteHistory, onSaveToggle, onProfileImageToggle, onSearch, onLoadMore, onRecentSearchSelect, onPreviewSelect }: { containerRef: RefObject<HTMLDivElement | null>; keyword: string; isFocused: boolean; saveSearchEnabled: boolean; previewMembers: AddressBookMember[]; recentSearches: AddressBookSearchHistory[]; isPreviewLoading: boolean; showPreviewProfileImage: boolean; onChange: (keyword: string) => void; onFocus: () => void; onClear: () => void; onClearHistory: () => void; onDeleteHistory: (searchHistoryId: number) => void; onSaveToggle: () => void; onProfileImageToggle: () => void; onSearch: () => void; onLoadMore: () => void; onRecentSearchSelect: (keyword: string) => void; onPreviewSelect: (member: AddressBookMember) => void }) {
+  const hasKeyword = keyword.trim().length > 0;
+  const matchingRecentSearches = hasKeyword
+    ? recentSearches.filter((search) => search.keyword.toLowerCase().includes(keyword.trim().toLowerCase()))
+    : [];
+  const handlePreviewScroll = (event: UIEvent<HTMLDivElement>) => {
+    const container = event.currentTarget;
+    if (container.scrollHeight - container.scrollTop - container.clientHeight < 32) onLoadMore();
+  };
+
+  return <div ref={containerRef} className="relative mx-auto w-full max-w-[500px]"><label className={`flex h-10 items-center gap-2 rounded-full bg-slate-100 px-4 text-slate-500 transition-shadow duration-200 ${isFocused ? "ring-2 ring-blue-500" : ""}`}><Search size={18} /><input className="w-full bg-transparent text-sm outline-none" value={keyword} onChange={(event) => onChange(event.target.value)} onFocus={onFocus} onKeyDown={(event) => event.key === "Enter" && onSearch()} placeholder="이름, 이메일 검색" />{hasKeyword && <button type="button" aria-label="검색어 지우기" className="flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-slate-400 text-white transition hover:scale-110 hover:bg-slate-500 active:scale-90" onClick={onClear}><X size={12} strokeWidth={3} /></button>}</label>{isFocused && <div className="absolute left-0 right-0 top-11 z-[80] overflow-hidden rounded-md bg-white text-sm text-slate-600 shadow-lg ring-1 ring-slate-200"><div className="max-h-52 overflow-y-auto" onScroll={handlePreviewScroll}>{hasKeyword ? <>{matchingRecentSearches.map((search) => <div key={search.id} className="group flex w-full items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50"><Clock3 size={16} className="shrink-0 text-slate-500" /><button className="min-w-0 flex-1 cursor-pointer truncate text-left font-medium text-blue-700" onClick={() => onRecentSearchSelect(search.keyword)}><HighlightText value={search.keyword} keyword={keyword} /></button><button type="button" aria-label={`${search.keyword} 최근 검색어 삭제`} className="invisible flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 group-hover:visible focus:visible" onClick={() => onDeleteHistory(search.id)}><X size={13} /></button></div>)}{matchingRecentSearches.length > 0 && <div className="border-t border-slate-100" />}{isPreviewLoading && previewMembers.length === 0 ? <p className="px-4 py-5">검색 중입니다.</p> : previewMembers.length ? <>{previewMembers.map((target) => <button key={target.membershipId} className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition hover:bg-blue-50" onClick={() => onPreviewSelect(target)}>{showPreviewProfileImage && <MemberAvatar member={target} />}<div className="min-w-0"><p className="font-semibold text-slate-800"><HighlightText value={target.displayName} keyword={keyword} /></p><p className="truncate text-xs text-slate-500"><HighlightText value={[target.jobTitle, target.jobGradeName, target.departmentName, target.companyName, target.email].filter(Boolean).join(" · ")} keyword={keyword} /></p></div></button>)}{isPreviewLoading && <p className="px-4 py-2 text-center text-xs text-slate-400">검색 결과를 더 불러오는 중입니다.</p>}</> : matchingRecentSearches.length === 0 ? <p className="px-4 py-5">일치하는 구성원이 없습니다.</p> : null}</> : (saveSearchEnabled && recentSearches.length ? recentSearches.map((search) => <div key={search.id} className="group flex w-full items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50"><Clock3 size={16} className="shrink-0 text-slate-500" /><button className="min-w-0 flex-1 cursor-pointer truncate text-left font-medium text-slate-800" onClick={() => onRecentSearchSelect(search.keyword)}>{search.keyword}</button><button type="button" aria-label={`${search.keyword} 최근 검색어 삭제`} className="invisible flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 group-hover:visible focus:visible" onClick={() => onDeleteHistory(search.id)}><X size={13} /></button></div>) : <p className="px-4 py-5">{saveSearchEnabled ? "최근 검색어가 없습니다." : "검색어 저장 기능이 꺼져있습니다."}</p>)}</div>{hasKeyword ? <div className="flex h-9 items-center justify-end gap-2 border-t border-slate-100 px-3 text-xs">프로필 이미지 표시 <ToggleSwitch label="검색 미리보기 프로필 이미지 표시" enabled={showPreviewProfileImage} onToggle={onProfileImageToggle} /></div> : <div className="flex h-9 items-center justify-between border-t border-slate-100 px-3 text-xs">{saveSearchEnabled ? <button className="cursor-pointer transition hover:text-blue-600" onClick={onClearHistory}>전체 삭제</button> : <span /> }<span className="flex items-center gap-2">검색어 저장 <ToggleSwitch label="검색어 저장" enabled={saveSearchEnabled} onToggle={onSaveToggle} /></span></div>}</div>}</div>;
+}
+
+function ToggleSwitch({ label, enabled, onToggle }: { label: string; enabled: boolean; onToggle: () => void }) {
+  return <button type="button" aria-label={label} aria-checked={enabled} role="switch" className={`inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full p-0.5 transition-colors duration-200 ${enabled ? "bg-blue-600" : "bg-slate-300"}`} onClick={onToggle}><span className={`h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out ${enabled ? "translate-x-4" : "translate-x-0"}`} /></button>;
+}
+
+function HighlightText({ value, keyword }: { value: string; keyword: string }) {
+  const normalizedKeyword = keyword.trim();
+  if (!normalizedKeyword) return value;
+  const index = value.toLowerCase().indexOf(normalizedKeyword.toLowerCase());
+  if (index < 0) return value;
+  return <>{value.slice(0, index)}<mark className="bg-transparent font-bold text-blue-600">{value.slice(index, index + normalizedKeyword.length)}</mark>{value.slice(index + normalizedKeyword.length)}</>;
+}
+
+function SidebarIcon({ label, icon, onClick }: { label: string; icon: ReactNode; onClick: () => void }) {
+  return <button className="group flex w-full cursor-pointer flex-col items-center gap-1 rounded-md py-2 text-xs text-slate-600 transition hover:bg-blue-50 hover:text-blue-600" onClick={onClick}>{icon}<span className="text-[10px]">{label}</span></button>;
+}
+
+function CustomCheckbox({ label, checked, onChange }: { label: string; checked: boolean; onChange: () => void }) {
+  return <button type="button" role="checkbox" aria-label={label} aria-checked={checked} className="custom-checkbox-button flex h-7 w-7 cursor-pointer items-center justify-center rounded-md" onClick={onChange}><span className={`custom-checkbox-control flex h-5 w-5 items-center justify-center rounded-md border ${checked ? "border-blue-600 bg-blue-600 text-white shadow-[0_0_0_3px_rgb(219_234_254)]" : "border-slate-300 bg-white hover:border-blue-400"}`}>{checked && <Check className="checkbox-check-mark" size={14} strokeWidth={3} />}</span></button>;
 }
 
 function GroupPlaceholder({ showToast }: { showToast: (message: string) => void }) {
@@ -145,8 +365,13 @@ function GroupPlaceholder({ showToast }: { showToast: (message: string) => void 
   return <div><div className="mb-4 flex gap-5 border-b border-slate-200">{["전체", "내가 속한 그룹", "내가 마스터인 그룹"].map((label) => <button key={label} className={`cursor-pointer border-b-2 px-1 pb-3 text-sm ${tab === label ? "border-blue-600 font-semibold text-blue-600" : "border-transparent text-slate-500"}`} onClick={() => setTab(label)}>{label}</button>)}</div><div className="rounded-xl border border-slate-200 p-12 text-center text-sm text-slate-500">주소록 그룹 목록은 준비 중입니다.<button className="ml-2 cursor-pointer font-semibold text-blue-600 hover:underline" onClick={() => showToast("그룹 생성 기능은 준비 중입니다.")}>그룹 만들기</button></div></div>;
 }
 
-function MemberPanel({ member, onClose, showToast }: { member: AddressBookMemberDetail; onClose: () => void; showToast: (message: string) => void }) {
-  return <aside className="w-80 shrink-0 border-l border-slate-200 bg-white p-6 shadow-xl"><div className="flex justify-end"><button aria-label="상세 패널 닫기" className="cursor-pointer text-slate-500 hover:text-slate-900" onClick={onClose}><X /></button></div><div className="mt-2 flex items-center gap-3"><div className="flex h-16 min-w-16 items-center justify-center rounded-full border border-slate-200 text-lg font-bold">{member.displayName.slice(0, 3)}</div><div><h2 className="text-xl font-bold">{member.displayName}</h2><p className="text-sm text-slate-500">{[member.jobTitle, member.jobGradeName].filter(Boolean).join(" / ") || "직급 미지정"}</p></div></div><div className="mt-8 grid grid-cols-3 gap-2 text-center text-xs text-blue-600"><button className="cursor-pointer rounded-lg p-2 hover:bg-blue-50" onClick={() => showToast("메신저 기능은 준비 중입니다.")}><MessageCircle className="mx-auto mb-1" size={20} />메시지</button><button className="cursor-pointer rounded-lg p-2 hover:bg-blue-50" onClick={() => showToast("메일 기능은 준비 중입니다.")}><Mail className="mx-auto mb-1" size={20} />메일</button><button className="cursor-pointer rounded-lg p-2 hover:bg-blue-50" onClick={() => showToast("캘린더 기능은 준비 중입니다.")}>▣<br />캘린더</button></div><dl className="mt-8 space-y-5 text-sm"><Info label="소속" value={`${member.companyName}${member.departmentName ? ` · ${member.departmentName}` : ""}`} /><Info label="전화" value={member.phoneNumber ?? "-"} /><Info label="이메일" value={member.email} /><Info label="입사일" value={member.hiredAt ?? "-"} /></dl></aside>;
+function MemberAvatar({ member, size = "sm" }: { member: AddressBookMember | AddressBookMemberDetail; size?: "sm" | "lg" }) {
+  const isLarge = size === "lg";
+  return <span className={`relative flex shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white font-bold text-slate-800 ${isLarge ? "h-16 w-16 text-lg" : "h-8 w-8 text-[10px]"}`}><span className="whitespace-nowrap">{member.displayName.slice(0, 3)}</span><span className={`absolute -bottom-0.5 -right-0.5 inline-flex items-center justify-center rounded-full ring-2 ring-white ${isLarge ? "h-5 w-5" : "h-3.5 w-3.5"} ${statusClassName[member.presenceStatus]}`}>{(member.presenceStatus === "AWAY" || member.presenceStatus === "INACTIVE") && <X size={isLarge ? 13 : 9} strokeWidth={3} />}</span></span>;
 }
 
-function Info({ label, value }: { label: string; value: string }) { return <div><dt className="mb-1 text-xs text-slate-500">{label}</dt><dd className="font-medium">{value}</dd></div>; }
+function MemberPanel({ member, onClose, onToggleFavorite, showToast }: { member: AddressBookMemberDetail; onClose: () => void; onToggleFavorite: () => void; showToast: (message: string) => void }) {
+  return <aside className="w-80 shrink-0 overflow-y-auto border-l border-slate-200 bg-white p-6"><div className="flex justify-end gap-3"><button aria-label="즐겨찾기 변경" className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-full ${member.favorite ? "bg-emerald-500 text-white" : "bg-slate-200 text-slate-500"}`} onClick={onToggleFavorite}><Star size={13} fill={member.favorite ? "currentColor" : "none"} /></button><button aria-label="상세 패널 닫기" className="cursor-pointer text-slate-500 hover:text-slate-900" onClick={onClose}><X /></button></div><div className="mt-2 flex items-center gap-3"><MemberAvatar member={member} size="lg" /><div><h2 className="text-xl font-bold">{member.displayName}</h2><p className="text-sm text-slate-500">{[member.jobTitle, member.jobGradeName].filter(Boolean).join(" / ") || "직급 미지정"}</p></div></div><div className="mt-8 grid grid-cols-3 gap-2 text-center text-xs text-blue-600"><button className="cursor-pointer rounded-lg p-2 hover:bg-blue-50" onClick={() => showToast("메신저 기능은 준비 중입니다.")}><MessageCircle className="mx-auto mb-1" size={20} />메시지</button><button className="cursor-pointer rounded-lg p-2 hover:bg-blue-50" onClick={() => showToast("메일 기능은 준비 중입니다.")}><Mail className="mx-auto mb-1" size={20} />메일</button><button className="cursor-pointer rounded-lg p-2 hover:bg-blue-50" onClick={() => showToast("캘린더 기능은 준비 중입니다.")}><CalendarDays className="mx-auto mb-1" size={20} />캘린더</button></div><dl className="mt-8 space-y-5 text-sm"><Info label="소속" value={member.companyName} strong /><Info label="" value={member.departmentName ?? "부서 미지정"} /><Info label="전화" value={member.phoneNumber ?? "-"} /><Info label="이메일" value={member.email} /><Info label="입사일" value={member.hiredAt ?? "-"} /></dl></aside>;
+}
+
+function Info({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) { return <div><dt className="mb-1 text-xs text-slate-500">{label}</dt><dd className={strong ? "font-bold" : "font-medium"}>{value}</dd></div>; }

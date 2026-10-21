@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { AuthProvider } from "@/components/auth/auth-provider";
+import { RouteStateBoundary } from "@/components/common/route-state-boundary";
 import { Geist } from "next/font/google";
 import "./globals.css";
 
@@ -21,7 +22,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="ko" className={`${geistSans.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
         {/* 모든 화면이 동일한 메모리 인증 상태를 공유. */}
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider><RouteStateBoundary>{children}</RouteStateBoundary></AuthProvider>
       </body>
     </html>
   );

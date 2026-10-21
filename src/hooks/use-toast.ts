@@ -83,5 +83,11 @@ export function useToast() {
     }, TOAST_EXIT_DURATION_MS);
   }, [clearToastTimers, toast]);
 
-  return { toast, showToast, dismissToast };
+  const resetToast = useCallback(() => {
+    // 로그아웃·화면 이탈 때 이전 화면의 안내가 새 화면에 남지 않게 제거.
+    clearToastTimers();
+    setToast(null);
+  }, [clearToastTimers]);
+
+  return { toast, showToast, dismissToast, resetToast };
 }

@@ -11,23 +11,26 @@ import { useEffect, useState } from "react";
 
 export default function HomePage() {
   const router = useRouter();
-  const { toast, showToast, dismissToast } = useToast();
+  const { toast, showToast, dismissToast, resetToast } = useToast();
   const { status, member, logout } = useAuth();
   // 프로필 아이콘 아래 메뉴의 열림 상태.
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   useEffect(() => {
     // 주소를 직접 입력해도 로그인하지 않았다면 로그인 화면으로 보냄.
     if (status === "unauthenticated") {
-      markAuthenticationRequired();
+      if (!isLoggingOut) markAuthenticationRequired();
       router.replace("/");
     }
 
-  }, [router, status]);
+  }, [isLoggingOut, router, status]);
 
   const handleLogout = async () => {
     // 메뉴를 닫고 인증 표시를 삭제한 뒤 로그인 화면으로 이동.
+    setIsLoggingOut(true);
     setIsProfileMenuOpen(false);
+    resetToast();
     await logout();
     router.replace("/");
   };
