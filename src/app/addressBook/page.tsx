@@ -8,7 +8,7 @@ import { addressBookApi, type AddressBookMember, type AddressBookMemberDetail, t
 import { chatApi } from "@/lib/api/chat-api";
 import { markAuthenticationRequired } from "@/lib/auth-required-notice";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, CalendarDays, Check, ChevronDown, Clock3, ExternalLink, Mail, MessageCircle, Search, Star, UsersRound, X } from "lucide-react";
+import { Building2, CalendarDays, Check, ChevronDown, ChevronRight, Clock3, ExternalLink, Mail, MessageCircle, Search, Star, UsersRound, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject, type UIEvent } from "react";
 
@@ -27,8 +27,10 @@ export default function AddressBookPage() {
   const { toast, showToast, dismissToast, resetToast } = useToast();
   const [view, setView] = useState<AddressBookView>("company");
   const [departmentId, setDepartmentId] = useState<number | null>(null);
-  const [companyName, setCompanyName] = useState("");
-  const [departments, setDepartments] = useState<{ id: number; name: string; enabled: boolean }[]>([]);
+  const [organizations, setOrganizations] = useState<Awaited<ReturnType<typeof addressBookApi.organization>>>([]);
+  const [companyId, setCompanyId] = useState<number | null>(null);
+  const [isOrganizationExpanded, setIsOrganizationExpanded] = useState(true);
+  const [expandedCompanyIds, setExpandedCompanyIds] = useState<number[]>([]);
   const [members, setMembers] = useState<AddressBookMember[]>([]);
   const [selectedMember, setSelectedMember] = useState<AddressBookMemberDetail | null>(null);
   const [keyword, setKeyword] = useState("");
@@ -65,11 +67,12 @@ export default function AddressBookPage() {
     if (!accessToken) return;
     const parameters = new URLSearchParams({ page: "0", size: "50", sort, direction });
     if (executedKeyword.trim()) parameters.set("keyword", executedKeyword.trim());
+    if (view !== "favorite" && companyId) parameters.set("companyId", String(companyId));
     if (view === "department" && departmentId) parameters.set("departmentId", String(departmentId));
     if (view === "favorite") parameters.set("favoriteOnly", "true");
     const result = await addressBookApi.member(accessToken, parameters);
     setMembers(result.content);
-  }, [accessToken, departmentId, direction, executedKeyword, sort, view]);
+  }, [accessToken, companyId, departmentId, direction, executedKeyword, sort, view]);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -81,8 +84,12 @@ export default function AddressBookPage() {
     void (async () => {
       try {
         const organization = await addressBookApi.organization(accessToken);
-        setCompanyName(organization.companyName);
-        setDepartments(organization.departments);
+        setOrganizations(organization);
+        const currentCompany = organization.find((item) => item.currentCompany) ?? organization[0];
+        if (currentCompany) {
+          setCompanyId(currentCompany.companyId);
+          setExpandedCompanyIds([currentCompany.companyId]);
+        }
       } catch (error) {
         showToast(error instanceof Error ? error.message : "주소록을 불러오지 못했습니다.");
       }
@@ -302,7 +309,21 @@ export default function AddressBookPage() {
 
   if (status !== "authenticated" || !member) return <div className="min-h-screen bg-slate-100" />;
 
-  const sectionTitle = view === "favorite" ? "즐겨찾기" : view === "group" ? "그룹" : companyName || "주소록";
+  const selectedCompany = organizations.find((organization) => organization.companyId === companyId);
+  const sectionTitle = view === "favorite" ? "즐겨찾기" : view === "group" ? "그룹" : selectedCompany?.companyName || "주소록";
+
+  const selectCompany = (targetCompanyId: number) => {
+    setCompanyId(targetCompanyId);
+    setDepartmentId(null);
+    setView("company");
+    setExpandedCompanyIds((current) => current.includes(targetCompanyId) ? current.filter((id) => id !== targetCompanyId) : [...current, targetCompanyId]);
+  };
+
+  const selectDepartment = (targetCompanyId: number, targetDepartmentId: number) => {
+    setCompanyId(targetCompanyId);
+    setDepartmentId((current) => current === targetDepartmentId ? null : targetDepartmentId);
+    setView((current) => current === "department" && departmentId === targetDepartmentId ? "company" : "department");
+  };
 
   return (
     <div className="min-h-screen bg-white text-slate-900">
@@ -315,9 +336,14 @@ export default function AddressBookPage() {
               <button className={`cursor-pointer rounded-md py-2 ${view === "favorite" ? "text-blue-600" : "text-slate-600"}`} onClick={() => { setView("favorite"); setDepartmentId(null); }}><Star className="mx-auto mb-1" size={18} />즐겨찾기</button>
               <button className={`cursor-pointer rounded-md py-2 ${view === "group" ? "text-blue-600" : "text-slate-600"}`} onClick={() => { setView("group"); setDepartmentId(null); }}><UsersRound className="mx-auto mb-1" size={18} />그룹</button>
             </div>
-            <div className="mt-4 text-sm"><p className="mb-2 font-medium text-slate-600">⌄ 조직도</p>
-              <button className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left ${view === "company" ? "bg-blue-50 text-blue-700" : "hover:bg-slate-100"}`} onClick={() => { setView("company"); setDepartmentId(null); }}><Building2 size={17} />{companyName || "회사"}</button>
-              {departments.map((department) => <button key={department.id} className={`ml-5 flex w-[calc(100%-1.25rem)] cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left ${view === "department" && departmentId === department.id ? "bg-blue-50 text-blue-700" : "hover:bg-slate-100"}`} onClick={() => { setView("department"); setDepartmentId(department.id); }}><UsersRound size={16} />{department.name}</button>)}
+            <div className="mt-4 text-sm"><button className="mb-2 flex w-full cursor-pointer items-center gap-1 rounded-md px-1 py-1 text-left font-medium text-slate-600 transition hover:bg-slate-100" onClick={() => setIsOrganizationExpanded((expanded) => !expanded)}>{isOrganizationExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}조직도</button>
+              {isOrganizationExpanded && organizations.map((organization) => {
+                const isCompanyExpanded = expandedCompanyIds.includes(organization.companyId);
+                return <div key={organization.companyId}>
+                  <button className={`flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left ${view === "company" && companyId === organization.companyId ? "bg-blue-50 text-blue-700" : "hover:bg-slate-100"}`} onClick={() => selectCompany(organization.companyId)}>{isCompanyExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}<Building2 size={17} />{organization.companyName}</button>
+                  {isCompanyExpanded && organization.departments.map((department) => <button key={department.id} className={`ml-5 flex w-[calc(100%-1.25rem)] cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-left ${view === "department" && departmentId === department.id ? "bg-blue-50 text-blue-700" : "hover:bg-slate-100"}`} onClick={() => selectDepartment(organization.companyId, department.id)}><ChevronRight size={14} className={view === "department" && departmentId === department.id ? "rotate-90 transition-transform" : "transition-transform"} /><UsersRound size={16} />{department.name}</button>)}
+                </div>;
+              })}
             </div>
           </>}
         </aside>

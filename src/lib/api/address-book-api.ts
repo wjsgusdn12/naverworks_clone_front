@@ -12,6 +12,7 @@ export type PresenceStatus = "ONLINE" | "OFFLINE" | "AWAY" | "INACTIVE";
 export type AddressBookOrganization = {
   companyId: number;
   companyName: string;
+  currentCompany: boolean;
   departments: { id: number; name: string; enabled: boolean }[];
 };
 
@@ -78,7 +79,7 @@ const request = async <T>(path: string, accessToken: string, init: RequestInit =
 };
 
 export const addressBookApi = {
-  organization: (accessToken: string) => request<AddressBookOrganization>("/api/v1/addressBook/organization", accessToken),
+  organization: (accessToken: string) => request<AddressBookOrganization[]>("/api/v1/addressBook/organization", accessToken),
   member: (accessToken: string, parameters: URLSearchParams) =>
     request<AddressBookMemberPage>(`/api/v1/addressBook/member?${parameters.toString()}`, accessToken),
   memberSuggest: (accessToken: string, keyword: string, page: number, signal?: AbortSignal) =>
