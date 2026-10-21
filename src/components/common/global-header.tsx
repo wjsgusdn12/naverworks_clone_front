@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { AuthMember } from "@/lib/api/auth-api";
+import { useRouter } from "next/navigation";
 
 // 상단 헤더에서 반복 렌더링할 서비스 아이콘 정보.
 type HeaderAction = {
@@ -27,7 +28,7 @@ type HeaderAction = {
 // 아직 구현되지 않은 서비스도 동일한 헤더 구조로 먼저 제공.
 const headerActions: HeaderAction[] = [
   { label: "홈", icon: Home },
-  { label: "메신저", icon: MessageCircle },
+  { label: "메시지", icon: MessageCircle },
   { label: "캘린더", icon: CalendarDays },
   { label: "주소록", icon: BookUser },
   { label: "관리자", icon: ShieldCheck, requiresAdmin: true },
@@ -72,6 +73,8 @@ export function GlobalHeader({
   isSidebarCollapsed = false,
   role,
 }: GlobalHeaderProps) {
+  // 공통 헤더의 서비스 이동은 어느 화면에서나 같은 경로를 사용.
+  const router = useRouter();
   // 프로필 버튼과 메뉴 영역을 함께 참조해 바깥 클릭을 판별.
   const profileMenuRef = useRef<HTMLSpanElement>(null);
   // 한글·영문·이모지 모두 글자 단위가 깨지지 않도록 앞 세 글자만 사용.
@@ -118,13 +121,9 @@ export function GlobalHeader({
           <span className="block text-xs font-bold tracking-[0.16em]">NAVER WORKS</span>
           <span className="block text-[8px] tracking-[0.28em] text-zinc-400">COLLABORATION</span>
         </button>
-        <button
-          type="button"
-          className="cursor-pointer rounded-md text-lg font-semibold transition-colors hover:text-blue-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
-          onClick={onHomeAction}
-        >
+        <span className="text-lg font-semibold">
           {pageTitle}
-        </button>
+        </span>
       </div>
 
       {headerContent && <div className="min-w-0 flex-1">{headerContent}</div>}
@@ -132,8 +131,16 @@ export function GlobalHeader({
       <nav className="flex min-w-0 items-center gap-1 overflow-x-auto sm:overflow-visible" aria-label="주요 서비스">
         {/* 서비스 목록을 순회해 동일한 스타일의 아이콘 버튼을 생성. */}
         {headerActions.filter(({ requiresAdmin }) => !requiresAdmin || role === "ADMIN").map(({ label, icon: Icon }) => {
-          // 홈과 프로필만 별도 동작, 나머지는 준비 중 토스트를 표시.
-          const onClick = label === "홈" ? onHomeAction : label === "내 프로필" ? onProfileAction : () => onServiceAction(label);
+          // 구현된 서비스는 화면과 무관하게 공통 경로로 이동.
+          const onClick = label === "홈"
+            ? onHomeAction
+            : label === "메시지"
+              ? () => isAuthenticated ? router.push("/message") : onServiceAction(label)
+              : label === "주소록" || label === "조직도"
+                ? () => isAuthenticated ? router.push("/addressBook") : onServiceAction(label)
+                : label === "내 프로필"
+                  ? onProfileAction
+                  : () => onServiceAction(label);
 
           return (
             <span

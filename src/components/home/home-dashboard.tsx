@@ -181,7 +181,7 @@ export function HomeDashboard({ onFeatureClick }: HomeDashboardProps) {
                 <button
                   type="button"
                   aria-label={`${member.name}에게 메시지 보내기`}
-                  onClick={() => onFeatureClick("메신저")}
+                  onClick={() => onFeatureClick("메시지")}
                   className="cursor-pointer rounded-md p-1.5 text-blue-600 transition hover:bg-blue-50 hover:shadow-sm focus-visible:outline-2 focus-visible:outline-blue-600"
                 >
                   <MessageCircleMore size={17} />

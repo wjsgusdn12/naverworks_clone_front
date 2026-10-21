@@ -46,7 +46,7 @@ export default function HomePage() {
         role={member.role}
         isProfileMenuOpen={isProfileMenuOpen}
         onHomeAction={() => router.push("/home")}
-        onServiceAction={(label) => ["주소록", "조직도"].includes(label) ? router.push("/addressBook") : showToast(`${label} 기능은 준비 중입니다.`)}
+        onServiceAction={(label) => label === "메시지" ? router.push("/message") : ["주소록", "조직도"].includes(label) ? router.push("/addressBook") : showToast(`${label} 기능은 준비 중입니다.`)}
         onProfileAction={() => setIsProfileMenuOpen((open) => !open)}
         onCloseProfileMenu={() => setIsProfileMenuOpen(false)}
         onLogout={() => void handleLogout()}
@@ -55,7 +55,7 @@ export default function HomePage() {
         isAuthenticated
       />
       {/* 아직 연결되지 않은 홈 기능은 공통 안내 토스트로 처리. */}
-      <HomeDashboard onFeatureClick={(featureName) => showToast(`${featureName} 기능은 준비 중입니다.`)} />
+      <HomeDashboard onFeatureClick={(featureName) => featureName === "메시지" ? router.push("/message") : showToast(`${featureName} 기능은 준비 중입니다.`)} />
       {toast && <Toast key={toast.id} message={toast.message} phase={toast.phase} onClose={dismissToast} />}
     </div>
   );
