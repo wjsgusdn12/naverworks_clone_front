@@ -23,6 +23,34 @@ body {
   font-family: "Pretendard Variable", Pretendard, var(--font-geist-sans), sans-serif;
 }
 
+/* 모든 목록·모달에서 공유하는 얇고 눈에 덜 띄는 스크롤바. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+  transition: background-color 0.18s ease;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+  background-clip: content-box;
+}
+
 /* 토스트가 아래에서 자연스럽게 나타나는 애니메이션. */
 @keyframes toast-enter {
   0% {
