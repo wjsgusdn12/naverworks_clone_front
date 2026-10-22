@@ -175,8 +175,9 @@ export function GlobalHeader({
               >
                 {label === "내 프로필" && isAuthenticated ? (
                   // 사진 업로드 전에는 이름 길이에 맞는 기본 아바타를 사용.
-                  <span className="flex h-8 min-w-8 items-center justify-center whitespace-nowrap rounded-full bg-slate-100 px-0 text-[11px] font-bold tracking-[-0.1em] leading-none text-slate-900 shadow-sm">
+                  <span className="relative flex h-8 min-w-8 items-center justify-center whitespace-nowrap rounded-full bg-slate-100 px-0 text-[11px] font-bold tracking-[-0.1em] leading-none text-slate-900 shadow-sm">
                     {profileAvatarText}
+                    <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-slate-950" />
                   </span>
                 ) : (
                   <Icon size={19} strokeWidth={1.9} aria-hidden="true" />

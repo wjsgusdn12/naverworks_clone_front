@@ -9,7 +9,8 @@ export type ChatRoom = {
 
 export type ChatMessage = {
   id: number; senderMembershipId: number; senderName: string; content: string; type: "TEXT" | "SYSTEM";
-  createdAt: string; unreadCount: number;
+  // unreadCount와 readCount를 분리해 "안 읽었는데 읽음"으로 보이지 않게 처리.
+  createdAt: string; unreadCount: number; readCount: number;
 };
 
 export type ChatMessagePage = { messages: ChatMessage[]; nextCursor: number | null };
