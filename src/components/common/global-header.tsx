@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Bell,
   BookUser,
@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { AuthMember } from "@/lib/api/auth-api";
+import { useAuth } from "@/components/auth/auth-provider";
 import { useRouter } from "next/navigation";
 
 // 상단 헤더에서 반복 렌더링할 서비스 아이콘 정보.
@@ -73,12 +74,29 @@ export function GlobalHeader({
   isSidebarCollapsed = false,
   role,
 }: GlobalHeaderProps) {
+  const { sessionExpiresAt } = useAuth();
+  const [now, setNow] = useState(0);
   // 공통 헤더의 서비스 이동은 어느 화면에서나 같은 경로를 사용.
   const router = useRouter();
   // 프로필 버튼과 메뉴 영역을 함께 참조해 바깥 클릭을 판별.
   const profileMenuRef = useRef<HTMLSpanElement>(null);
   // 한글·영문·이모지 모두 글자 단위가 깨지지 않도록 앞 세 글자만 사용.
   const profileAvatarText = Array.from(profileName).slice(0, 3).join("") || "사용자";
+  const sessionRemainingSeconds = sessionExpiresAt && now > 0
+    ? Math.max(0, Math.floor((new Date(sessionExpiresAt).getTime() - now) / 1000))
+    : null;
+  const sessionRemainingText = sessionRemainingSeconds === null ? null : `${String(Math.floor(sessionRemainingSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((sessionRemainingSeconds % 3600) / 60)).padStart(2, "0")}:${String(sessionRemainingSeconds % 60).padStart(2, "0")}`;
+
+  useEffect(() => {
+    if (!sessionExpiresAt) return;
+    const updateNow = () => setNow(Date.now());
+    const initialTimer = window.setTimeout(updateNow, 0);
+    const timer = window.setInterval(updateNow, 1_000);
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(timer);
+    };
+  }, [sessionExpiresAt]);
 
   useEffect(() => {
     if (!isProfileMenuOpen || !onCloseProfileMenu) {
@@ -129,6 +147,7 @@ export function GlobalHeader({
       {headerContent && <div className="min-w-0 flex-1">{headerContent}</div>}
 
       <nav className="flex min-w-0 items-center gap-1 overflow-x-auto sm:overflow-visible" aria-label="주요 서비스">
+        {isAuthenticated && sessionRemainingText && <span className="mr-2 hidden whitespace-nowrap text-[11px] text-zinc-400 lg:inline">세션 {sessionRemainingText}</span>}
         {/* 서비스 목록을 순회해 동일한 스타일의 아이콘 버튼을 생성. */}
         {headerActions.filter(({ requiresAdmin }) => !requiresAdmin || role === "ADMIN").map(({ label, icon: Icon }) => {
           // 구현된 서비스는 화면과 무관하게 공통 경로로 이동.

@@ -22,6 +22,7 @@ export type AuthTokenResponse = {
   accessToken: string;
   tokenType: "Bearer";
   expiresIn: number;
+  sessionExpiresAt: string;
   member: AuthMember;
 };
 
