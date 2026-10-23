@@ -4,7 +4,7 @@ type ApiResponse<T> = { success: boolean; code: string; message: string; data: T
 
 export type ChatRoom = {
   id: number; type: "SELF" | "DIRECT" | "GROUP"; name: string | null; ownerMembershipId: number | null;
-  memberCount: number; createdAt: string; lastMessage: string | null; lastMessageAt: string | null; lastSenderMembershipId: number | null; unreadCount: number; oldestUnreadMessageAt: string | null; directMembershipId: number | null; directDisplayName: string | null; directJobGradeName: string | null; directDepartmentName: string | null; directCompanyName: string | null;
+  memberCount: number; createdAt: string; lastMessage: string | null; lastMessageAt: string | null; lastSenderMembershipId: number | null; unreadCount: number; oldestUnreadMessageAt: string | null; directMembershipId: number | null; directDisplayName: string | null; directJobGradeName: string | null; directDepartmentName: string | null; directCompanyName: string | null; pinned: boolean; notificationEnabled: boolean;
 };
 
 export type ChatMessage = {
@@ -49,6 +49,9 @@ export const chatApi = {
   rename: (token: string, roomId: number, name: string) => request<void>(`/api/v1/chatRoom/name/update?chatRoomId=${roomId}`, token, { method: "POST", body: JSON.stringify({ name }) }),
   transferOwner: (token: string, roomId: number, membershipId: number) => request<void>(`/api/v1/chatRoom/owner/update?chatRoomId=${roomId}`, token, { method: "POST", body: JSON.stringify({ membershipId }) }),
   leave: (token: string, roomId: number) => request<void>(`/api/v1/chatRoom/leave?chatRoomId=${roomId}`, token, { method: "POST" }),
+  hide: (token: string, roomId: number) => request<void>(`/api/v1/chatRoom/hide?chatRoomId=${roomId}`, token, { method: "POST" }),
+  togglePin: (token: string, roomId: number) => request<void>(`/api/v1/chatRoom/pin/update?chatRoomId=${roomId}`, token, { method: "POST" }),
+  updateNotification: (token: string, roomId: number, enabled: boolean) => request<void>(`/api/v1/chatRoom/notification/update?chatRoomId=${roomId}`, token, { method: "POST", body: JSON.stringify({ enabled }) }),
   detail: (token: string, roomId: number) => request<ChatRoomDetail>(`/api/v1/chatRoom/detail?chatRoomId=${roomId}`, token),
   messages: (token: string, roomId: number, cursor?: number) => request<ChatMessagePage>(`/api/v1/chatRoom/message?chatRoomId=${roomId}${cursor ? `&cursor=${cursor}` : ""}`, token),
   send: (token: string, roomId: number, content: string) => request<ChatMessage>(`/api/v1/chatRoom/message/create?chatRoomId=${roomId}`, token, { method: "POST", body: JSON.stringify({ content }) }),
