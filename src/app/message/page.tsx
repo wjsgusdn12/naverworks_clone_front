@@ -96,6 +96,9 @@ const formatRoomTime = (value: string | null) => {
 // 마지막 대화가 있는 방은 그 시각, 새 방은 생성 시각을 기준으로 최신순을 유지.
 const sortRoomsByLatestActivity = (rooms: ChatRoom[]) =>
   [...rooms].sort((left, right) => {
+    // 고정한 방은 최근 활동 시각보다 항상 먼저 보여 줌.
+    if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
+    if (left.pinned && right.pinned) return new Date(left.pinnedAt ?? 0).getTime() - new Date(right.pinnedAt ?? 0).getTime();
     const leftTime = new Date(left.lastMessageAt ?? left.createdAt).getTime();
     const rightTime = new Date(
       right.lastMessageAt ?? right.createdAt,
@@ -108,6 +111,9 @@ type RoomSort = "LATEST" | "TYPE" | "UNREAD";
 const sortRooms = (rooms: ChatRoom[], sort: RoomSort) => {
   if (sort !== "UNREAD") return sortRoomsByLatestActivity(rooms);
   return [...rooms].sort((left, right) => {
+    // 안 읽은 메시지 정렬에서도 고정한 방이 최우선.
+    if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
+    if (left.pinned && right.pinned) return new Date(left.pinnedAt ?? 0).getTime() - new Date(right.pinnedAt ?? 0).getTime();
     const leftHasUnread = left.unreadCount > 0;
     const rightHasUnread = right.unreadCount > 0;
     if (leftHasUnread !== rightHasUnread) return leftHasUnread ? -1 : 1;
@@ -376,11 +382,11 @@ function MessageContent() {
         const profile =
           selectedRoom?.type === "SELF"
             ? detail.members.find(
-                (item) => item.membershipId === member.membershipId,
-              )
+              (item) => item.membershipId === member.membershipId,
+            )
             : detail.members.find(
-                (item) => item.membershipId !== member.membershipId,
-              );
+              (item) => item.membershipId !== member.membershipId,
+            );
         setSelectedRoomProfile(profile ?? null);
         setRooms((current) =>
           current.map((room) =>
@@ -498,35 +504,35 @@ function MessageContent() {
   const headerProfile =
     selectedRoom?.type === "SELF"
       ? {
-          displayName:
-            selectedRoomProfile?.displayName ?? member?.displayName ?? "나",
-          jobGradeName: selectedRoomProfile?.jobGradeName ?? "",
-          departmentName: selectedRoomProfile?.departmentName ?? "",
-          companyName: selectedRoomProfile?.companyName ?? "",
-        }
+        displayName:
+          selectedRoomProfile?.displayName ?? member?.displayName ?? "나",
+        jobGradeName: selectedRoomProfile?.jobGradeName ?? "",
+        departmentName: selectedRoomProfile?.departmentName ?? "",
+        companyName: selectedRoomProfile?.companyName ?? "",
+      }
       : selectedRoom?.type === "DIRECT"
         ? {
-            displayName:
-              selectedRoomProfile?.displayName ??
-              addressBookProfile?.displayName ??
-              selectedRoom.directDisplayName ??
-              "상대 사용자",
-            jobGradeName:
-              selectedRoomProfile?.jobGradeName ??
-              addressBookProfile?.jobGradeName ??
-              selectedRoom.directJobGradeName ??
-              "",
-            departmentName:
-              selectedRoomProfile?.departmentName ??
-              addressBookProfile?.departmentName ??
-              selectedRoom.directDepartmentName ??
-              "",
-            companyName:
-              selectedRoomProfile?.companyName ??
-              addressBookProfile?.companyName ??
-              selectedRoom.directCompanyName ??
-              "",
-          }
+          displayName:
+            selectedRoomProfile?.displayName ??
+            addressBookProfile?.displayName ??
+            selectedRoom.directDisplayName ??
+            "상대 사용자",
+          jobGradeName:
+            selectedRoomProfile?.jobGradeName ??
+            addressBookProfile?.jobGradeName ??
+            selectedRoom.directJobGradeName ??
+            "",
+          departmentName:
+            selectedRoomProfile?.departmentName ??
+            addressBookProfile?.departmentName ??
+            selectedRoom.directDepartmentName ??
+            "",
+          companyName:
+            selectedRoomProfile?.companyName ??
+            addressBookProfile?.companyName ??
+            selectedRoom.directCompanyName ??
+            "",
+        }
         : null;
   const headerMembershipId =
     selectedRoom?.type === "SELF"
@@ -549,12 +555,12 @@ function MessageContent() {
           current.map((room) =>
             room.id === selectedRoomId
               ? {
-                  ...room,
-                  lastMessage: message.content,
-                  lastMessageAt: message.createdAt,
-                  lastSenderMembershipId: member?.membershipId ?? null,
-                  unreadCount: 0,
-                }
+                ...room,
+                lastMessage: message.content,
+                lastMessageAt: message.createdAt,
+                lastSenderMembershipId: member?.membershipId ?? null,
+                unreadCount: 0,
+              }
               : room,
           ),
         ),
@@ -874,7 +880,7 @@ function MessageContent() {
                   const showDate =
                     index === 0 ||
                     dateKey(messages[index - 1].createdAt) !==
-                      dateKey(message.createdAt);
+                    dateKey(message.createdAt);
                   const sender = contactMemberById.get(
                     message.senderMembershipId,
                   );
@@ -1126,9 +1132,9 @@ function MessageContent() {
               profileMember.membershipId === member?.membershipId
                 ? await chatApi.createSelf(accessToken)
                 : await chatApi.createDirect(
-                    accessToken,
-                    profileMember.membershipId,
-                  );
+                  accessToken,
+                  profileMember.membershipId,
+                );
             setProfileMemberId(null);
             setSelectedRoomId(room.id);
             await loadRooms();
@@ -1209,72 +1215,79 @@ function MessageRoomItem({
     <div data-room-menu className={`group relative flex w-[calc(100%-1rem)] gap-3 rounded-xl ${isCollapsed ? "mx-2 my-1 justify-center px-2 py-3" : "mx-2 my-1 px-3 py-3"} text-left transition-colors duration-200 hover:bg-blue-50 ${isSelected ? "bg-blue-100" : ""}`}>
       {hideSelectionMode && !isCollapsed && <button type="button" role="checkbox" aria-checked={hiddenSelected} onClick={onToggleHidden} className={`custom-checkbox-button mt-1 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-md border transition ${hiddenSelected ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white"}`}>{hiddenSelected && <Check size={14} strokeWidth={3} />}</button>}
       <button type="button" title={displayName} onClick={onClick} className="flex min-w-0 flex-1 cursor-pointer gap-3 text-left">
-      {room.type === "GROUP" ? (
-        <GroupAvatar name={avatarName} />
-      ) : (
-        <MessageMemberAvatar
-          name={avatarName}
-          presenceStatus={presenceStatus}
-          onClick={() =>
-            onProfileClick(
-              isSelf ? currentMember!.membershipId : room.directMembershipId!,
-            )
-          }
-        />
-      )}
-      {!isCollapsed && (
-        <span className="min-w-0 flex-1">
-          <span className="flex justify-between gap-2">
-            <b className="flex min-w-0 items-center gap-1 truncate">
-              {isSelf && (
-                <span className="shrink-0 rounded bg-slate-700 px-1 py-0.5 text-[9px] text-white">
-                  나
-                </span>
-              )}
-              <span className="truncate">{displayName}</span>
-              {room.type === "GROUP" && (
-                <span className="shrink-0 text-base font-extrabold text-blue-600">
-                  {room.memberCount}
-                </span>
-              )}
-            </b>
-            {/* 시간과 메뉴를 동일한 고정 영역에 겹쳐 행 너비가 흔들리지 않게 함. */}
-            <span className="static h-5 w-16 shrink-0">
-              <small className={`absolute right-3 top-3 whitespace-nowrap text-right leading-5 text-slate-500 transition-opacity duration-150 group-hover:opacity-0 ${menuOpen ? "opacity-0" : ""}`}>
-                {formatRoomTime(room.lastMessageAt)}
-              </small>
-              <button ref={menuButtonRef} type="button" aria-label="메시지방 메뉴" onClick={(event) => { event.preventDefault(); event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect(); setMenuPosition({ left: rect.left, top: rect.bottom + 6 }); onToggleMenu(); }} className={`absolute right-3 top-1/2 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded text-slate-600 opacity-0 transition-opacity duration-150 hover:bg-slate-200 group-hover:pointer-events-auto group-hover:opacity-100 ${menuOpen ? "pointer-events-auto opacity-100" : "pointer-events-none"}`}><MoreVertical size={17} /></button>
+        <span className="relative shrink-0">
+          {room.type === "GROUP" ? (
+            <GroupAvatar name={avatarName} />
+          ) : (
+            <MessageMemberAvatar
+              name={avatarName}
+              presenceStatus={presenceStatus}
+              onClick={() =>
+                onProfileClick(
+                  isSelf ? currentMember!.membershipId : room.directMembershipId!,
+                )
+              }
+            />
+          )}
+          {room.pinned && (
+            <span className="absolute -left-0.5 -top-0.5 flex h-3 w-3 items-center justify-center rounded-full bg-white text-blue-600 ring-1 ring-blue-100">
+              <Pin size={9} fill="currentColor" strokeWidth={2.5} />
             </span>
-          </span>
-          <span className="mt-0.5 flex items-start gap-2">
-            <span className="flex min-w-0 flex-1 items-start gap-1 text-slate-500">
-              {sentByMe && (
-                <Forward
-                  className="mt-0.5 shrink-0 text-slate-600"
-                  size={15}
-                  strokeWidth={3}
-                />
-              )}
-              <span className="min-w-0 flex-1 text-[16px]">
-                <small className="block truncate">
-                  {previewLines[0] || " "}
-                </small>
-                {hasLineBreak && (
-                  <small className="block truncate">
-                    {secondPreview || " "}
-                  </small>
+          )}
+        </span>
+        {!isCollapsed && (
+          <span className="min-w-0 flex-1">
+            <span className="flex justify-between gap-2">
+              <b className="flex min-w-0 items-center gap-1 truncate">
+                {isSelf && (
+                  <span className="shrink-0 rounded bg-slate-700 px-1 py-0.5 text-[9px] text-white">
+                    나
+                  </span>
                 )}
+                <span className="truncate">{displayName}</span>
+                {room.type === "GROUP" && (
+                  <span className="shrink-0 text-base font-extrabold text-blue-600">
+                    {room.memberCount}
+                  </span>
+                )}
+              </b>
+              {/* 시간과 메뉴를 동일한 고정 영역에 겹쳐 행 너비가 흔들리지 않게 함. */}
+              <span className="static h-5 w-16 shrink-0">
+                <small className={`absolute right-3 top-3 whitespace-nowrap text-right leading-5 text-slate-500 transition-opacity duration-150 group-hover:opacity-0 ${menuOpen ? "opacity-0" : ""}`}>
+                  {formatRoomTime(room.lastMessageAt)}
+                </small>
+                <button ref={menuButtonRef} type="button" aria-label="메시지방 메뉴" onClick={(event) => { event.preventDefault(); event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect(); setMenuPosition({ left: rect.left, top: rect.bottom + 6 }); onToggleMenu(); }} className={`absolute right-3 top-1/2 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded text-slate-600 opacity-0 transition-opacity duration-150 hover:bg-slate-200 group-hover:pointer-events-auto group-hover:opacity-100 ${menuOpen ? "pointer-events-auto opacity-100" : "pointer-events-none"}`}><MoreVertical size={17} /></button>
               </span>
             </span>
-            {room.unreadCount > 0 && (
-              <em className={`mt-0.5 inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-500 px-1.5 text-[12px] font-bold leading-none not-italic text-white transition-opacity duration-150 group-hover:opacity-0 ${menuOpen ? "opacity-0" : ""}`}>
-                {room.unreadCount > 999 ? "999+" : room.unreadCount}
-              </em>
-            )}
+            <span className="mt-0.5 flex items-start gap-2">
+              <span className="flex min-w-0 flex-1 items-start gap-1 text-slate-500">
+                {sentByMe && (
+                  <Forward
+                    className="mt-0.5 shrink-0 text-slate-600"
+                    size={15}
+                    strokeWidth={3}
+                  />
+                )}
+                <span className="min-w-0 flex-1 text-[16px]">
+                  <small className="block truncate">
+                    {previewLines[0] || " "}
+                  </small>
+                  {hasLineBreak && (
+                    <small className="block truncate">
+                      {secondPreview || " "}
+                    </small>
+                  )}
+                </span>
+              </span>
+              {room.unreadCount > 0 && (
+                <em className={`mt-0.5 inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-red-500 px-1.5 text-[12px] font-bold leading-none not-italic text-white transition-opacity duration-150 group-hover:opacity-0 ${menuOpen ? "opacity-0" : ""}`}>
+                  {room.unreadCount > 999 ? "999+" : room.unreadCount}
+                </em>
+              )}
+            </span>
           </span>
-        </span>
-      )}</button>
-      {menuOpen && !isCollapsed && menuPosition && createPortal(<div data-room-menu className="fixed z-[200] w-36 rounded-xl border border-slate-200 bg-white py-1 shadow-lg animate-in fade-in zoom-in-95" style={menuPosition}><button type="button" onClick={() => onAction("notification")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><Bell size={15}/>{room.notificationEnabled ? "알림 해제" : "알림 설정"}</button><button type="button" onClick={() => onAction("pin")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><Pin size={15}/>{room.pinned ? "핀 고정 해제" : "핀 고정"}</button><button type="button" onClick={() => onAction("hide")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><EyeOff size={15}/>숨김</button><button type="button" onClick={() => onAction("leave")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50"><LogOut size={15}/>나가기</button></div>, document.body)}
+        )}</button>
+      {menuOpen && !isCollapsed && menuPosition && createPortal(<div data-room-menu className="fixed z-[200] w-36 rounded-xl border border-slate-200 bg-white py-1 shadow-lg animate-in fade-in zoom-in-95" style={menuPosition}><button type="button" onClick={() => onAction("notification")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><Bell size={15} />{room.notificationEnabled ? "알림 해제" : "알림 설정"}</button><button type="button" onClick={() => onAction("pin")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><Pin size={15} />{room.pinned ? "핀 고정 해제" : "핀 고정"}</button><button type="button" onClick={() => onAction("hide")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><EyeOff size={15} />숨김</button><button type="button" onClick={() => onAction("leave")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50"><LogOut size={15} />나가기</button></div>, document.body)}
     </div>
   );
 }
@@ -1895,8 +1908,8 @@ function GroupRoomDetail({
             const presenceStatus = isMe
               ? "ONLINE"
               : (members.find(
-                  (member) => member.membershipId === participant.membershipId,
-                )?.presenceStatus ?? "OFFLINE");
+                (member) => member.membershipId === participant.membershipId,
+              )?.presenceStatus ?? "OFFLINE");
             return (
               <div
                 key={participant.membershipId}
@@ -2090,13 +2103,13 @@ function UserProfileModal({
   }, [onClose]);
   const hiredAt = member.hiredAt
     ? new Date(member.hiredAt)
-        .toLocaleDateString("ko-KR", {
-          year: "numeric",
-          month: "2-digit",
-          day: "2-digit",
-        })
-        .replace(/\. /g, ".")
-        .replace(/\.$/, "")
+      .toLocaleDateString("ko-KR", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      })
+      .replace(/\. /g, ".")
+      .replace(/\.$/, "")
     : "-";
   return (
     <div
@@ -2134,8 +2147,8 @@ function UserProfileModal({
             >
               {(member.presenceStatus === "AWAY" ||
                 member.presenceStatus === "INACTIVE") && (
-                <X size={14} strokeWidth={3} />
-              )}
+                  <X size={14} strokeWidth={3} />
+                )}
             </span>
           </span>
           <div>

@@ -4,7 +4,7 @@ type ApiResponse<T> = { success: boolean; code: string; message: string; data: T
 
 export type ChatRoom = {
   id: number; type: "SELF" | "DIRECT" | "GROUP"; name: string | null; ownerMembershipId: number | null;
-  memberCount: number; createdAt: string; lastMessage: string | null; lastMessageAt: string | null; lastSenderMembershipId: number | null; unreadCount: number; oldestUnreadMessageAt: string | null; directMembershipId: number | null; directDisplayName: string | null; directJobGradeName: string | null; directDepartmentName: string | null; directCompanyName: string | null; pinned: boolean; notificationEnabled: boolean;
+  memberCount: number; createdAt: string; lastMessage: string | null; lastMessageAt: string | null; lastSenderMembershipId: number | null; unreadCount: number; oldestUnreadMessageAt: string | null; directMembershipId: number | null; directDisplayName: string | null; directJobGradeName: string | null; directDepartmentName: string | null; directCompanyName: string | null; pinned: boolean; pinnedAt: string | null; notificationEnabled: boolean;
 };
 
 export type ChatMessage = {
