@@ -17,6 +17,7 @@ import {
   type PresenceStatus,
 } from "@/lib/api/address-book-api";
 import { markAuthenticationRequired } from "@/lib/auth-required-notice";
+import { connectChatRoom } from "@/lib/realtime/chat-realtime";
 import { useToast } from "@/hooks/use-toast";
 import {
   ArrowDownUp,
@@ -365,6 +366,43 @@ function MessageContent() {
   }, [loadMessages, selectedRoomId, showToast]);
 
   useEffect(() => {
+    if (!accessToken || !selectedRoomId || status !== "authenticated") return;
+    // REST 전송 성공 응답과 같은 메시지는 id로 중복 삽입하지 않음.
+    return connectChatRoom({
+      accessToken,
+      chatRoomId: selectedRoomId,
+      onMessageCreated: (event) => {
+        const incoming = event.message;
+        setMessages((current) => {
+          if (current.some((message) => message.id === incoming.id)) return current;
+          shouldScrollToLatestRef.current = true;
+          return [...current, incoming];
+        });
+        setRooms((current) =>
+          sortRoomsByLatestActivity(
+            current.map((room) =>
+              room.id === event.chatRoomId
+                ? {
+                  ...room,
+                  lastMessage: incoming.content,
+                  lastMessageAt: incoming.createdAt,
+                  lastSenderMembershipId: incoming.senderMembershipId,
+                  unreadCount:
+                    incoming.senderMembershipId === member?.membershipId
+                      ? 0
+                      : room.unreadCount,
+                }
+                : room,
+            ),
+          ),
+        );
+      },
+      // 연결 실패는 REST 메시지 기능을 막지 않으므로 조용히 복구를 시도.
+      onError: () => undefined,
+    });
+  }, [accessToken, member?.membershipId, selectedRoomId, status]);
+
+  useEffect(() => {
     if (
       !accessToken ||
       !selectedRoomId ||
@@ -549,7 +587,12 @@ function MessageContent() {
         input.trim(),
       );
       shouldScrollToLatestRef.current = true;
-      setMessages((current) => [...current, message]);
+      // REST 응답과 같은 메시지가 STOMP로 먼저 도착했을 수 있으므로 id를 다시 확인.
+      setMessages((current) =>
+        current.some((item) => item.id === message.id)
+          ? current
+          : [...current, message],
+      );
       setRooms((current) =>
         sortRoomsByLatestActivity(
           current.map((room) =>
