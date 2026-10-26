@@ -108,6 +108,60 @@ body {
   animation: toast-exit 0.3s ease-in both;
 }
 
+@keyframes typing-bubble-enter {
+  from { opacity: 0; transform: translateY(8px) scale(0.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes typing-bubble-exit {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(5px) scale(0.96); }
+}
+
+.typing-bubble-enter {
+  animation: typing-bubble-enter 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.typing-bubble-exit {
+  animation: typing-bubble-exit 0.3s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+@keyframes typing-dot-bounce {
+  0%, 100% { transform: translateY(0) scale(0.9); opacity: 0.6; }
+  50% { transform: translateY(-2px) scale(1.03); opacity: 0.95; }
+}
+
+.typing-dot {
+  animation: typing-dot-bounce 1.8s ease-in-out infinite;
+}
+
+.typing-dot-delay-1 {
+  animation-delay: 0.5s;
+}
+
+.typing-dot-delay-2 {
+  animation-delay: 1s;
+}
+
+/* 새 메시지 안내는 등장 후 아래 이동 동작을 명확히 보여 준다. */
+@keyframes new-message-notice-enter {
+  from { opacity: 0; transform: translate(-50%, 10px) scale(0.96); }
+  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+@keyframes new-message-notice-arrow {
+  0%, 100% { transform: translateY(-2px); }
+  50% { transform: translateY(4px); }
+}
+
+.new-message-notice {
+  animation: new-message-notice-enter 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.new-message-notice-arrow {
+  animation: new-message-notice-arrow 0.9s ease-in-out infinite;
+}
+
 /* 체크 시 아이콘이 튀어나오는 짧은 피드백 모션. */
 @keyframes checkbox-check {
   0% {

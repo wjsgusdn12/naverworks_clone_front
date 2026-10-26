@@ -159,7 +159,14 @@ function MessageContent() {
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
-  const [input, setInput] = useState("");
+  const [draftByRoomId, setDraftByRoomId] = useState<Record<number, string>>({});
+  const [typingMembers, setTypingMembers] = useState<
+    Array<{ membershipId: number; displayName: string }>
+  >([]);
+  const [typingPreviewByRoomId, setTypingPreviewByRoomId] = useState<
+    Record<number, Array<{ membershipId: number; displayName: string }>>
+  >({});
+  const [typingBubbleLeaving, setTypingBubbleLeaving] = useState(false);
   const [search, setSearch] = useState("");
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [readModal, setReadModal] = useState<{
@@ -190,9 +197,25 @@ function MessageContent() {
   const [scrollDatePhase, setScrollDatePhase] = useState<"visible" | "leaving">(
     "visible",
   );
+  const [unseenMessageCount, setUnseenMessageCount] = useState(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const draftByRoomIdRef = useRef<Record<number, string>>({});
+  const sendTypingRef = useRef<((typing: boolean) => void) | null>(null);
+  const typingStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const typingActiveRef = useRef(false);
+  const typingExitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingExpiryTimerRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
+  const typingMembersRef = useRef<Array<{ membershipId: number; displayName: string }>>([]);
+  const typingPreviewTimerRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
   const messageListRef = useRef<HTMLDivElement>(null);
   const shouldScrollToLatestRef = useRef(false);
+  // 사용자가 최신 메시지를 보고 있을 때만 새 대화를 따라간다.
+  const isMessageListAtBottomRef = useRef(true);
   const preservedScrollRef = useRef<{ top: number; height: number } | null>(
     null,
   );
@@ -203,6 +226,19 @@ function MessageContent() {
   );
   const sortMenuRef = useRef<HTMLDivElement>(null);
   const selectedRoom = rooms.find((room) => room.id === selectedRoomId) ?? null;
+  const subscribedChatRoomIdsKey = useMemo(
+    () => rooms.map((room) => room.id).join(","),
+    [rooms],
+  );
+  // 방의 내용만 바뀌어도 소켓을 다시 열지 않도록 방 ID 집합만 연결 기준으로 사용.
+  const subscribedChatRoomIds = useMemo(
+    () =>
+      subscribedChatRoomIdsKey
+        ? subscribedChatRoomIdsKey.split(",").map(Number)
+        : [],
+    [subscribedChatRoomIdsKey],
+  );
+  const input = selectedRoomId ? (draftByRoomId[selectedRoomId] ?? "") : "";
   // 탭 안에서 메시지 화면을 다시 열어도 마지막으로 보던 방을 복원.
   const lastRoomStorageKey = member
     ? `naverworks:message:lastRoom:${member.membershipId}`
@@ -217,6 +253,10 @@ function MessageContent() {
     (membershipId: number) => setProfileMemberId(membershipId),
     [],
   );
+
+  useEffect(() => {
+    draftByRoomIdRef.current = draftByRoomId;
+  }, [draftByRoomId]);
 
   useEffect(() => {
     const closeRoomMenu = (event: MouseEvent) => {
@@ -357,25 +397,56 @@ function MessageContent() {
   useEffect(() => {
     if (selectedRoomId) {
       shouldScrollToLatestRef.current = true;
+      isMessageListAtBottomRef.current = true;
       // 방 진입 직후 최신 메시지의 날짜를 짧게 안내.
       activeDateKeyRef.current = null;
       void Promise.resolve()
-        .then(() => loadMessages(selectedRoomId))
+        .then(() => {
+          setUnseenMessageCount(0);
+          return loadMessages(selectedRoomId);
+        })
         .catch((error: Error) => showToast(error.message));
     }
   }, [loadMessages, selectedRoomId, showToast]);
 
   useEffect(() => {
     if (!accessToken || !selectedRoomId || status !== "authenticated") return;
+    const expiryTimers = typingExpiryTimerRef.current;
+    const removeTypingMember = (membershipId: number) => {
+      if (typingExitTimerRef.current) clearTimeout(typingExitTimerRef.current);
+      // 마지막 입력자가 멈출 때는 말풍선을 먼저 퇴장 애니메이션으로 보여 줌.
+      const nextMembers = typingMembersRef.current.filter(
+        (item) => item.membershipId !== membershipId,
+      );
+      typingMembersRef.current = nextMembers;
+      if (nextMembers.length === 0) {
+        setTypingBubbleLeaving(true);
+        typingExitTimerRef.current = setTimeout(() => {
+          setTypingMembers(nextMembers);
+          setTypingBubbleLeaving(false);
+        }, 180);
+        return;
+      }
+      setTypingMembers(nextMembers);
+    };
     // REST 전송 성공 응답과 같은 메시지는 id로 중복 삽입하지 않음.
-    return connectChatRoom({
+    const connection = connectChatRoom({
       accessToken,
       chatRoomId: selectedRoomId,
+      subscribedChatRoomIds,
       onMessageCreated: (event) => {
         const incoming = event.message;
         setMessages((current) => {
           if (current.some((message) => message.id === incoming.id)) return current;
-          shouldScrollToLatestRef.current = true;
+          if (
+            incoming.senderMembershipId === member?.membershipId ||
+            isMessageListAtBottomRef.current
+          ) {
+            shouldScrollToLatestRef.current = true;
+          } else {
+            // 위쪽 대화를 읽는 중이면 위치를 유지하고 새 메시지 안내만 표시.
+            setUnseenMessageCount((count) => count + 1);
+          }
           return [...current, incoming];
         });
         setRooms((current) =>
@@ -397,10 +468,120 @@ function MessageContent() {
           ),
         );
       },
+      onTypingChanged: (event) => {
+        if (event.membershipId === member?.membershipId) return;
+        if (typingExitTimerRef.current) clearTimeout(typingExitTimerRef.current);
+        setTypingBubbleLeaving(false);
+        const previousTimer = expiryTimers.get(event.membershipId);
+        if (previousTimer) clearTimeout(previousTimer);
+        if (!event.typing) {
+          expiryTimers.delete(event.membershipId);
+          removeTypingMember(event.membershipId);
+          return;
+        }
+        setTypingMembers((current) => {
+          const withoutSender = current.filter(
+            (item) => item.membershipId !== event.membershipId,
+          );
+          const nextMembers = [...withoutSender, {
+            membershipId: event.membershipId,
+            displayName: event.displayName,
+          }];
+          typingMembersRef.current = nextMembers;
+          return nextMembers;
+        });
+        // 브라우저 강제 종료처럼 종료 이벤트가 오지 않아도 표시를 정리.
+        expiryTimers.set(
+          event.membershipId,
+          setTimeout(() => {
+            expiryTimers.delete(event.membershipId);
+            removeTypingMember(event.membershipId);
+          }, 3_000),
+        );
+      },
+      onGlobalTypingChanged: (event) => {
+        if (event.membershipId === member?.membershipId) return;
+        const timerKey = `${event.chatRoomId}:${event.membershipId}`;
+        const previousTimer = typingPreviewTimerRef.current.get(timerKey);
+        if (previousTimer) clearTimeout(previousTimer);
+
+        const removePreview = () => {
+          typingPreviewTimerRef.current.delete(timerKey);
+          setTypingPreviewByRoomId((current) => {
+            const currentMembers = current[event.chatRoomId] ?? [];
+            const nextMembers = currentMembers.filter(
+              (item) => item.membershipId !== event.membershipId,
+            );
+            if (nextMembers.length === 0) {
+              const remainingRooms = { ...current };
+              delete remainingRooms[event.chatRoomId];
+              return remainingRooms;
+            }
+            return { ...current, [event.chatRoomId]: nextMembers };
+          });
+        };
+
+        if (!event.typing) {
+          removePreview();
+          return;
+        }
+        setTypingPreviewByRoomId((current) => {
+          const currentMembers = current[event.chatRoomId] ?? [];
+          const nextMembers = [
+            ...currentMembers.filter(
+              (item) => item.membershipId !== event.membershipId,
+            ),
+            { membershipId: event.membershipId, displayName: event.displayName },
+          ];
+          return { ...current, [event.chatRoomId]: nextMembers };
+        });
+        // 입력 종료 이벤트를 놓쳐도 목록 미리보기는 자동으로 복구.
+        typingPreviewTimerRef.current.set(
+          timerKey,
+          setTimeout(removePreview, 3_000),
+        );
+      },
+      onConnected: (sendTyping) => {
+        sendTypingRef.current = sendTyping;
+        // 방을 다시 열어도 남아 있는 초안이 있으면 입력 상태를 즉시 복구.
+        if (!draftByRoomIdRef.current[selectedRoomId]?.trim()) return;
+        sendTyping(true);
+        typingActiveRef.current = true;
+        if (!typingHeartbeatRef.current) {
+          typingHeartbeatRef.current = setInterval(
+            () => sendTyping(true),
+            2_000,
+          );
+        }
+      },
       // 연결 실패는 REST 메시지 기능을 막지 않으므로 조용히 복구를 시도.
       onError: () => undefined,
     });
-  }, [accessToken, member?.membershipId, selectedRoomId, status]);
+    sendTypingRef.current = connection.sendTyping;
+    return () => {
+      connection.sendTyping(false);
+      connection.disconnect();
+      sendTypingRef.current = null;
+      if (typingStartTimerRef.current) clearTimeout(typingStartTimerRef.current);
+      if (typingHeartbeatRef.current) clearInterval(typingHeartbeatRef.current);
+      typingActiveRef.current = false;
+      if (typingExitTimerRef.current) clearTimeout(typingExitTimerRef.current);
+      expiryTimers.forEach(clearTimeout);
+      expiryTimers.clear();
+      typingMembersRef.current = [];
+      setTypingMembers([]);
+    };
+  }, [accessToken, member?.membershipId, selectedRoomId, status, subscribedChatRoomIds]);
+
+  useEffect(
+    () => () => {
+      // 화면을 완전히 떠날 때만 모든 목록 입력 상태 타이머를 정리.
+      const timers = typingPreviewTimerRef.current;
+      timers.forEach(clearTimeout);
+      timers.clear();
+    },
+    [],
+  );
 
   useEffect(() => {
     if (
@@ -455,6 +636,7 @@ function MessageContent() {
       // 새 방의 메시지 DOM 높이가 계산된 뒤 최하단으로 이동.
       messageList.scrollTop = messageList.scrollHeight;
       shouldScrollToLatestRef.current = false;
+      isMessageListAtBottomRef.current = true;
     });
     return () => cancelAnimationFrame(frameId);
   }, [messages]);
@@ -465,6 +647,21 @@ function MessageContent() {
     activeDateKeyRef.current = dateKey(latestMessage.createdAt);
     showDateChip(formatChatDate(latestMessage.createdAt));
   }, [messages, showDateChip]);
+
+  useEffect(() => {
+    if (
+      typingMembers.length === 0 ||
+      !messageListRef.current ||
+      !isMessageListAtBottomRef.current
+    )
+      return;
+    const messageList = messageListRef.current;
+    // 입력 중 말풍선도 최신 대화 흐름이므로 표시 즉시 하단으로 포커스.
+    const frameId = requestAnimationFrame(() => {
+      messageList.scrollTop = messageList.scrollHeight;
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, [typingMembers]);
 
   useEffect(() => {
     if (!accessToken || status !== "authenticated") return;
@@ -507,6 +704,13 @@ function MessageContent() {
       currentMember={member}
       contactMemberById={contactMemberById}
       isSelected={selectedRoomId === room.id}
+      typingPreviewLabel={(() => {
+        const roomTypingMembers = typingPreviewByRoomId[room.id] ?? [];
+        if (roomTypingMembers.length === 0) return null;
+        return room.type === "GROUP" && roomTypingMembers.length > 1
+          ? `${roomTypingMembers[0].displayName} 외 ${roomTypingMembers.length - 1}명이 입력 중입니다`
+          : `${roomTypingMembers[0].displayName}님이 입력 중입니다`;
+      })()}
       isCollapsed={isSidebarCollapsed}
       onClick={() => setSelectedRoomId(room.id)}
       onProfileClick={openUserProfile}
@@ -581,12 +785,15 @@ function MessageContent() {
     event?.preventDefault();
     if (!accessToken || !selectedRoomId || !input.trim()) return;
     try {
+      stopTyping();
       const message = await chatApi.send(
         accessToken,
         selectedRoomId,
         input.trim(),
       );
       shouldScrollToLatestRef.current = true;
+      isMessageListAtBottomRef.current = true;
+      setUnseenMessageCount(0);
       // REST 응답과 같은 메시지가 STOMP로 먼저 도착했을 수 있으므로 id를 다시 확인.
       setMessages((current) =>
         current.some((item) => item.id === message.id)
@@ -608,13 +815,54 @@ function MessageContent() {
           ),
         ),
       );
-      setInput("");
+      setDraftByRoomId((current) => {
+        const remainingDrafts = { ...current };
+        delete remainingDrafts[selectedRoomId];
+        return remainingDrafts;
+      });
       inputRef.current?.focus();
     } catch (error) {
       showToast(
         error instanceof Error ? error.message : "메시지를 보내지 못했습니다.",
       );
     }
+  };
+
+  const stopTyping = () => {
+    if (typingStartTimerRef.current) clearTimeout(typingStartTimerRef.current);
+    if (typingHeartbeatRef.current) clearInterval(typingHeartbeatRef.current);
+    if (typingActiveRef.current) sendTypingRef.current?.(false);
+    typingStartTimerRef.current = null;
+    typingHeartbeatRef.current = null;
+    typingActiveRef.current = false;
+  };
+
+  const handleMessageInput = (value: string) => {
+    if (!selectedRoomId) return;
+    setDraftByRoomId((current) => {
+      if (value) return { ...current, [selectedRoomId]: value };
+      {
+        const remainingDrafts = { ...current };
+        delete remainingDrafts[selectedRoomId];
+        return remainingDrafts;
+      }
+    });
+
+    if (!value.trim()) {
+      stopTyping();
+      return;
+    }
+    if (typingActiveRef.current || typingStartTimerRef.current) return;
+    // 입력값이 남아 있는 동안 heartbeat로 상대방 표시를 유지.
+    typingStartTimerRef.current = setTimeout(() => {
+      if (!inputRef.current?.value.trim()) return;
+      sendTypingRef.current?.(true);
+      typingActiveRef.current = true;
+      typingHeartbeatRef.current = setInterval(
+        () => sendTypingRef.current?.(true),
+        2_000,
+      );
+    }, 500);
   };
 
   const openReadMembers = async (message: ChatMessage) => {
@@ -639,13 +887,19 @@ function MessageContent() {
   const closeRoomManageModal = useCallback(() => setRoomManageOpen(false), []);
 
   const showScrollDate = (event: React.UIEvent<HTMLDivElement>) => {
+    const messageList = event.currentTarget;
+    const isAtBottom =
+      messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight <=
+      24;
+    isMessageListAtBottomRef.current = isAtBottom;
+    if (isAtBottom) setUnseenMessageCount(0);
     const messageElements = Array.from(
-      event.currentTarget.querySelectorAll<HTMLElement>("[data-message-date]"),
+      messageList.querySelectorAll<HTMLElement>("[data-message-date]"),
     );
     const visibleMessage = messageElements.find(
       (element) =>
         element.offsetTop + element.offsetHeight >
-        event.currentTarget.scrollTop + 8,
+        messageList.scrollTop + 8,
     );
     const nextDateKey = visibleMessage?.dataset.messageDate;
     if (!nextDateKey) return;
@@ -653,6 +907,14 @@ function MessageContent() {
     if (activeDateKeyRef.current === nextDateKey) return;
     activeDateKeyRef.current = nextDateKey;
     showDateChip(visibleMessage?.dataset.messageLabel ?? "");
+  };
+
+  const scrollToLatestMessage = () => {
+    const messageList = messageListRef.current;
+    if (!messageList) return;
+    isMessageListAtBottomRef.current = true;
+    setUnseenMessageCount(0);
+    messageList.scrollTo({ top: messageList.scrollHeight, behavior: "smooth" });
   };
 
   useEffect(
@@ -962,6 +1224,16 @@ function MessageContent() {
                     </Fragment>
                   );
                 })}
+                {typingMembers.length > 0 && (
+                  <TypingBubble
+                    member={typingMembers[0]}
+                    additionalCount={typingMembers.length - 1}
+                    isGroup={selectedRoom?.type === "GROUP"}
+                    senderProfile={contactMemberById.get(typingMembers[0].membershipId)}
+                    leaving={typingBubbleLeaving}
+                    onProfileClick={openUserProfile}
+                  />
+                )}
                 {nextCursor && (
                   <button
                     className="mx-auto block cursor-pointer text-xs text-blue-600 hover:underline"
@@ -974,6 +1246,18 @@ function MessageContent() {
                   </button>
                 )}
               </div>
+              {unseenMessageCount > 0 && (
+                <button
+                  type="button"
+                  onClick={scrollToLatestMessage}
+                  className="new-message-notice absolute bottom-48 left-1/2 z-20 inline-flex -translate-x-1/2 cursor-pointer items-center gap-2 rounded-xl bg-slate-700 px-6 py-2.5 text-sm font-semibold text-white shadow-md transition duration-200 hover:-translate-y-0.5 hover:bg-slate-600 active:translate-y-0"
+                >
+                  새로운 메시지가 있습니다
+                  <span className="new-message-notice-arrow inline-flex" aria-hidden="true">
+                    <ChevronDown size={18} />
+                  </span>
+                </button>
+              )}
               <form
                 onSubmit={submitMessage}
                 className="m-5 rounded-2xl bg-slate-100 p-4"
@@ -981,7 +1265,7 @@ function MessageContent() {
                 <textarea
                   ref={inputRef}
                   value={input}
-                  onChange={(event) => setInput(event.target.value)}
+                  onChange={(event) => handleMessageInput(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" && !event.shiftKey) {
                       event.preventDefault();
@@ -1042,7 +1326,11 @@ function MessageContent() {
                       setSelectedRoomId(null);
                       setMessages([]);
                       setNextCursor(null);
-                      setInput("");
+                      setDraftByRoomId((current) => {
+                        const remainingDrafts = { ...current };
+                        delete remainingDrafts[selectedRoom.id];
+                        return remainingDrafts;
+                      });
                       setRooms((current) =>
                         current.filter((room) => room.id !== selectedRoom.id),
                       );
@@ -1203,6 +1491,7 @@ function MessageRoomItem({
   currentMember,
   contactMemberById,
   isSelected,
+  typingPreviewLabel,
   isCollapsed,
   onClick,
   onProfileClick,
@@ -1217,6 +1506,7 @@ function MessageRoomItem({
   currentMember: { membershipId: number; displayName: string } | null;
   contactMemberById: Map<number, AddressBookMember>;
   isSelected: boolean;
+  typingPreviewLabel: string | null;
   isCollapsed: boolean;
   onClick: () => void;
   onProfileClick: (membershipId: number) => void;
@@ -1242,13 +1532,15 @@ function MessageRoomItem({
     : isDirect
       ? (room.directDisplayName ?? "사용자")
       : (room.name ?? "그룹");
+  const isTypingPreview = Boolean(typingPreviewLabel);
   const lastMessage = room.lastMessage ?? "대화를 시작해 보세요.";
   // 실제 Enter 줄바꿈만 두 줄 미리보기로 취급. 단순히 긴 한 줄은 다음 줄로 넘기지 않음.
   const previewLines = lastMessage.split(/\r?\n/);
   const hasLineBreak = previewLines.length > 1;
   const secondPreview =
     previewLines.length > 2 ? `${previewLines[1]} …` : previewLines[1];
-  const sentByMe = room.lastSenderMembershipId === currentMember?.membershipId;
+  const sentByMe =
+    !isTypingPreview && room.lastSenderMembershipId === currentMember?.membershipId;
   const presenceStatus = isSelf
     ? "ONLINE"
     : (contactMemberById.get(room.directMembershipId ?? -1)?.presenceStatus ??
@@ -1257,7 +1549,19 @@ function MessageRoomItem({
   return (
     <div data-room-menu className={`group relative flex w-[calc(100%-1rem)] gap-3 rounded-xl ${isCollapsed ? "mx-2 my-1 justify-center px-2 py-3" : "mx-2 my-1 px-3 py-3"} text-left transition-colors duration-200 hover:bg-blue-50 ${isSelected ? "bg-blue-100" : ""}`}>
       {hideSelectionMode && !isCollapsed && <button type="button" role="checkbox" aria-checked={hiddenSelected} onClick={onToggleHidden} className={`custom-checkbox-button mt-1 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-md border transition ${hiddenSelected ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white"}`}>{hiddenSelected && <Check size={14} strokeWidth={3} />}</button>}
-      <button type="button" title={displayName} onClick={onClick} className="flex min-w-0 flex-1 cursor-pointer gap-3 text-left">
+      <div
+        role="button"
+        tabIndex={0}
+        title={displayName}
+        onClick={onClick}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onClick();
+          }
+        }}
+        className="flex min-w-0 flex-1 cursor-pointer gap-3 text-left"
+      >
         <span className="relative shrink-0">
           {room.type === "GROUP" ? (
             <GroupAvatar name={avatarName} />
@@ -1303,7 +1607,7 @@ function MessageRoomItem({
               </span>
             </span>
             <span className="mt-0.5 flex items-start gap-2">
-              <span className="flex min-w-0 flex-1 items-start gap-1 text-slate-500">
+              <span className="flex min-w-0 flex-1 items-start gap-1 text-slate-600">
                 {sentByMe && (
                   <Forward
                     className="mt-0.5 shrink-0 text-slate-600"
@@ -1312,13 +1616,26 @@ function MessageRoomItem({
                   />
                 )}
                 <span className="min-w-0 flex-1 text-[16px]">
-                  <small className="block truncate">
-                    {previewLines[0] || " "}
-                  </small>
-                  {hasLineBreak && (
-                    <small className="block truncate">
-                      {secondPreview || " "}
+                  {isTypingPreview ? (
+                    <small className="flex items-center gap-1 truncate text-slate-500">
+                      <span className="truncate">{typingPreviewLabel}</span>
+                      <span className="inline-flex shrink-0 items-center gap-0.5" aria-label="입력 중">
+                        <i className="typing-dot inline-block h-1 w-1 rounded-full bg-slate-400" />
+                        <i className="typing-dot typing-dot-delay-1 inline-block h-1 w-1 rounded-full bg-slate-400" />
+                        <i className="typing-dot typing-dot-delay-2 inline-block h-1 w-1 rounded-full bg-slate-400" />
+                      </span>
                     </small>
+                  ) : (
+                    <>
+                      <small className="block truncate">
+                        {previewLines[0] || " "}
+                      </small>
+                      {hasLineBreak && (
+                        <small className="block truncate">
+                          {secondPreview || " "}
+                        </small>
+                      )}
+                    </>
                   )}
                 </span>
               </span>
@@ -1328,8 +1645,8 @@ function MessageRoomItem({
                 </em>
               )}
             </span>
-          </span>
-        )}</button>
+      </span>
+        )}</div>
       {menuOpen && !isCollapsed && menuPosition && createPortal(<div data-room-menu className="fixed z-[200] w-36 rounded-xl border border-slate-200 bg-white py-1 shadow-lg animate-in fade-in zoom-in-95" style={menuPosition}><button type="button" onClick={() => onAction("notification")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><Bell size={15} />{room.notificationEnabled ? "알림 해제" : "알림 설정"}</button><button type="button" onClick={() => onAction("pin")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><Pin size={15} />{room.pinned ? "핀 고정 해제" : "핀 고정"}</button><button type="button" onClick={() => onAction("hide")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><EyeOff size={15} />숨김</button><button type="button" onClick={() => onAction("leave")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50"><LogOut size={15} />나가기</button></div>, document.body)}
     </div>
   );
@@ -1502,6 +1819,65 @@ function MessageBubble({
             {meta}
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// 실제 수신 말풍선과 같은 구조로 입력 중 상태만 표시.
+function TypingBubble({
+  member,
+  additionalCount,
+  isGroup,
+  senderProfile,
+  leaving,
+  onProfileClick,
+}: {
+  member: { membershipId: number; displayName: string };
+  additionalCount: number;
+  isGroup: boolean;
+  senderProfile?: AddressBookMember;
+  leaving: boolean;
+  onProfileClick: (membershipId: number) => void;
+}) {
+  const label = isGroup && additionalCount > 0
+    ? `${member.displayName} 외 ${additionalCount}명이 입력 중입니다`
+    : `${member.displayName}님이 입력 중입니다`;
+  const bubble = (
+    <div className="relative inline-flex w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-2xl bg-slate-100 px-4 py-3 text-sm leading-6 text-slate-400 after:absolute after:-left-2 after:top-3 after:h-3 after:w-3 after:bg-slate-100 after:[clip-path:polygon(100%_0,100%_100%,0_0)]">
+      <span>{label}</span>
+      <span className="inline-flex items-center gap-0.5" aria-label="입력 중">
+        <i className="typing-dot inline-block h-1 w-1 rounded-full bg-slate-400" />
+        <i className="typing-dot typing-dot-delay-1 inline-block h-1 w-1 rounded-full bg-slate-400" />
+        <i className="typing-dot typing-dot-delay-2 inline-block h-1 w-1 rounded-full bg-slate-400" />
+      </span>
+    </div>
+  );
+
+  if (!isGroup) {
+    return (
+      <div className={`typing-bubble ${leaving ? "typing-bubble-exit" : "typing-bubble-enter"} mb-4 mr-auto max-w-[85%]`}>
+        {bubble}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`typing-bubble ${leaving ? "typing-bubble-exit" : "typing-bubble-enter"} mb-4 flex items-start gap-2`}>
+      <MessageMemberAvatar
+        name={senderProfile?.displayName ?? member.displayName}
+        presenceStatus={senderProfile?.presenceStatus ?? "OFFLINE"}
+        onClick={() => onProfileClick(member.membershipId)}
+      />
+      <div className="w-fit max-w-[70%]">
+        <button
+          type="button"
+          onClick={() => onProfileClick(member.membershipId)}
+          className="cursor-pointer text-left text-sm font-bold transition hover:text-blue-600"
+        >
+          {senderProfile?.displayName ?? member.displayName}
+        </button>
+        <div className="mt-1 flex items-end gap-2">{bubble}</div>
       </div>
     </div>
   );
