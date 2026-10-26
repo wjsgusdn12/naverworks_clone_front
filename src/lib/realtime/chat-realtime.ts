@@ -15,6 +15,13 @@ type ChatTypingEvent = {
   typing: boolean;
 };
 
+type ChatReadEvent = {
+  type: "READ_UPDATED";
+  chatRoomId: number;
+  readerMembershipId: number;
+  lastReadMessageId: number;
+};
+
 const websocketUrl = () => {
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
   if (!apiBaseUrl) throw new Error("NEXT_PUBLIC_API_BASE_URL 환경 변수가 필요합니다.");
@@ -29,6 +36,8 @@ type ConnectChatRoomOptions = {
   chatRoomId: number;
   subscribedChatRoomIds: number[];
   onMessageCreated: (event: ChatRealtimeEvent) => void;
+  onRoomMessageCreated: (event: ChatRealtimeEvent) => void;
+  onReadUpdated: (event: ChatReadEvent) => void;
   onTypingChanged: (event: ChatTypingEvent) => void;
   onGlobalTypingChanged: (event: ChatTypingEvent) => void;
   onConnected?: (sendTyping: (typing: boolean) => void) => void;
@@ -41,6 +50,8 @@ export const connectChatRoom = ({
   chatRoomId,
   subscribedChatRoomIds,
   onMessageCreated,
+  onRoomMessageCreated,
+  onReadUpdated,
   onTypingChanged,
   onGlobalTypingChanged,
   onConnected,
@@ -63,15 +74,18 @@ export const connectChatRoom = ({
       [...new Set(subscribedChatRoomIds)].forEach((subscribedRoomId) => {
         client.subscribe(`/topic/chatRoom/${subscribedRoomId}`, (frame) => {
           try {
-            const event = JSON.parse(frame.body) as ChatRealtimeEvent | ChatTypingEvent;
-            if (event.type === "MESSAGE_CREATED" && event.chatRoomId === chatRoomId) {
-              onMessageCreated(event);
+            const event = JSON.parse(frame.body) as ChatRealtimeEvent | ChatTypingEvent | ChatReadEvent;
+            if (event.type === "MESSAGE_CREATED") {
+              // 방 목록은 모든 참여 방의 최신 메시지를 받아 즉시 갱신.
+              onRoomMessageCreated(event);
+              if (event.chatRoomId === chatRoomId) onMessageCreated(event);
             }
             if (event.type === "TYPING_CHANGED") {
               // 목록 미리보기와 현재 방의 입력 말풍선을 동시에 동기화.
               onGlobalTypingChanged(event);
               if (event.chatRoomId === chatRoomId) onTypingChanged(event);
             }
+            if (event.type === "READ_UPDATED") onReadUpdated(event);
           } catch {
             onError("실시간 메시지 데이터를 해석하지 못했습니다.");
           }

@@ -55,5 +55,7 @@ export const chatApi = {
   detail: (token: string, roomId: number) => request<ChatRoomDetail>(`/api/v1/chatRoom/detail?chatRoomId=${roomId}`, token),
   messages: (token: string, roomId: number, cursor?: number) => request<ChatMessagePage>(`/api/v1/chatRoom/message?chatRoomId=${roomId}${cursor ? `&cursor=${cursor}` : ""}`, token),
   send: (token: string, roomId: number, content: string) => request<ChatMessage>(`/api/v1/chatRoom/message/create?chatRoomId=${roomId}`, token, { method: "POST", body: JSON.stringify({ content }) }),
+  // 현재 보고 있는 방에 도착한 메시지는 즉시 읽음 위치를 서버에도 반영.
+  markRead: (token: string, roomId: number) => request<void>(`/api/v1/chatRoom/read/update?chatRoomId=${roomId}`, token, { method: "POST" }),
   readMembers: (token: string, roomId: number, messageId: number, read: boolean) => request<ChatReadMember[]>(`/api/v1/chatRoom/message/readMember?chatRoomId=${roomId}&messageId=${messageId}&read=${read}`, token),
 };

@@ -32,6 +32,7 @@ import {
   Pin,
   EyeOff,
   LogOut,
+  LoaderCircle,
   ImagePlus,
   Mail,
   MessageCircle,
@@ -58,6 +59,12 @@ import { createPortal } from "react-dom";
 const dateKey = (value: string) => {
   const date = new Date(value);
   return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+};
+
+// 연속 메시지를 시:분 단위로 묶어 프로필·시간 반복 표시를 줄임.
+const minuteKey = (value: string) => {
+  const date = new Date(value);
+  return `${dateKey(value)}-${date.getHours()}-${date.getMinutes()}`;
 };
 
 const formatChatDate = (value: string) =>
@@ -159,6 +166,8 @@ function MessageContent() {
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
+  const [isLoadingPreviousMessages, setIsLoadingPreviousMessages] =
+    useState(false);
   const [draftByRoomId, setDraftByRoomId] = useState<Record<number, string>>({});
   const [typingMembers, setTypingMembers] = useState<
     Array<{ membershipId: number; displayName: string }>
@@ -213,6 +222,7 @@ function MessageContent() {
     new Map(),
   );
   const messageListRef = useRef<HTMLDivElement>(null);
+  const isLoadingPreviousMessagesRef = useRef(false);
   const shouldScrollToLatestRef = useRef(false);
   // 사용자가 최신 메시지를 보고 있을 때만 새 대화를 따라간다.
   const isMessageListAtBottomRef = useRef(true);
@@ -226,6 +236,7 @@ function MessageContent() {
   );
   const sortMenuRef = useRef<HTMLDivElement>(null);
   const selectedRoom = rooms.find((room) => room.id === selectedRoomId) ?? null;
+  const selectedRoomIdRef = useRef<number | null>(selectedRoomId);
   const subscribedChatRoomIdsKey = useMemo(
     () => rooms.map((room) => room.id).join(","),
     [rooms],
@@ -253,6 +264,11 @@ function MessageContent() {
     (membershipId: number) => setProfileMemberId(membershipId),
     [],
   );
+
+  useEffect(() => {
+    // 늦게 도착한 이전 방 조회 응답이 현재 방 화면을 덮어쓰지 않게 보관.
+    selectedRoomIdRef.current = selectedRoomId;
+  }, [selectedRoomId]);
 
   useEffect(() => {
     draftByRoomIdRef.current = draftByRoomId;
@@ -353,31 +369,47 @@ function MessageContent() {
   const loadMessages = useCallback(
     async (roomId: number, cursor?: number) => {
       if (!accessToken) return;
-      const result = await chatApi.messages(accessToken, roomId, cursor);
-      // 이전 메시지를 위에 붙일 때는 사용자가 읽던 위치를 복원.
-      if (cursor && messageListRef.current) {
-        preservedScrollRef.current = {
-          top: messageListRef.current.scrollTop,
-          height: messageListRef.current.scrollHeight,
-        };
+      if (cursor && isLoadingPreviousMessagesRef.current) return;
+
+      // 이전 페이지 요청 전 높이를 기억해, 추가된 메시지 때문에 화면이 튀지 않게 함.
+      const previousScroll = cursor && messageListRef.current
+        ? {
+            top: messageListRef.current.scrollTop,
+            height: messageListRef.current.scrollHeight,
+          }
+        : null;
+
+      if (cursor) {
+        isLoadingPreviousMessagesRef.current = true;
+        setIsLoadingPreviousMessages(true);
       }
-      // API 반환 순서와 무관하게 오래된 메시지부터 보여 최신 메시지가 항상 하단에 오게 함.
-      const sortedMessages = [...result.messages].sort(
-        (left, right) =>
-          new Date(left.createdAt).getTime() -
-          new Date(right.createdAt).getTime(),
-      );
-      setMessages((current) =>
-        cursor ? [...sortedMessages, ...current] : sortedMessages,
-      );
-      setNextCursor(result.nextCursor);
-      // 방에 들어오면 서버가 읽음 처리하므로 목록 배지도 즉시 함께 지움.
-      if (!cursor)
-        setRooms((current) =>
-          current.map((room) =>
-            room.id === roomId ? { ...room, unreadCount: 0 } : room,
-          ),
+      try {
+        const result = await chatApi.messages(accessToken, roomId, cursor);
+        if (selectedRoomIdRef.current !== roomId) return;
+        if (previousScroll) preservedScrollRef.current = previousScroll;
+        // API 반환 순서와 무관하게 오래된 메시지부터 보여 최신 메시지가 항상 하단에 오게 함.
+        const sortedMessages = [...result.messages].sort(
+          (left, right) =>
+            new Date(left.createdAt).getTime() -
+            new Date(right.createdAt).getTime(),
         );
+        setMessages((current) =>
+          cursor ? [...sortedMessages, ...current] : sortedMessages,
+        );
+        setNextCursor(result.nextCursor);
+        // 방에 들어오면 서버가 읽음 처리하므로 목록 배지도 즉시 함께 지움.
+        if (!cursor)
+          setRooms((current) =>
+            current.map((room) =>
+              room.id === roomId ? { ...room, unreadCount: 0 } : room,
+            ),
+          );
+      } finally {
+        if (cursor) {
+          isLoadingPreviousMessagesRef.current = false;
+          setIsLoadingPreviousMessages(false);
+        }
+      }
     },
     [accessToken],
   );
@@ -402,6 +434,9 @@ function MessageContent() {
       activeDateKeyRef.current = null;
       void Promise.resolve()
         .then(() => {
+          // 이전 방의 DOM 높이와 스크롤 위치가 새 방에 이어지지 않게 초기화.
+          setMessages([]);
+          setNextCursor(null);
           setUnseenMessageCount(0);
           return loadMessages(selectedRoomId);
         })
@@ -436,6 +471,10 @@ function MessageContent() {
       subscribedChatRoomIds,
       onMessageCreated: (event) => {
         const incoming = event.message;
+        if (incoming.senderMembershipId !== member?.membershipId) {
+          // 현재 보고 있는 방의 새 수신 메시지는 목록 배지와 서버 읽음 위치를 함께 정리.
+          void chatApi.markRead(accessToken, event.chatRoomId).catch(() => undefined);
+        }
         setMessages((current) => {
           if (current.some((message) => message.id === incoming.id)) return current;
           if (
@@ -449,23 +488,54 @@ function MessageContent() {
           }
           return [...current, incoming];
         });
+      },
+      onRoomMessageCreated: (event) => {
+        const incoming = event.message;
         setRooms((current) =>
-          sortRoomsByLatestActivity(
-            current.map((room) =>
-              room.id === event.chatRoomId
-                ? {
-                  ...room,
-                  lastMessage: incoming.content,
-                  lastMessageAt: incoming.createdAt,
-                  lastSenderMembershipId: incoming.senderMembershipId,
-                  unreadCount:
-                    incoming.senderMembershipId === member?.membershipId
-                      ? 0
-                      : room.unreadCount,
-                }
-                : room,
-            ),
-          ),
+          current.map((room) => {
+            if (room.id !== event.chatRoomId) return room;
+            const shouldIncreaseUnread =
+              incoming.type === "TEXT" &&
+              incoming.senderMembershipId !== member?.membershipId &&
+              event.chatRoomId !== selectedRoomId;
+            const isOpenRoom = event.chatRoomId === selectedRoomId;
+            return {
+              ...room,
+              lastMessage: incoming.content,
+              lastMessageAt: incoming.createdAt,
+              lastSenderMembershipId: incoming.senderMembershipId,
+              unreadCount: isOpenRoom
+                ? 0
+                : shouldIncreaseUnread
+                  ? room.unreadCount + 1
+                  : room.unreadCount,
+              oldestUnreadMessageAt: isOpenRoom
+                ? null
+                : shouldIncreaseUnread
+                  ? room.oldestUnreadMessageAt ?? incoming.createdAt
+                  : room.oldestUnreadMessageAt,
+            };
+          }),
+        );
+      },
+      onReadUpdated: (event) => {
+        if (event.chatRoomId !== selectedRoomId) return;
+        // 읽음 위치가 전진한 구성원만 아직 읽지 않은 말풍선에 한 번 반영.
+        setMessages((current) =>
+          current.map((message) => {
+            const canUpdateReadCount =
+              message.type === "TEXT" &&
+              message.id <= event.lastReadMessageId &&
+              message.senderMembershipId !== event.readerMembershipId &&
+              message.unreadCount > 0;
+            return canUpdateReadCount
+              ? {
+                ...message,
+                readCount: message.readCount + 1,
+                unreadCount: message.unreadCount - 1,
+              }
+              : message;
+          }),
         );
       },
       onTypingChanged: (event) => {
@@ -631,7 +701,8 @@ function MessageContent() {
       });
       return () => cancelAnimationFrame(frameId);
     }
-    if (!shouldScrollToLatestRef.current) return;
+    // 방 전환 직후 빈 목록에서는 플래그를 소비하지 않고, 실제 메시지가 렌더링된 뒤 최하단으로 이동.
+    if (!shouldScrollToLatestRef.current || messages.length === 0) return;
     const frameId = requestAnimationFrame(() => {
       // 새 방의 메시지 DOM 높이가 계산된 뒤 최하단으로 이동.
       messageList.scrollTop = messageList.scrollHeight;
@@ -888,6 +959,10 @@ function MessageContent() {
 
   const showScrollDate = (event: React.UIEvent<HTMLDivElement>) => {
     const messageList = event.currentTarget;
+    // 최상단 도달 시 이전 페이지를 자동으로 이어 붙임.
+    if (messageList.scrollTop <= 24 && nextCursor && selectedRoomId) {
+      void loadMessages(selectedRoomId, nextCursor);
+    }
     const isAtBottom =
       messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight <=
       24;
@@ -1175,6 +1250,12 @@ function MessageContent() {
                   {scrollDateLabel}
                 </div>
               )}
+              {isLoadingPreviousMessages && (
+                <div className="pointer-events-none absolute left-1/2 top-14 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500 shadow-sm animate-in fade-in slide-in-from-top-1">
+                  <LoaderCircle size={14} className="animate-spin text-blue-500" />
+                  <span>이전 메시지를 불러오는 중입니다.</span>
+                </div>
+              )}
               <div
                 ref={messageListRef}
                 onScroll={showScrollDate}
@@ -1189,6 +1270,18 @@ function MessageContent() {
                   const sender = contactMemberById.get(
                     message.senderMembershipId,
                   );
+                  const previousMessage = messages[index - 1];
+                  const nextMessage = messages[index + 1];
+                  const isGroupedWithPrevious =
+                    message.type === "TEXT" &&
+                    previousMessage?.type === "TEXT" &&
+                    previousMessage.senderMembershipId === message.senderMembershipId &&
+                    minuteKey(previousMessage.createdAt) === minuteKey(message.createdAt);
+                  const isGroupedWithNext =
+                    message.type === "TEXT" &&
+                    nextMessage?.type === "TEXT" &&
+                    nextMessage.senderMembershipId === message.senderMembershipId &&
+                    minuteKey(nextMessage.createdAt) === minuteKey(message.createdAt);
                   return (
                     <Fragment key={message.id}>
                       {showDate && (
@@ -1216,6 +1309,9 @@ function MessageContent() {
                             isDirect={selectedRoom?.type === "DIRECT"}
                             isGroup={selectedRoom?.type === "GROUP"}
                             senderProfile={sender}
+                            showSender={!isGroupedWithPrevious}
+                            showMeta={!isGroupedWithNext}
+                            showTail={!isGroupedWithPrevious}
                             onOpenReadMembers={openReadMembers}
                             onProfileClick={openUserProfile}
                           />
@@ -1233,17 +1329,6 @@ function MessageContent() {
                     leaving={typingBubbleLeaving}
                     onProfileClick={openUserProfile}
                   />
-                )}
-                {nextCursor && (
-                  <button
-                    className="mx-auto block cursor-pointer text-xs text-blue-600 hover:underline"
-                    onClick={() =>
-                      selectedRoomId &&
-                      void loadMessages(selectedRoomId, nextCursor)
-                    }
-                  >
-                    이전 메시지 더 보기
-                  </button>
                 )}
               </div>
               {unseenMessageCount > 0 && (
@@ -1731,6 +1816,9 @@ function MessageBubble({
   isDirect,
   isGroup,
   senderProfile,
+  showSender,
+  showMeta,
+  showTail,
   onOpenReadMembers,
   onProfileClick,
 }: {
@@ -1739,6 +1827,9 @@ function MessageBubble({
   isDirect: boolean;
   isGroup: boolean;
   senderProfile?: AddressBookMember;
+  showSender: boolean;
+  showMeta: boolean;
+  showTail: boolean;
   onOpenReadMembers: (message: ChatMessage) => Promise<void>;
   onProfileClick: (membershipId: number) => void;
 }) {
@@ -1755,24 +1846,24 @@ function MessageBubble({
         className="mb-0.5 inline-flex cursor-pointer items-center gap-0.5 text-[12px] font-medium text-blue-600 transition hover:underline"
         onClick={() => void onOpenReadMembers(message)}
       >
-        {isMine ? <ChevronLeft size={15} strokeWidth={2} /> : null}읽음{" "}
+        {isMine ? <ChevronLeft size={12} strokeWidth={2} /> : null}읽음{" "}
         {message.readCount}
-        {!isMine ? <ChevronRight size={15} strokeWidth={2} /> : null}
+        {!isMine ? <ChevronRight size={12} strokeWidth={2} /> : null}
       </button>
     ) : null;
-  // 메타 영역도 말풍선에 맞닿는 방향으로 정렬해 읽음·시간이 떨어지지 않게 함.
-  const meta = (
+  // 읽음은 메시지별 상태라 매 말풍선에 표시하고, 시간만 같은 분 묶음의 마지막에 표시.
+  const meta = readLabel || showMeta ? (
     <div
       className={`flex shrink-0 flex-col pb-1 text-[12px] text-slate-400 ${isMine ? "items-end text-right" : "items-start text-left"}`}
     >
       {readLabel}
-      <span>{time}</span>
+      {showMeta ? <span>{time}</span> : null}
     </div>
-  );
+  ) : null;
   // 꼬리는 프로필 쪽을 향하는 위쪽 대각선의 직각삼각형으로 표현.
   const bubble = (
     <div
-      className={`relative ${isGroup && !isMine ? "max-w-full" : "max-w-[70%]"} whitespace-pre-wrap break-words px-4 py-3 text-sm leading-6 ${isMine ? "rounded-2xl bg-blue-100 after:absolute after:-right-2 after:top-3 after:h-3 after:w-3 after:bg-blue-100 after:[clip-path:polygon(0_0,0_100%,100%_0)]" : "rounded-2xl bg-slate-100 after:absolute after:-left-2 after:top-3 after:h-3 after:w-3 after:bg-slate-100 after:[clip-path:polygon(100%_0,100%_100%,0_0)]"}`}
+      className={`relative ${isGroup && !isMine ? "max-w-full" : "max-w-[70%]"} whitespace-pre-wrap break-words px-4 py-3 text-sm leading-6 ${isMine ? "rounded-2xl bg-blue-100" : "rounded-2xl bg-slate-100"} ${showTail ? (isMine ? "after:absolute after:-right-2 after:top-3 after:h-3 after:w-3 after:bg-blue-100 after:[clip-path:polygon(0_0,0_100%,100%_0)]" : "after:absolute after:-left-2 after:top-3 after:h-3 after:w-3 after:bg-slate-100 after:[clip-path:polygon(100%_0,100%_100%,0_0)]") : ""}`}
     >
       {message.content}
     </div>
@@ -1780,21 +1871,29 @@ function MessageBubble({
   if (!isMine && isGroup) {
     // 그룹방 제3자 메시지는 프로필을 기준으로 말풍선 꼬리가 왼쪽을 향하게 배치.
     return (
-      <div className="mb-4 flex items-start gap-2">
-        <MessageMemberAvatar
-          name={senderProfile?.displayName ?? message.senderName}
-          presenceStatus={senderProfile?.presenceStatus ?? "OFFLINE"}
-          onClick={() => onProfileClick(message.senderMembershipId)}
-        />
+      <div className={`${showMeta ? "mb-4" : "mb-1"} flex items-start gap-2`}>
+        {showSender ? (
+          <span className="mt-6 w-10 shrink-0">
+            <MessageMemberAvatar
+              name={senderProfile?.displayName ?? message.senderName}
+              presenceStatus={senderProfile?.presenceStatus ?? "OFFLINE"}
+              onClick={() => onProfileClick(message.senderMembershipId)}
+            />
+          </span>
+        ) : (
+          <span className="w-10 shrink-0" />
+        )}
         <div className="min-w-0 max-w-[70%]">
-          <button
-            type="button"
-            onClick={() => onProfileClick(message.senderMembershipId)}
-            className="cursor-pointer text-left text-sm font-bold transition hover:text-blue-600"
-          >
-            {senderProfile?.displayName ?? message.senderName}
-          </button>
-          <div className="mt-1 flex items-end gap-2">
+          {showSender && (
+            <button
+              type="button"
+              onClick={() => onProfileClick(message.senderMembershipId)}
+              className="mt-6 cursor-pointer text-left text-sm font-bold transition hover:text-blue-600"
+            >
+              {senderProfile?.displayName ?? message.senderName}
+            </button>
+          )}
+          <div className={`${showSender ? "mt-1" : ""} flex items-end gap-2`}>
             {bubble}
             {meta}
           </div>
@@ -1804,7 +1903,7 @@ function MessageBubble({
   }
   // 내 말풍선은 시간→말풍선, 상대 말풍선은 말풍선→시간 순서.
   return (
-    <div className={`mb-4 ${isMine ? "ml-auto" : "mr-auto"} max-w-[85%]`}>
+    <div className={`${showMeta ? "mb-4" : "mb-1"} ${isMine ? "ml-auto" : "mr-auto"} max-w-[85%]`}>
       <div
         className={`flex items-end gap-2 ${isMine ? "justify-end" : "justify-start"}`}
       >
