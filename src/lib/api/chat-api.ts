@@ -5,6 +5,7 @@ type ApiResponse<T> = { success: boolean; code: string; message: string; data: T
 export type ChatRoom = {
   id: number; type: "SELF" | "DIRECT" | "GROUP"; name: string | null; ownerMembershipId: number | null;
   memberCount: number; createdAt: string; lastMessage: string | null; lastMessageAt: string | null; lastSenderMembershipId: number | null; unreadCount: number; oldestUnreadMessageAt: string | null; directMembershipId: number | null; directDisplayName: string | null; directJobGradeName: string | null; directDepartmentName: string | null; directCompanyName: string | null; pinned: boolean; pinnedAt: string | null; notificationEnabled: boolean; notificationMode: "ALL" | "MENTION" | "NONE"; lastMessageMentioned: boolean;
+  lastMessageId: number | null; lastMessageVersion: number;
 };
 
 export type ChatMessage = {
@@ -12,12 +13,13 @@ export type ChatMessage = {
   // unreadCount와 readCount를 분리해 "안 읽었는데 읽음"으로 보이지 않게 처리.
   createdAt: string; unreadCount: number; readCount: number; mentionedMembershipIds: number[];
   reply: ChatReply | null;
+  editedAt: string | null; deletedAt: string | null; version: number;
 };
 
 // 원문 위치와 답장 당시 인용 정보를 함께 전달.
-export type ChatReply = { messageId: number; senderName: string; content: string };
+export type ChatReply = { messageId: number; senderName: string; content: string; deleted?: boolean };
 export type ChatMessagePage = { messages: ChatMessage[]; nextCursor: number | null; newerCursor: number | null };
-export type ChatReadMember = { membershipId: number; displayName: string; jobGrade: string | null; departmentName: string | null; read: boolean };
+export type ChatReadMember = { membershipId: number; displayName: string; jobGrade: string | null; departmentName: string | null; companyName: string | null; read: boolean };
 export type ChatMemberProfile = { membershipId: number; displayName: string; jobGradeName: string | null; departmentName: string | null; companyName: string };
 export type ChatRoomDetail = { room: ChatRoom; memberIds: number[]; members: ChatMemberProfile[] };
 
@@ -61,6 +63,8 @@ export const chatApi = {
   messageAnchor: (token: string, roomId: number, messageId: number) => request<ChatMessagePage>(`/api/v1/chatRoom/message?chatRoomId=${roomId}&anchorMessageId=${messageId}`, token),
   newerMessages: (token: string, roomId: number, cursor: number) => request<ChatMessagePage>(`/api/v1/chatRoom/message?chatRoomId=${roomId}&afterCursor=${cursor}`, token),
   send: (token: string, roomId: number, content: string, mentionedMembershipIds: number[] = [], replyToMessageId?: number) => request<ChatMessage>(`/api/v1/chatRoom/message/create?chatRoomId=${roomId}`, token, { method: "POST", body: JSON.stringify({ content, mentionedMembershipIds, replyToMessageId }) }),
+  updateMessage: (token: string, roomId: number, messageId: number, content: string, mentionedMembershipIds: number[], expectedVersion: number) => request<ChatMessage>(`/api/v1/chatRoom/message/update/${messageId}?chatRoomId=${roomId}`, token, { method: "POST", body: JSON.stringify({ content, mentionedMembershipIds, expectedVersion }) }),
+  deleteMessage: (token: string, roomId: number, messageId: number, expectedVersion: number) => request<ChatMessage>(`/api/v1/chatRoom/message/delete/${messageId}?chatRoomId=${roomId}`, token, { method: "POST", body: JSON.stringify({ expectedVersion }) }),
   // 현재 보고 있는 방에 도착한 메시지는 즉시 읽음 위치를 서버에도 반영.
   markRead: (token: string, roomId: number) => request<void>(`/api/v1/chatRoom/read/update?chatRoomId=${roomId}`, token, { method: "POST" }),
   readMembers: (token: string, roomId: number, messageId: number, read: boolean) => request<ChatReadMember[]>(`/api/v1/chatRoom/message/readMember?chatRoomId=${roomId}&messageId=${messageId}&read=${read}`, token),

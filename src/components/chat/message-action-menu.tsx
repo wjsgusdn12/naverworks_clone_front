@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, MoreVertical, Reply } from "lucide-react";
+import { Copy, MoreVertical, Pencil, Reply, Trash2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
@@ -12,10 +12,12 @@ type MessageActionMenuProps = {
   onPositionChange: (position: MessageMenuPosition | null) => void;
   onCopy: () => void;
   onReply: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
 };
 
 // 목록의 overflow 영역 밖에 메뉴를 띄워 말풍선·스크롤 경계에 가려지는 현상 방지.
-export function MessageActionMenu({ isMine, position, onPositionChange, onCopy, onReply }: MessageActionMenuProps) {
+export function MessageActionMenu({ isMine, position, onPositionChange, onCopy, onReply, onEdit, onDelete }: MessageActionMenuProps) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -65,7 +67,7 @@ export function MessageActionMenu({ isMine, position, onPositionChange, onCopy, 
           const top = event.detail === 0 ? rect.bottom + 4 : event.clientY;
           onPositionChange({
             left: Math.max(8, Math.min(left, window.innerWidth - 152)),
-            top: Math.max(8, Math.min(top, window.innerHeight - 100)),
+            top: Math.max(8, Math.min(top, window.innerHeight - (isMine ? 184 : 100))),
           });
         }}
         className={`flex h-5 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-slate-500 transition duration-150 hover:bg-slate-100 hover:text-slate-900 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-blue-500 active:scale-95 [@media(hover:none)]:opacity-100 ${position ? "bg-slate-100 opacity-100" : "opacity-0 group-hover/message:opacity-100 group-focus-within/message:opacity-100"}`}
@@ -80,6 +82,15 @@ export function MessageActionMenu({ isMine, position, onPositionChange, onCopy, 
           <button type="button" onClick={() => { onPositionChange(null); onReply(); }} className="flex w-full cursor-pointer items-center gap-2 rounded px-3 py-2 text-left transition hover:bg-slate-100 focus-visible:bg-slate-100 active:scale-[0.98]">
             <Reply size={15} aria-hidden="true" />답장
           </button>
+          {isMine && <>
+            <div className="my-1 border-t border-slate-100" />
+            <button type="button" onClick={() => { onPositionChange(null); onEdit(); }} className="flex w-full cursor-pointer items-center gap-2 rounded px-3 py-2 text-left transition hover:bg-slate-100 focus-visible:bg-slate-100 active:scale-[0.98]">
+              <Pencil size={15} aria-hidden="true" />수정
+            </button>
+            <button type="button" onClick={() => { onPositionChange(null); onDelete(); }} className="flex w-full cursor-pointer items-center gap-2 rounded px-3 py-2 text-left text-red-500 transition hover:bg-red-50 focus-visible:bg-red-50 active:scale-[0.98]">
+              <Trash2 size={15} aria-hidden="true" />삭제
+            </button>
+          </>}
         </div>, document.body,
       )}
     </>

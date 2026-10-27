@@ -14,7 +14,7 @@ export function MessageQuote({ reply, onOpen, avatar }: { reply: ChatReply; onOp
         )}
         <span className="min-w-0 flex-1">
           <span className="block truncate text-xs font-semibold text-slate-800">{reply.senderName}</span>
-          <span className="block truncate text-xs leading-5 text-slate-500">{reply.content.replace(/[\r\n]+/g, " ")}</span>
+          <span className={`block truncate text-xs leading-5 ${reply.deleted ? "text-slate-400 italic" : "text-slate-500"}`}>{reply.content.replace(/[\r\n]+/g, " ")}</span>
         </span>
       </button>
     );

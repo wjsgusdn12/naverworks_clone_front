@@ -5,6 +5,8 @@ import { Toast } from "@/components/common/toast";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import { MessageActionMenu, type MessageMenuPosition } from "@/components/chat/message-action-menu";
 import { MessageQuote } from "@/components/chat/message-quote";
+import { MessageEditDialog, MessageDeleteDialog } from "@/components/chat/message-change-dialog";
+import { applyMessageChange, applyRoomMessageChange } from "@/lib/chat-message-state";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
   chatApi,
@@ -121,6 +123,8 @@ const sortRoomsByLatestActivity = (rooms: ChatRoom[]) =>
   });
 
 type RoomSort = "LATEST" | "TYPE" | "UNREAD";
+// 읽음/안 읽음 목록을 함께 보관해 탭 전환 시 다시 조회하지 않음.
+type ReadModalState = { message: ChatMessage; readMembers: ChatReadMember[]; unreadMembers: ChatReadMember[]; read: boolean };
 
 const sortRooms = (rooms: ChatRoom[], sort: RoomSort) => {
   if (sort !== "UNREAD") return sortRoomsByLatestActivity(rooms);
@@ -168,7 +172,7 @@ function MessageContent() {
     .filter(Number.isInteger);
   const { accessToken, member, status, logout } = useAuth();
   const { toast, showToast, dismissToast } = useToast();
-  const { setActiveChatRoomId, syncChatRooms, presenceByMembershipId } = useChatNotification();
+  const { setActiveChatRoomId, syncChatRooms, refreshChatRooms, presenceByMembershipId } = useChatNotification();
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -181,6 +185,9 @@ function MessageContent() {
   const [isLocatingOriginal, setIsLocatingOriginal] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
   const [replyByRoomId, setReplyByRoomId] = useState<Record<number, ChatMessage>>({});
+  const [editingMessage, setEditingMessage] = useState<{ roomId: number; message: ChatMessage } | null>(null);
+  const [deletingMessage, setDeletingMessage] = useState<{ roomId: number; message: ChatMessage } | null>(null);
+  const mutationScrollRef = useRef<{ top: number; height: number; adjustHeight: boolean } | null>(null);
   const pendingMessageScrollRef = useRef<number | null>(null);
   const originalNavigationUntilRef = useRef(0);
   const messageWindowVersionRef = useRef(0);
@@ -200,11 +207,7 @@ function MessageContent() {
   const [mentionHighlightIndex, setMentionHighlightIndex] = useState(0);
   const [search, setSearch] = useState("");
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [readModal, setReadModal] = useState<{
-    message: ChatMessage;
-    members: ChatReadMember[];
-    read: boolean;
-  } | null>(null);
+  const [readModal, setReadModal] = useState<ReadModalState | null>(null);
   const [newRoomModalOpen, setNewRoomModalOpen] = useState(
     searchParams.get("create") === "group",
   );
@@ -233,6 +236,7 @@ function MessageContent() {
   const [unseenMessageCount, setUnseenMessageCount] = useState(0);
   // 사용자가 위쪽 메시지를 읽는 동안에는 가장 최근 수신 내용을 입력창 위 안내 행에 표시.
   const [latestUnseenMessage, setLatestUnseenMessage] = useState<{
+    messageId: number;
     senderName: string;
     content: string;
   } | null>(null);
@@ -414,7 +418,7 @@ function MessageContent() {
 
   const loadRooms = useCallback(async () => {
     if (!accessToken) return;
-    const result = await chatApi.rooms(accessToken);
+    const result = await refreshChatRooms();
     setRooms(sortRoomsByLatestActivity(result));
     const savedRoomId =
       lastRoomStorageKey && typeof window !== "undefined"
@@ -437,7 +441,33 @@ function MessageContent() {
             ? savedRoomId
             : null),
     );
-  }, [accessToken, lastRoomStorageKey, requestedRoomId]);
+  }, [accessToken, lastRoomStorageKey, requestedRoomId, refreshChatRooms]);
+
+  const applyChangedMessage = useCallback((roomId: number, incoming: ChatMessage) => {
+    setRooms((current) => current.map((room) => room.id === roomId
+      ? applyRoomMessageChange(room, incoming, member?.membershipId ?? -1) : room));
+    if (selectedRoomIdRef.current === roomId) {
+      const list = messageListRef.current;
+      if (list && !isMessageListAtBottomRef.current && !mutationScrollRef.current) {
+        const target = list.querySelector<HTMLElement>(`[data-message-id="${incoming.id}"]`);
+        mutationScrollRef.current = { top: list.scrollTop, height: list.scrollHeight,
+          adjustHeight: Boolean(target && target.getBoundingClientRect().bottom <= list.getBoundingClientRect().top) };
+      }
+      if (isMessageListAtBottomRef.current && newerCursorRef.current === null) shouldScrollToLatestRef.current = true;
+      setMessages((current) => current.map((message) => applyMessageChange(message, incoming)));
+      setLatestUnseenMessage((current) => current?.messageId === incoming.id ? { ...current, content: incoming.content } : current);
+      setReadModal((current) => current?.message.id === incoming.id
+        ? (incoming.deletedAt ? null : { ...current, message: incoming }) : current);
+    }
+    // 삭제된 원문을 새 답장 대상으로 보내지 않도록 입력창 미리보기도 갱신.
+    setReplyByRoomId((current) => Object.fromEntries(Object.entries(current)
+      .filter(([, target]) => target.id !== incoming.id || !incoming.deletedAt)
+      .map(([id, target]) => [id, target.id === incoming.id ? incoming : target])));
+    if (incoming.deletedAt) {
+      setEditingMessage((current) => current?.message.id === incoming.id ? null : current);
+      setDeletingMessage((current) => current?.message.id === incoming.id ? null : current);
+    }
+  }, [member?.membershipId]);
 
   useEffect(() => {
     if (!lastRoomStorageKey || !selectedRoomId) return;
@@ -516,6 +546,7 @@ function MessageContent() {
       pendingMessageScrollRef.current = null;
       originalNavigationUntilRef.current = 0;
       preservedScrollRef.current = null;
+      mutationScrollRef.current = null;
       shouldScrollToLatestRef.current = true;
       isMessageListAtBottomRef.current = true;
       // 방 진입 직후 최신 메시지의 날짜를 짧게 안내.
@@ -528,6 +559,8 @@ function MessageContent() {
           setNewerCursor(null);
           setIsLocatingOriginal(false);
           setHighlightedMessageId(null);
+          setEditingMessage(null);
+          setDeletingMessage(null);
           setUnseenMessageCount(0);
           setLatestUnseenMessage(null);
           return loadMessages(selectedRoomId);
@@ -572,7 +605,7 @@ function MessageContent() {
           // 과거 원문 구간에서는 새 메시지를 바로 붙이면 중간 대화가 빠지므로 안내만 표시.
           if (newerCursorRef.current !== null) {
             setUnseenMessageCount((count) => count + 1);
-            setLatestUnseenMessage({ senderName: incoming.senderName, content: incoming.content });
+            setLatestUnseenMessage({ messageId: incoming.id, senderName: incoming.senderName, content: incoming.content });
             return current;
           }
           if (
@@ -584,6 +617,7 @@ function MessageContent() {
             // 위쪽 대화를 읽는 중이면 위치를 유지하고 새 메시지 안내만 표시.
             setUnseenMessageCount((count) => count + 1);
             setLatestUnseenMessage({
+              messageId: incoming.id,
               senderName: incoming.senderName,
               content: incoming.content,
             });
@@ -604,6 +638,8 @@ function MessageContent() {
             return {
               ...room,
               lastMessage: incoming.content,
+              lastMessageId: incoming.id,
+              lastMessageVersion: incoming.version,
               lastMessageAt: incoming.createdAt,
               lastSenderMembershipId: incoming.senderMembershipId,
               lastMessageMentioned: incoming.mentionedMembershipIds.includes(member?.membershipId ?? -1),
@@ -621,13 +657,17 @@ function MessageContent() {
           }),
         );
       },
+      onMessageChanged: (event) => {
+        applyChangedMessage(event.chatRoomId, event.message);
+        if (event.message.deletedAt) void loadRooms().catch(() => showToast("메시지는 삭제됐으나 목록을 새로 불러오지 못했습니다."));
+      },
       onReadUpdated: (event) => {
         if (event.chatRoomId !== selectedRoomId) return;
         // 읽음 위치가 전진한 구성원만 아직 읽지 않은 말풍선에 한 번 반영.
         setMessages((current) =>
           current.map((message) => {
             const canUpdateReadCount =
-              message.type === "TEXT" &&
+              message.type === "TEXT" && !message.deletedAt &&
               message.id <= event.lastReadMessageId &&
               message.senderMembershipId !== event.readerMembershipId &&
               message.unreadCount > 0;
@@ -744,7 +784,7 @@ function MessageContent() {
       typingMembersRef.current = [];
       setTypingMembers([]);
     };
-  }, [accessToken, member?.membershipId, selectedRoomId, status, subscribedChatRoomIds]);
+  }, [accessToken, member?.membershipId, selectedRoomId, status, subscribedChatRoomIds, applyChangedMessage, loadRooms, showToast]);
 
   useEffect(
     () => () => {
@@ -824,6 +864,14 @@ function MessageContent() {
         preservedScrollRef.current = null;
         shouldScrollToLatestRef.current = false;
         setHighlightedMessageId(targetId);
+      });
+      return () => cancelAnimationFrame(frameId);
+    }
+    const mutationScroll = mutationScrollRef.current;
+    if (mutationScroll) {
+      const frameId = requestAnimationFrame(() => {
+        messageList.scrollTop = mutationScroll.top + (mutationScroll.adjustHeight ? messageList.scrollHeight - mutationScroll.height : 0);
+        mutationScrollRef.current = null;
       });
       return () => cancelAnimationFrame(frameId);
     }
@@ -1033,6 +1081,37 @@ function MessageContent() {
     inputRef.current?.focus({ preventScroll: true });
   };
 
+  const startEdit = (message: ChatMessage) => {
+    if (!selectedRoomId || message.deletedAt || message.senderMembershipId !== member?.membershipId) return;
+    setEditingMessage({ roomId: selectedRoomId, message });
+  };
+  const startDelete = (message: ChatMessage) => {
+    if (!selectedRoomId || message.deletedAt || message.senderMembershipId !== member?.membershipId) return;
+    setDeletingMessage({ roomId: selectedRoomId, message });
+  };
+  const editingMessageId = editingMessage?.message.id;
+  const deletingMessageId = deletingMessage?.message.id;
+  const closeEdit = useCallback(() => setEditingMessage((current) => current?.message.id === editingMessageId ? null : current), [editingMessageId]);
+  const closeDelete = useCallback(() => setDeletingMessage((current) => current?.message.id === deletingMessageId ? null : current), [deletingMessageId]);
+
+  const saveEditedMessage = async (content: string) => {
+    if (!accessToken || !editingMessage) throw new Error("로그인 상태를 확인해 주세요.");
+    const { roomId, message } = editingMessage;
+    const mentionedIds = content.includes("@All") ? mentionCandidates.map((candidate) => candidate.membershipId)
+      : mentionCandidates.filter((candidate) => content.includes(`@${candidate.displayName}`)).map((candidate) => candidate.membershipId);
+    const result = await chatApi.updateMessage(accessToken, roomId, message.id, content, mentionedIds, message.version ?? 0);
+    applyChangedMessage(roomId, result);
+    showToast("메시지를 수정했습니다.");
+  };
+  const deleteSelectedMessage = async () => {
+    if (!accessToken || !deletingMessage) throw new Error("로그인 상태를 확인해 주세요.");
+    const { roomId, message } = deletingMessage;
+    const result = await chatApi.deleteMessage(accessToken, roomId, message.id, message.version ?? 0);
+    applyChangedMessage(roomId, result);
+    showToast("메시지를 삭제했습니다.");
+    await loadRooms().catch(() => showToast("삭제는 완료했으나 목록을 새로 불러오지 못했습니다."));
+  };
+
   const jumpToOriginal = async (messageId: number) => {
     if (!accessToken || !selectedRoomId || isLocatingOriginal) return;
     const roomId = selectedRoomId;
@@ -1111,6 +1190,8 @@ function MessageContent() {
               ? {
                 ...room,
                 lastMessage: message.content,
+                lastMessageId: message.id,
+                lastMessageVersion: message.version,
                 lastMessageAt: message.createdAt,
                 lastSenderMembershipId: member?.membershipId ?? null,
                 unreadCount: 0,
@@ -1201,13 +1282,12 @@ function MessageContent() {
   const openReadMembers = async (message: ChatMessage) => {
     if (!accessToken || !selectedRoomId || message.type !== "TEXT") return;
     try {
-      const members = await chatApi.readMembers(
-        accessToken,
-        selectedRoomId,
-        message.id,
-        true,
-      );
-      setReadModal({ message, members, read: true });
+      // 두 탭을 동시에 조회해 탭 숫자를 바로 보여주고, 탭 전환 때는 추가 요청 없이 즉시 바꿈.
+      const [readMembers, unreadMembers] = await Promise.all([
+        chatApi.readMembers(accessToken, selectedRoomId, message.id, true),
+        chatApi.readMembers(accessToken, selectedRoomId, message.id, false),
+      ]);
+      setReadModal({ message, readMembers, unreadMembers, read: true });
     } catch (error) {
       showToast(
         error instanceof Error
@@ -1633,6 +1713,8 @@ function MessageContent() {
                             onProfileClick={openUserProfile}
                             onCopy={(target) => void copyMessage(target)}
                             onReply={startReply}
+                            onEdit={startEdit}
+                            onDelete={startDelete}
                             onOpenOriginal={(messageId) => void jumpToOriginal(messageId)}
                           />
                         )}
@@ -1859,6 +1941,8 @@ function MessageContent() {
           </div>
         </section>
       </main>
+      {editingMessage && <MessageEditDialog key={editingMessage.message.id} message={editingMessage.message} onClose={closeEdit} onSave={saveEditedMessage} onNotice={showToast} />}
+      {deletingMessage && <MessageDeleteDialog key={deletingMessage.message.id} onClose={closeDelete} onDelete={deleteSelectedMessage} onNotice={showToast} />}
       {hideConfirmOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/25 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setHideConfirmOpen(false); }}>
           <section className="w-full max-w-md animate-in fade-in zoom-in-95 rounded-2xl bg-white p-8 shadow-2xl">
@@ -1916,16 +2000,7 @@ function MessageContent() {
           contactMembers={contactMembers}
           onClose={() => setReadModal(null)}
           onProfileClick={openUserProfile}
-          onTab={async (read) => {
-            if (!accessToken || !selectedRoomId) return;
-            const members = await chatApi.readMembers(
-              accessToken,
-              selectedRoomId,
-              readModal.message.id,
-              read,
-            );
-            setReadModal({ ...readModal, members, read });
-          }}
+          onTab={(read) => setReadModal((current) => current && { ...current, read })}
         />
       )}
       {profileMember && accessToken && (
@@ -2054,7 +2129,7 @@ function MessageRoomItem({
       <div
         role="button"
         tabIndex={0}
-        title={displayName}
+        aria-label={displayName}
         onClick={onClick}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
@@ -2247,6 +2322,8 @@ function MessageBubble({
   onProfileClick,
   onCopy,
   onReply,
+  onEdit,
+  onDelete,
   onOpenOriginal,
 }: {
   message: ChatMessage;
@@ -2262,6 +2339,8 @@ function MessageBubble({
   onProfileClick: (membershipId: number) => void;
   onCopy: (message: ChatMessage) => void;
   onReply: (message: ChatMessage) => void;
+  onEdit: (message: ChatMessage) => void;
+  onDelete: (message: ChatMessage) => void;
   onOpenOriginal: (messageId: number) => void;
 }) {
   // ⋮ 클릭과 말풍선 우클릭이 같은 메뉴·닫기 동작을 공유.
@@ -2288,7 +2367,7 @@ function MessageBubble({
     minute: "2-digit",
   });
   // 그룹방은 발신자와 관계없이 모든 일반 메시지의 실제 읽음 상태를 표시.
-  const readLabel =
+  const readLabel = message.deletedAt ? null :
     isMine && isDirect && message.unreadCount === 0 ? (
       <span className="mb-0.5 text-[12px] font-medium text-blue-600">읽음</span>
     ) : isGroup && message.readCount > 0 ? (
@@ -2310,7 +2389,7 @@ function MessageBubble({
       {showMeta ? <span>{time}</span> : null}
     </div>
   ) : null;
-  const messageMenu = <MessageActionMenu isMine={isMine} position={menuPosition} onPositionChange={setMenuPosition} onCopy={() => onCopy(message)} onReply={() => onReply(message)} />;
+  const messageMenu = message.deletedAt ? <span aria-hidden="true" className="h-5 w-6 shrink-0" /> : <MessageActionMenu isMine={isMine} position={menuPosition} onPositionChange={setMenuPosition} onCopy={() => onCopy(message)} onReply={() => onReply(message)} onEdit={() => onEdit(message)} onDelete={() => onDelete(message)} />;
   // 시간과 메뉴의 밑선을 맞추고, 메뉴가 숨겨져도 공간을 유지해 말풍선 흔들림 방지.
   const messageActions = (
     <div className="flex shrink-0 items-end gap-1 pb-1">
@@ -2318,7 +2397,10 @@ function MessageBubble({
     </div>
   );
   // 꼬리는 프로필 쪽을 향하는 위쪽 대각선의 직각삼각형으로 표현.
-  const reply = message.reply;
+  const reply = message.deletedAt ? null : message.reply;
+  // "수정됨"은 말풍선 바로 아래 오른쪽에 띄우고, 그 높이만큼 메시지 아래 여백을 늘려 다음 메시지와 겹치지 않게 처리.
+  const editedLabel = message.editedAt ? <span className="pointer-events-none absolute right-1 top-full mt-1 whitespace-nowrap text-xs leading-4 text-slate-500">수정됨</span> : null;
+  const rowSpacing = message.editedAt ? "mb-7" : showMeta ? "mb-2" : "mb-1";
   const bubble = (
     <div
       ref={bubbleRef}
@@ -2327,9 +2409,10 @@ function MessageBubble({
         // 브라우저 기본 메뉴를 막고 커서 위치에 메시지 메뉴를 표시.
         event.preventDefault();
         event.stopPropagation();
+        if (message.deletedAt) return;
         setMenuPosition({
           left: Math.max(8, Math.min(event.clientX, window.innerWidth - 152)),
-          top: Math.max(8, Math.min(event.clientY, window.innerHeight - 100)),
+          top: Math.max(8, Math.min(event.clientY, window.innerHeight - (isMine ? 184 : 100))),
         });
       }}
       className={`relative min-w-0 ${isGroup && !isMine ? "max-w-full" : "max-w-[70%]"} whitespace-pre-wrap break-words ${reply ? "w-[380px]" : "px-4 py-3"} text-sm leading-6 ${isMine ? "rounded-2xl bg-blue-100" : "rounded-2xl bg-slate-100"} ${showTail ? (isMine ? "after:absolute after:-right-2 after:top-3 after:h-3 after:w-3 after:bg-blue-100 after:[clip-path:polygon(0_0,0_100%,100%_0)]" : "after:absolute after:-left-2 after:top-3 after:h-3 after:w-3 after:bg-slate-100 after:[clip-path:polygon(100%_0,100%_100%,0_0)]") : ""}`}
@@ -2337,13 +2420,15 @@ function MessageBubble({
       {/* 꼬리 가상 요소보다 앞에 테두리를 그려 접점에서도 파란 선이 가려지지 않게 처리. */}
       {isOriginalHighlighted && <span aria-hidden="true" style={{ position: "absolute", inset: 0, zIndex: 2, pointerEvents: "none", borderRadius: "inherit", outline: "2px solid #3b82f6", outlineOffset: "0px" }} />}
       {reply && <MessageQuote reply={reply} onOpen={() => onOpenOriginal(reply.messageId)} />}
-      {reply ? <div className="px-3 py-2"><MentionText content={message.content} /></div> : <MentionText content={message.content} />}
+      {reply ? <div className="px-3 py-2"><MentionText content={message.content} />{editedLabel}</div>
+        : message.deletedAt ? <span className="text-slate-400 italic">{message.content}</span>
+          : <><MentionText content={message.content} />{editedLabel}</>}
     </div>
   );
   if (!isMine && isGroup) {
     // 그룹방 제3자 메시지는 프로필을 기준으로 말풍선 꼬리가 왼쪽을 향하게 배치.
     return (
-      <div className={`${showMeta ? "mb-2" : "mb-1"} flex items-start gap-2`}>
+      <div className={`${rowSpacing} flex items-start gap-2`}>
         {showSender ? (
           <span className="mt-3 w-10 shrink-0">
             <MessageMemberAvatar
@@ -2375,7 +2460,7 @@ function MessageBubble({
   }
   // 내 말풍선은 시간→말풍선, 상대 말풍선은 말풍선→시간 순서.
   return (
-    <div className={`${showMeta ? "mb-2" : "mb-1"} ${isMine ? "ml-auto" : "mr-auto"} max-w-[85%]`}>
+    <div className={`${rowSpacing} ${isMine ? "ml-auto" : "mr-auto"} max-w-[85%]`}>
       <div
         className={`flex items-end gap-2 ${isMine ? "justify-end" : "justify-start"}`}
       >
@@ -2980,13 +3065,23 @@ function ReadMemberModal({
   onProfileClick,
   onTab,
 }: {
-  modal: { message: ChatMessage; members: ChatReadMember[]; read: boolean };
+  modal: ReadModalState;
   contactMembers: AddressBookMember[];
   onClose: () => void;
   onProfileClick: (membershipId: number) => void;
-  onTab: (read: boolean) => Promise<void>;
+  onTab: (read: boolean) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  // 행마다 주소록 배열을 다시 훑지 않도록 접속 상태를 Map으로 한 번만 만들어 둠.
+  const presenceByMemberId = useMemo(
+    () => new Map(contactMembers.map((member) => [member.membershipId, member.presenceStatus])),
+    [contactMembers],
+  );
+  const members = modal.read ? modal.readMembers : modal.unreadMembers;
+  const tabs = [
+    { read: true, label: "읽음", count: modal.readMembers.length },
+    { read: false, label: "안 읽음", count: modal.unreadMembers.length },
+  ];
   useEffect(() => {
     const handler = (event: MouseEvent) => {
       if (event.target === ref.current) onClose();
@@ -3006,55 +3101,62 @@ function ReadMemberModal({
       ref={ref}
       className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/20 p-4"
     >
-      <section className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold">
-            읽은 멤버 ({modal.members.length})
+      {/* 인원수와 관계없이 모달 높이를 고정하고, 목록 영역만 스크롤되게 구성. */}
+      <section role="dialog" aria-modal="true" aria-label="읽은 멤버" className="message-action-menu flex h-[min(680px,calc(100vh-2rem))] w-full max-w-md flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+        <div className="flex shrink-0 items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-900">
+            읽은 멤버 ({modal.readMembers.length})
           </h2>
-          <button className="cursor-pointer p-1" onClick={onClose}>
-            <X />
+          <button type="button" aria-label="읽은 멤버 닫기" className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 active:scale-90" onClick={onClose}>
+            <X size={20} />
           </button>
         </div>
-        <div className="mt-4 flex border-b border-slate-200">
-          <button
-            className={`cursor-pointer px-4 py-2 text-sm ${modal.read ? "border-b-2 border-blue-600 text-blue-600" : ""}`}
-            onClick={() => void onTab(true)}
-          >
-            읽음
-          </button>
-          <button
-            className={`cursor-pointer px-4 py-2 text-sm ${!modal.read ? "border-b-2 border-blue-600 text-blue-600" : ""}`}
-            onClick={() => void onTab(false)}
-          >
-            안 읽음
-          </button>
+        {/* 선택한 탭은 아래 패널과 이어지도록 흰 배경으로 패널 테두리를 덮음. */}
+        <div role="tablist" className="relative z-10 mt-5 flex shrink-0 gap-1">
+          {tabs.map((tab) => {
+            const selected = modal.read === tab.read;
+            return (
+              <button
+                key={tab.label}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                onClick={() => onTab(tab.read)}
+                className={`-mb-px cursor-pointer rounded-t-lg border px-6 py-2.5 text-sm transition ${selected ? "border-slate-200 border-b-white bg-white font-semibold text-slate-900" : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-700"}`}
+              >
+                {tab.label} {tab.count}
+              </button>
+            );
+          })}
         </div>
-        <div className="mt-3 max-h-[420px] overflow-y-auto">
-          {modal.members.map((member) => (
+        <div role="tabpanel" className="min-h-0 flex-1 overflow-y-auto rounded-b-lg rounded-tr-lg border border-slate-200 p-2">
+          {members.length === 0 ? (
+            <p className="flex h-full items-center justify-center text-sm text-slate-500">
+              {modal.read ? "읽은 멤버가 없습니다." : "안 읽은 멤버가 없습니다."}
+            </p>
+          ) : members.map((member) => (
             <button
+              type="button"
               key={member.membershipId}
-              className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-3 text-left transition hover:bg-slate-50"
+              className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-3 text-left transition hover:bg-slate-50 active:bg-slate-100"
               onClick={() => onProfileClick(member.membershipId)}
             >
               <MessageMemberAvatar
                 name={member.displayName}
-                presenceStatus={
-                  contactMembers.find(
-                    (target) => target.membershipId === member.membershipId,
-                  )?.presenceStatus ?? "OFFLINE"
-                }
+                presenceStatus={presenceByMemberId.get(member.membershipId) ?? "OFFLINE"}
               />
-              <span>
-                <b className="block">{member.displayName}</b>
-                <small className="text-slate-500">
-                  {[member.jobGrade, member.departmentName]
-                    .filter(Boolean)
-                    .join("/")}
-                </small>
+              <span className="min-w-0 flex-1">
+                <b className="block truncate text-sm text-slate-900">{member.displayName}</b>
+                <span className="mt-0.5 block truncate text-xs text-slate-500">
+                  {member.jobGrade && <span className="text-blue-600">{member.jobGrade}</span>}
+                  {member.jobGrade && member.departmentName && "/"}
+                  {member.departmentName}
+                  {member.companyName && <span className="ml-2">{member.companyName}</span>}
+                </span>
               </span>
-              <small className="ml-auto text-blue-600">
+              <span className={`shrink-0 text-xs ${modal.read ? "text-blue-600" : "text-slate-400"}`}>
                 {modal.read ? "읽음" : "안 읽음"}
-              </small>
+              </span>
             </button>
           ))}
         </div>

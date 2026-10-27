@@ -13,6 +13,7 @@ import {
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useMessageNotificationToast } from "@/hooks/use-message-notification-toast";
 import { useRouter } from "next/navigation";
+import { applyRoomMessageChange } from "@/lib/chat-message-state";
 
 type ChatNotificationContextValue = {
   notificationCount: number;
@@ -27,6 +28,7 @@ type ChatNotificationContextValue = {
   setNotificationMode: (mode: "ALL" | "MENTION" | "NONE") => void;
   setActiveChatRoomId: (chatRoomId: number | null) => void;
   syncChatRooms: (rooms: ChatRoom[]) => void;
+  refreshChatRooms: () => Promise<ChatRoom[]>;
 };
 
 export type ChatNotificationItem = {
@@ -38,6 +40,7 @@ export type ChatNotificationItem = {
   createdAt: string;
   read: boolean;
   mentioned: boolean;
+  version: number;
 };
 
 const ChatNotificationContext = createContext<ChatNotificationContextValue | null>(null);
@@ -55,17 +58,33 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
   const [presenceByMembershipId, setPresenceByMembershipId] = useState<Record<number, boolean>>({});
   const roomRef = useRef<ChatRoom[]>([]);
+  const refreshRequestRef = useRef<{ token: string; promise: Promise<ChatRoom[]> } | null>(null);
   const activeChatRoomIdRef = useRef<number | null>(null);
   const {
     messageNotification,
     showMessageNotification,
     dismissMessageNotification,
+    updateMessageNotification,
   } = useMessageNotificationToast();
 
   const syncChatRooms = useCallback((rooms: ChatRoom[]) => {
     roomRef.current = rooms;
     setChatRooms(rooms);
   }, []);
+
+  const refreshChatRooms = useCallback((): Promise<ChatRoom[]> => {
+    if (!accessToken) return Promise.resolve([]);
+    // 전역 알림과 메시지 화면이 같은 삭제 이벤트를 받아도 목록 API는 한 번만 요청.
+    if (refreshRequestRef.current?.token === accessToken) return refreshRequestRef.current.promise;
+    const promise = chatApi.rooms(accessToken).then((result) => {
+      if (refreshRequestRef.current?.token === accessToken) syncChatRooms(result);
+      return result;
+    }).finally(() => {
+      if (refreshRequestRef.current?.promise === promise) refreshRequestRef.current = null;
+    });
+    refreshRequestRef.current = { token: accessToken, promise };
+    return promise;
+  }, [accessToken, syncChatRooms]);
 
   const setNotificationEnabled = useCallback((enabled: boolean) => {
     const nextMode = enabled ? "ALL" : "NONE";
@@ -105,13 +124,12 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
   useEffect(() => {
     if (status !== "authenticated" || !accessToken) {
       roomRef.current = [];
+      refreshRequestRef.current = null;
       return;
     }
 
-    void chatApi.rooms(accessToken)
-      .then(syncChatRooms)
-      .catch(() => undefined);
-  }, [accessToken, status, syncChatRooms]);
+    void refreshChatRooms().catch(() => undefined);
+  }, [accessToken, status, refreshChatRooms]);
 
   useEffect(() => {
     if (status !== "authenticated" || !accessToken || !member) return;
@@ -120,6 +138,10 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
       accessToken,
       subscribedChatRoomIds: roomRef.current.map((room) => room.id),
       onMessageCreated: (event) => {
+        // 메시지 화면 밖에서도 마지막 메시지 ID를 유지해야 이후 수정·삭제 대상을 구분할 수 있음.
+        syncChatRooms(roomRef.current.map((target) => target.id === event.chatRoomId && (target.lastMessageId ?? 0) <= event.message.id
+          ? { ...target, lastMessageId: event.message.id, lastMessageVersion: event.message.version, lastMessage: event.message.content, lastMessageAt: event.message.createdAt, lastSenderMembershipId: event.message.senderMembershipId }
+          : target));
         const room = roomRef.current.find((target) => target.id === event.chatRoomId);
         const mentioned = event.message.mentionedMembershipIds.includes(member.membershipId);
         // 방별 모드가 MENTION이면 직접 멘션한 메시지만 전역 알림 대상으로 처리.
@@ -146,6 +168,7 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
           createdAt: event.message.createdAt,
           read: false,
           mentioned,
+          version: event.message.version,
         };
         // 동일 메시지가 재전송되어도 알림 목록에는 한 번만 남김.
         setNotifications((current) => [
@@ -158,7 +181,21 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
           roomName,
           senderName: event.message.senderName,
           content: event.message.content,
+          version: event.message.version,
         });
+      },
+      onMessageChanged: (event) => {
+        const incoming = event.message;
+        syncChatRooms(roomRef.current.map((room) => room.id === event.chatRoomId
+          ? applyRoomMessageChange(room, incoming, member.membershipId) : room));
+        setNotifications((current) => incoming.deletedAt
+          ? current.filter((item) => item.id !== incoming.id)
+          : current.map((item) => item.id === incoming.id && (item.version ?? 0) <= incoming.version
+            ? { ...item, content: incoming.content, mentioned: incoming.mentionedMembershipIds.includes(member.membershipId), version: incoming.version }
+            : item));
+        updateMessageNotification(incoming.id, incoming.content, Boolean(incoming.deletedAt), incoming.version);
+        // 삭제된 메시지는 안 읽음 집계에서도 빠지므로 서버의 정식 집계로 재동기화.
+        if (incoming.deletedAt) void refreshChatRooms().catch(() => undefined);
       },
       onPresenceChanged: (event: PresenceRealtimeEvent) => {
         setPresenceByMembershipId((current) => ({
@@ -171,7 +208,7 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
     });
 
     return () => connection.disconnect();
-  }, [accessToken, member, notificationEnabled, notificationMode, roomIdsKey, showMessageNotification, status]);
+  }, [accessToken, member, notificationEnabled, notificationMode, roomIdsKey, showMessageNotification, status, syncChatRooms, refreshChatRooms, updateMessageNotification]);
 
   const value = useMemo(
     () => ({
@@ -187,6 +224,7 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
       setNotificationMode,
       setActiveChatRoomId,
       syncChatRooms,
+      refreshChatRooms,
     }),
     [
       activeChatRoomId,
@@ -201,6 +239,7 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
       setNotificationMode,
       status,
       syncChatRooms,
+      refreshChatRooms,
     ],
   );
 

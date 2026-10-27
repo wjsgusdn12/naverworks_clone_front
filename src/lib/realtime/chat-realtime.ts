@@ -7,6 +7,12 @@ type ChatRealtimeEvent = {
   message: ChatMessage;
 };
 
+export type ChatMessageChangeEvent = {
+  type: "MESSAGE_UPDATED" | "MESSAGE_DELETED";
+  chatRoomId: number;
+  message: ChatMessage;
+};
+
 type ChatTypingEvent = {
   type: "TYPING_CHANGED";
   chatRoomId: number;
@@ -43,6 +49,7 @@ type ConnectChatRoomOptions = {
   subscribedChatRoomIds: number[];
   onMessageCreated: (event: ChatRealtimeEvent) => void;
   onRoomMessageCreated: (event: ChatRealtimeEvent) => void;
+  onMessageChanged: (event: ChatMessageChangeEvent) => void;
   onReadUpdated: (event: ChatReadEvent) => void;
   onTypingChanged: (event: ChatTypingEvent) => void;
   onGlobalTypingChanged: (event: ChatTypingEvent) => void;
@@ -54,6 +61,7 @@ type ConnectChatNotificationOptions = {
   accessToken: string;
   subscribedChatRoomIds: number[];
   onMessageCreated: (event: ChatRealtimeEvent) => void;
+  onMessageChanged: (event: ChatMessageChangeEvent) => void;
   onPresenceChanged?: (event: PresenceRealtimeEvent) => void;
   onError: (message: string) => void;
 };
@@ -65,6 +73,7 @@ export const connectChatRoom = ({
   subscribedChatRoomIds,
   onMessageCreated,
   onRoomMessageCreated,
+  onMessageChanged,
   onReadUpdated,
   onTypingChanged,
   onGlobalTypingChanged,
@@ -88,7 +97,7 @@ export const connectChatRoom = ({
       [...new Set(subscribedChatRoomIds)].forEach((subscribedRoomId) => {
         client.subscribe(`/topic/chatRoom/${subscribedRoomId}`, (frame) => {
           try {
-            const event = JSON.parse(frame.body) as ChatRealtimeEvent | ChatTypingEvent | ChatReadEvent;
+            const event = JSON.parse(frame.body) as ChatRealtimeEvent | ChatTypingEvent | ChatReadEvent | ChatMessageChangeEvent;
             if (event.type === "MESSAGE_CREATED") {
               // 방 목록은 모든 참여 방의 최신 메시지를 받아 즉시 갱신.
               onRoomMessageCreated(event);
@@ -100,6 +109,7 @@ export const connectChatRoom = ({
               if (event.chatRoomId === chatRoomId) onTypingChanged(event);
             }
             if (event.type === "READ_UPDATED") onReadUpdated(event);
+            if (event.type === "MESSAGE_UPDATED" || event.type === "MESSAGE_DELETED") onMessageChanged(event);
           } catch {
             onError("실시간 메시지 데이터를 해석하지 못했습니다.");
           }
@@ -127,6 +137,7 @@ export const connectChatNotification = ({
   subscribedChatRoomIds,
   onMessageCreated,
   onPresenceChanged,
+  onMessageChanged,
   onError,
 }: ConnectChatNotificationOptions) => {
   const client = new Client({
@@ -146,8 +157,9 @@ export const connectChatNotification = ({
       [...new Set(subscribedChatRoomIds)].forEach((chatRoomId) => {
         client.subscribe(`/topic/chatRoom/${chatRoomId}`, (frame) => {
           try {
-            const event = JSON.parse(frame.body) as ChatRealtimeEvent;
+            const event = JSON.parse(frame.body) as ChatRealtimeEvent | ChatMessageChangeEvent;
             if (event.type === "MESSAGE_CREATED") onMessageCreated(event);
+            if (event.type === "MESSAGE_UPDATED" || event.type === "MESSAGE_DELETED") onMessageChanged(event);
           } catch {
             onError("실시간 메시지 알림 데이터를 해석하지 못했습니다.");
           }
