@@ -52,6 +52,27 @@ body {
 }
 
 /* 토스트가 아래에서 자연스럽게 나타나는 애니메이션. */
+/* 줄바꿈·긴 단어를 포함한 답장 원문도 두 줄까지만 표시하고 초과 내용은 말줄임. */
+.reply-quote-content {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+@keyframes message-action-menu {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.message-action-menu { animation: message-action-menu 160ms ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .message-action-menu { animation: none; }
+}
+
 @keyframes toast-enter {
   0% {
     opacity: 0;

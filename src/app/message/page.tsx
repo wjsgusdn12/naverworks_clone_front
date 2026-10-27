@@ -3,6 +3,8 @@
 import { GlobalHeader } from "@/components/common/global-header";
 import { Toast } from "@/components/common/toast";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
+import { MessageActionMenu, type MessageMenuPosition } from "@/components/chat/message-action-menu";
+import { MessageQuote } from "@/components/chat/message-quote";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
   chatApi,
@@ -31,6 +33,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Forward,
+  Reply,
   MoreVertical,
   Pin,
   EyeOff,
@@ -170,6 +173,18 @@ function MessageContent() {
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
+  // 원문으로 이동한 경우, 누락 구간 없이 최신 대화까지 다음 페이지로 연결.
+  const [newerCursor, setNewerCursor] = useState<number | null>(null);
+  const newerCursorRef = useRef<number | null>(null);
+  const loadingNewerRef = useRef(false);
+  const [isLoadingNewerMessages, setIsLoadingNewerMessages] = useState(false);
+  const [isLocatingOriginal, setIsLocatingOriginal] = useState(false);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
+  const [replyByRoomId, setReplyByRoomId] = useState<Record<number, ChatMessage>>({});
+  const pendingMessageScrollRef = useRef<number | null>(null);
+  const originalNavigationUntilRef = useRef(0);
+  const messageWindowVersionRef = useRef(0);
+  const sendingRef = useRef(false);
   const [isLoadingPreviousMessages, setIsLoadingPreviousMessages] =
     useState(false);
   const [draftByRoomId, setDraftByRoomId] = useState<Record<number, string>>({});
@@ -224,6 +239,8 @@ function MessageContent() {
   // 최신 메시지 위치 여부를 버튼 UI와 실시간 수신 처리에서 함께 사용.
   const [isMessageListAtBottom, setIsMessageListAtBottom] = useState(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const composerRef = useRef<HTMLFormElement>(null);
+  const [composerHeight, setComposerHeight] = useState(176);
   const draftByRoomIdRef = useRef<Record<number, string>>({});
   const sendTypingRef = useRef<((typing: boolean) => void) | null>(null);
   const typingStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -267,6 +284,15 @@ function MessageContent() {
     [subscribedChatRoomIdsKey],
   );
   const input = selectedRoomId ? (draftByRoomId[selectedRoomId] ?? "") : "";
+  const replyTarget = selectedRoomId ? replyByRoomId[selectedRoomId] : undefined;
+  useEffect(() => {
+    const composer = composerRef.current;
+    if (!composer) return;
+    // 답장 인용의 높이가 달라져도 새 메시지 안내가 입력창을 덮지 않도록 측정.
+    const observer = new ResizeObserver(() => setComposerHeight(composer.offsetHeight + 40));
+    observer.observe(composer);
+    return () => observer.disconnect();
+  }, [selectedRoomId]);
   // 멘션 후보는 주소록 전체가 아니라 현재 메시지방에 참여 중인 구성원으로 제한.
   const mentionCandidates = useMemo(() => {
     return roomMentionMembers.filter((candidate) => candidate.membershipId !== member?.membershipId);
@@ -422,6 +448,7 @@ function MessageContent() {
     async (roomId: number, cursor?: number) => {
       if (!accessToken) return;
       if (cursor && isLoadingPreviousMessagesRef.current) return;
+      const windowVersion = messageWindowVersionRef.current;
 
       // 이전 페이지 요청 전 높이를 기억해, 추가된 메시지 때문에 화면이 튀지 않게 함.
       const previousScroll = cursor && messageListRef.current
@@ -437,7 +464,7 @@ function MessageContent() {
       }
       try {
         const result = await chatApi.messages(accessToken, roomId, cursor);
-        if (selectedRoomIdRef.current !== roomId) return;
+        if (selectedRoomIdRef.current !== roomId || messageWindowVersionRef.current !== windowVersion) return;
         if (previousScroll) preservedScrollRef.current = previousScroll;
         // API 반환 순서와 무관하게 오래된 메시지부터 보여 최신 메시지가 항상 하단에 오게 함.
         const sortedMessages = [...result.messages].sort(
@@ -446,9 +473,13 @@ function MessageContent() {
             new Date(right.createdAt).getTime(),
         );
         setMessages((current) =>
-          cursor ? [...sortedMessages, ...current] : sortedMessages,
+          cursor ? [...new Map([...sortedMessages, ...current].map((item) => [item.id, item])).values()].sort((left, right) => left.id - right.id) : sortedMessages,
         );
         setNextCursor(result.nextCursor);
+        if (!cursor) {
+          newerCursorRef.current = result.newerCursor ?? null;
+          setNewerCursor(result.newerCursor ?? null);
+        }
         // 방에 들어오면 서버가 읽음 처리하므로 목록 배지도 즉시 함께 지움.
         if (!cursor)
           setRooms((current) =>
@@ -480,6 +511,11 @@ function MessageContent() {
 
   useEffect(() => {
     if (selectedRoomId) {
+      messageWindowVersionRef.current += 1;
+      newerCursorRef.current = null;
+      pendingMessageScrollRef.current = null;
+      originalNavigationUntilRef.current = 0;
+      preservedScrollRef.current = null;
       shouldScrollToLatestRef.current = true;
       isMessageListAtBottomRef.current = true;
       // 방 진입 직후 최신 메시지의 날짜를 짧게 안내.
@@ -489,6 +525,9 @@ function MessageContent() {
           // 이전 방의 DOM 높이와 스크롤 위치가 새 방에 이어지지 않게 초기화.
           setMessages([]);
           setNextCursor(null);
+          setNewerCursor(null);
+          setIsLocatingOriginal(false);
+          setHighlightedMessageId(null);
           setUnseenMessageCount(0);
           setLatestUnseenMessage(null);
           return loadMessages(selectedRoomId);
@@ -530,6 +569,12 @@ function MessageContent() {
         }
         setMessages((current) => {
           if (current.some((message) => message.id === incoming.id)) return current;
+          // 과거 원문 구간에서는 새 메시지를 바로 붙이면 중간 대화가 빠지므로 안내만 표시.
+          if (newerCursorRef.current !== null) {
+            setUnseenMessageCount((count) => count + 1);
+            setLatestUnseenMessage({ senderName: incoming.senderName, content: incoming.content });
+            return current;
+          }
           if (
             incoming.senderMembershipId === member?.membershipId ||
             isMessageListAtBottomRef.current
@@ -759,6 +804,29 @@ function MessageContent() {
   useEffect(() => {
     if (!messageListRef.current) return;
     const messageList = messageListRef.current;
+    const targetId = pendingMessageScrollRef.current;
+    if (targetId !== null) {
+      const frameId = requestAnimationFrame(() => {
+        const target = messageList.querySelector<HTMLElement>(`[data-message-id="${targetId}"]`);
+        if (!target) return;
+        const bubble = target.querySelector<HTMLElement>("[data-message-bubble]") ?? target;
+        const bubbleBounds = bubble.getBoundingClientRect();
+        const listBounds = messageList.getBoundingClientRect();
+        // 이미 화면 안에 보이는 원문은 제자리에서 강조. 화면 밖일 때만 스크롤 이동.
+        const isVisible = bubbleBounds.top >= listBounds.top + 8
+          && bubbleBounds.bottom <= listBounds.bottom - 8;
+        if (!isVisible) {
+          const top = bubbleBounds.top - listBounds.top + messageList.scrollTop
+            - Math.max(8, (messageList.clientHeight - bubbleBounds.height) / 2);
+          messageList.scrollTo({ top: Math.max(0, top), behavior: "instant" });
+        }
+        pendingMessageScrollRef.current = null;
+        preservedScrollRef.current = null;
+        shouldScrollToLatestRef.current = false;
+        setHighlightedMessageId(targetId);
+      });
+      return () => cancelAnimationFrame(frameId);
+    }
     const preservedScroll = preservedScrollRef.current;
     if (preservedScroll) {
       const frameId = requestAnimationFrame(() => {
@@ -781,6 +849,22 @@ function MessageContent() {
     });
     return () => cancelAnimationFrame(frameId);
   }, [messages]);
+
+  useEffect(() => {
+    if (highlightedMessageId === null) return;
+    const row = messageListRef.current?.querySelector<HTMLElement>(`[data-message-id="${highlightedMessageId}"]`);
+    const bubble = row?.querySelector<HTMLElement>("[data-message-bubble]");
+    if (!bubble) return;
+
+    // 시간으로 해제하지 않고 선택한 말풍선 밖을 누를 때만 테두리 해제.
+    const clearHighlightOutside = (event: PointerEvent) => {
+      if (!bubble.contains(event.target as Node)) setHighlightedMessageId(null);
+    };
+    document.addEventListener("pointerdown", clearHighlightOutside, true);
+    return () => {
+      document.removeEventListener("pointerdown", clearHighlightOutside, true);
+    };
+  }, [highlightedMessageId, selectedRoomId]);
 
   useEffect(() => {
     if (!shouldScrollToLatestRef.current || messages.length === 0) return;
@@ -922,9 +1006,73 @@ function MessageContent() {
       ? member?.membershipId
       : selectedRoom?.directMembershipId;
 
+  const copyMessage = async (message: ChatMessage) => {
+    try {
+      // 화면의 말줄임·멘션 스타일과 무관하게 원문과 줄바꿈을 그대로 복사.
+      await navigator.clipboard.writeText(message.content);
+      showToast("메시지를 복사했습니다.");
+    } catch {
+      showToast("메시지를 복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요.");
+    }
+  };
+
+  const startReply = (message: ChatMessage) => {
+    if (!selectedRoomId) return;
+    setReplyByRoomId((current) => ({ ...current, [selectedRoomId]: message }));
+    setMentionStartIndex(null);
+    requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
+  };
+
+  const cancelReply = () => {
+    if (!selectedRoomId) return;
+    setReplyByRoomId((current) => {
+      const next = { ...current };
+      delete next[selectedRoomId];
+      return next;
+    });
+    inputRef.current?.focus({ preventScroll: true });
+  };
+
+  const jumpToOriginal = async (messageId: number) => {
+    if (!accessToken || !selectedRoomId || isLocatingOriginal) return;
+    const roomId = selectedRoomId;
+    const windowVersion = ++messageWindowVersionRef.current;
+    shouldScrollToLatestRef.current = false;
+    preservedScrollRef.current = null;
+    originalNavigationUntilRef.current = Date.now() + 800;
+    isMessageListAtBottomRef.current = false;
+    setIsMessageListAtBottom(false);
+    setHighlightedMessageId(null);
+    try {
+      if (messages.some((item) => item.id === messageId)) {
+        pendingMessageScrollRef.current = messageId;
+        setMessages((current) => [...current]);
+        return;
+      }
+      setIsLocatingOriginal(true);
+      const page = await chatApi.messageAnchor(accessToken, roomId, messageId);
+      if (selectedRoomIdRef.current !== roomId || messageWindowVersionRef.current !== windowVersion) return;
+      newerCursorRef.current = page.newerCursor;
+      setNewerCursor(page.newerCursor);
+      setNextCursor(page.nextCursor);
+      pendingMessageScrollRef.current = messageId;
+      originalNavigationUntilRef.current = Date.now() + 800;
+      setMessages(page.messages);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "원문 메시지로 이동하지 못했습니다.");
+    } finally {
+      if (messageWindowVersionRef.current === windowVersion) setIsLocatingOriginal(false);
+    }
+  };
+
   const submitMessage = async (event?: FormEvent) => {
     event?.preventDefault();
-    if (!accessToken || !selectedRoomId || !input.trim()) return;
+    if (!accessToken || !selectedRoomId || !input.trim() || sendingRef.current) return;
+    // 전송 중 방을 바꿔도 응답·초기화는 전송을 시작한 방에만 적용.
+    const roomId = selectedRoomId;
+    const sentInput = input;
+    const sentReplyId = replyTarget?.id;
+    sendingRef.current = true;
     try {
       stopTyping();
       const mentionedMembershipIds = input.includes("@All")
@@ -934,24 +1082,32 @@ function MessageContent() {
           .map((candidate) => candidate.membershipId);
       const message = await chatApi.send(
         accessToken,
-        selectedRoomId,
+        roomId,
         input.trim(),
         mentionedMembershipIds,
+        sentReplyId,
       );
-      shouldScrollToLatestRef.current = true;
-      isMessageListAtBottomRef.current = true;
-      setUnseenMessageCount(0);
-      setLatestUnseenMessage(null);
-      // REST 응답과 같은 메시지가 STOMP로 먼저 도착했을 수 있으므로 id를 다시 확인.
-      setMessages((current) =>
-        current.some((item) => item.id === message.id)
-          ? current
-          : [...current, message],
-      );
+      if (selectedRoomIdRef.current === roomId) {
+        shouldScrollToLatestRef.current = true;
+        isMessageListAtBottomRef.current = true;
+        setUnseenMessageCount(0);
+        setLatestUnseenMessage(null);
+        if (newerCursorRef.current !== null) {
+          // 과거 구간에서 전송했다면 최신 페이지로 돌아와 대화 간격을 메움.
+          messageWindowVersionRef.current += 1;
+          pendingMessageScrollRef.current = null;
+          preservedScrollRef.current = null;
+          setIsLocatingOriginal(false);
+          void loadMessages(roomId).catch(() => showToast("전송은 완료했으나 최신 대화를 불러오지 못했습니다."));
+        } else {
+          // REST 응답과 STOMP 수신이 겹쳐도 같은 ID의 말풍선은 한 번만 추가.
+          setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, message]);
+        }
+      }
       setRooms((current) =>
         sortRoomsByLatestActivity(
           current.map((room) =>
-            room.id === selectedRoomId
+            room.id === roomId
               ? {
                 ...room,
                 lastMessage: message.content,
@@ -964,15 +1120,24 @@ function MessageContent() {
         ),
       );
       setDraftByRoomId((current) => {
+        if (current[roomId] !== sentInput) return current;
         const remainingDrafts = { ...current };
-        delete remainingDrafts[selectedRoomId];
+        delete remainingDrafts[roomId];
         return remainingDrafts;
       });
-      inputRef.current?.focus();
+      setReplyByRoomId((current) => {
+        if (current[roomId]?.id !== sentReplyId) return current;
+        const next = { ...current };
+        delete next[roomId];
+        return next;
+      });
+      if (selectedRoomIdRef.current === roomId) inputRef.current?.focus({ preventScroll: true });
     } catch (error) {
       showToast(
         error instanceof Error ? error.message : "메시지를 보내지 못했습니다.",
       );
+    } finally {
+      sendingRef.current = false;
     }
   };
 
@@ -1054,15 +1219,50 @@ function MessageContent() {
 
   const closeRoomManageModal = useCallback(() => setRoomManageOpen(false), []);
 
+  const loadNewerMessages = useCallback(async (roomId: number, cursor: number) => {
+    if (!accessToken || loadingNewerRef.current) return;
+    const windowVersion = messageWindowVersionRef.current;
+    loadingNewerRef.current = true;
+    setIsLoadingNewerMessages(true);
+    try {
+      const page = await chatApi.newerMessages(accessToken, roomId, cursor);
+      if (selectedRoomIdRef.current !== roomId || messageWindowVersionRef.current !== windowVersion) return;
+      newerCursorRef.current = page.newerCursor;
+      setNewerCursor(page.newerCursor);
+      // 실시간 도착과 다음 페이지 조회가 겹칠 수 있어 ID로 합치고 정렬.
+      setMessages((current) => [...new Map([...current, ...page.messages].map((item) => [item.id, item])).values()].sort((left, right) => left.id - right.id));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "다음 메시지를 불러오지 못했습니다.");
+    } finally {
+      loadingNewerRef.current = false;
+      setIsLoadingNewerMessages(false);
+    }
+  }, [accessToken, showToast]);
+
+  useEffect(() => {
+    const messageList = messageListRef.current;
+    if (!messageList || !selectedRoomId || newerCursor === null || isLoadingNewerMessages || isLocatingOriginal) return;
+    // 원문 주변 대화가 화면보다 짧으면 사용자가 스크롤할 수 없으므로 다음 페이지를 자동 보충.
+    if (messageList.scrollHeight <= messageList.clientHeight + 24) {
+      void loadNewerMessages(selectedRoomId, newerCursor);
+    }
+  }, [messages, selectedRoomId, newerCursor, isLoadingNewerMessages, isLocatingOriginal, loadNewerMessages]);
+
   const showScrollDate = (event: React.UIEvent<HTMLDivElement>) => {
     const messageList = event.currentTarget;
+    // 원문으로 부드럽게 이동하는 도중에는 스크롤 페이지 요청을 잠시 중지.
+    if (pendingMessageScrollRef.current !== null || Date.now() < originalNavigationUntilRef.current || isLocatingOriginal) return;
     // 최상단 도달 시 이전 페이지를 자동으로 이어 붙임.
     if (messageList.scrollTop <= 24 && nextCursor && selectedRoomId) {
-      void loadMessages(selectedRoomId, nextCursor);
+      void loadMessages(selectedRoomId, nextCursor).catch((error: Error) => showToast(error.message));
     }
-    const isAtBottom =
+    const reachedWindowBottom =
       messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight <=
       24;
+    if (reachedWindowBottom && newerCursorRef.current !== null && selectedRoomId) {
+      void loadNewerMessages(selectedRoomId, newerCursorRef.current);
+    }
+    const isAtBottom = reachedWindowBottom && newerCursorRef.current === null;
     isMessageListAtBottomRef.current = isAtBottom;
     setIsMessageListAtBottom(isAtBottom);
     if (isAtBottom) {
@@ -1088,6 +1288,17 @@ function MessageContent() {
   const scrollToLatestMessage = () => {
     const messageList = messageListRef.current;
     if (!messageList) return;
+    if (newerCursorRef.current !== null && selectedRoomId) {
+      messageWindowVersionRef.current += 1;
+      pendingMessageScrollRef.current = null;
+      preservedScrollRef.current = null;
+      shouldScrollToLatestRef.current = true;
+      setIsLocatingOriginal(false);
+      setUnseenMessageCount(0);
+      setLatestUnseenMessage(null);
+      void loadMessages(selectedRoomId).catch((error: Error) => showToast(error.message));
+      return;
+    }
     isMessageListAtBottomRef.current = true;
     setIsMessageListAtBottom(true);
     setUnseenMessageCount(0);
@@ -1353,10 +1564,10 @@ function MessageContent() {
                   {scrollDateLabel}
                 </div>
               )}
-              {isLoadingPreviousMessages && (
+              {(isLoadingPreviousMessages || isLoadingNewerMessages || isLocatingOriginal) && (
                 <div className="pointer-events-none absolute left-1/2 top-14 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500 shadow-sm animate-in fade-in slide-in-from-top-1">
                   <LoaderCircle size={14} className="animate-spin text-blue-500" />
-                  <span>이전 메시지를 불러오는 중입니다.</span>
+                  <span>{isLocatingOriginal ? "원문 메시지로 이동 중입니다." : isLoadingNewerMessages ? "다음 메시지를 불러오는 중입니다." : "이전 메시지를 불러오는 중입니다."}</span>
                 </div>
               )}
               <div
@@ -1395,6 +1606,8 @@ function MessageContent() {
                         </p>
                       )}
                       <div
+                        data-message-id={message.id}
+                        className="group/message relative w-full"
                         data-message-date={dateKey(message.createdAt)}
                         data-message-label={label}
                       >
@@ -1405,6 +1618,7 @@ function MessageContent() {
                         ) : (
                           <MessageBubble
                             message={message}
+                            isOriginalHighlighted={highlightedMessageId === message.id}
                             isMine={
                               message.senderMembershipId ===
                               member?.membershipId
@@ -1417,13 +1631,16 @@ function MessageContent() {
                             showTail={!isGroupedWithPrevious}
                             onOpenReadMembers={openReadMembers}
                             onProfileClick={openUserProfile}
+                            onCopy={(target) => void copyMessage(target)}
+                            onReply={startReply}
+                            onOpenOriginal={(messageId) => void jumpToOriginal(messageId)}
                           />
                         )}
                       </div>
                     </Fragment>
                   );
                 })}
-                {typingMembers.length > 0 && (
+                {newerCursor === null && typingMembers.length > 0 && (
                   <TypingBubble
                     member={typingMembers[0]}
                     additionalCount={typingMembers.length - 1}
@@ -1439,7 +1656,8 @@ function MessageContent() {
                   type="button"
                   onClick={scrollToLatestMessage}
                   title="새 메시지 위치로 이동"
-                  className="absolute bottom-[176px] left-5 right-5 z-30 flex h-11 cursor-pointer items-center gap-1.5 rounded-lg bg-black/85 px-5 text-left text-sm text-white shadow-md backdrop-blur-sm transition duration-200 hover:bg-black/90 active:scale-[0.995]"
+                  style={{ bottom: composerHeight }}
+                  className="absolute left-5 right-5 z-30 flex h-11 cursor-pointer items-center gap-1.5 rounded-lg bg-black/85 px-5 text-left text-sm text-white shadow-md backdrop-blur-sm transition duration-200 hover:bg-black/90 active:scale-[0.995]"
                 >
                   <strong className="shrink-0 font-semibold">{latestUnseenMessage.senderName}</strong>
                   <span className="shrink-0 text-slate-300">:</span>
@@ -1448,12 +1666,13 @@ function MessageContent() {
                   <ChevronDown size={17} className="ml-auto shrink-0" aria-hidden="true" />
                 </button>
               )}
-              {!isMessageListAtBottom && (
+              {(!isMessageListAtBottom || newerCursor !== null) && (
                 <button
                   type="button"
                   aria-label="최하단 메시지로 이동"
                   onClick={scrollToLatestMessage}
-                  className="scroll-to-bottom-button absolute bottom-48 right-7 z-20 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white/50 text-slate-600 shadow-sm backdrop-blur-sm transition duration-200 hover:bg-white/80 hover:text-blue-600 active:scale-95"
+                  style={{ bottom: composerHeight + 16 }}
+                  className="scroll-to-bottom-button absolute right-7 z-20 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white/50 text-slate-600 shadow-sm backdrop-blur-sm transition duration-200 hover:bg-white/80 hover:text-blue-600 active:scale-95"
                 >
                   <ArrowDown
                     size={18}
@@ -1464,14 +1683,38 @@ function MessageContent() {
                 </button>
               )}
               <form
+                ref={composerRef}
                 onSubmit={submitMessage}
-                className="relative m-5 rounded-2xl bg-slate-100 p-4"
+                className="relative m-5 rounded-2xl bg-slate-100 pb-4"
               >
-                <textarea
+                {replyTarget && (
+                  <div className="message-action-menu flex items-center gap-3 rounded-t-2xl border border-slate-200 bg-white px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <MessageQuote
+                        reply={{ messageId: replyTarget.id, senderName: replyTarget.senderName, content: replyTarget.content }}
+                        avatar={<MessageMemberAvatar
+                          name={replyTarget.senderName}
+                          presenceStatus={contactMemberById.get(replyTarget.senderMembershipId)?.presenceStatus ?? (replyTarget.senderMembershipId === member?.membershipId ? "ONLINE" : "OFFLINE")}
+                          onClick={() => openUserProfile(replyTarget.senderMembershipId)}
+                        />}
+                      />
+                    </div>
+                    <button type="button" aria-label="답장 취소" onClick={cancelReply} className="group relative flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 active:scale-90">
+                      <X size={17} aria-hidden="true" />
+                      <span role="tooltip" className="pointer-events-none absolute bottom-8 right-0 hidden whitespace-nowrap rounded bg-slate-700 px-2 py-1 text-xs text-white group-hover:block group-focus-visible:block">답장 취소</span>
+                    </button>
+                  </div>
+                )}
+                <div className="relative">
+                  {replyTarget && <Reply size={16} strokeWidth={1.8} aria-hidden="true" className="pointer-events-none absolute left-4 top-3.5 text-slate-400" />}
+                  <textarea
                   ref={inputRef}
                   value={input}
+                  maxLength={2000}
                   onChange={(event) => handleMessageInput(event.target.value, event.target.selectionStart ?? event.target.value.length)}
                   onKeyDown={(event) => {
+                    // 한글 조합 확정 Enter를 전송으로 오인하지 않음.
+                    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
                     if (mentionStartIndex !== null && visibleMentionCandidates.length > 0) {
                       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                         event.preventDefault();
@@ -1488,14 +1731,16 @@ function MessageContent() {
                         return;
                       }
                     }
+                    if (event.key === "Escape" && replyTarget) { cancelReply(); return; }
                     if (event.key === "Enter" && !event.shiftKey) {
                       event.preventDefault();
                       void submitMessage();
                     }
                   }}
                   placeholder="메시지를 입력해주세요. (Enter: 전송 / Shift + Enter: 줄바꿈)"
-                  className="h-24 w-full resize-none bg-transparent text-sm outline-none"
+                  className={`h-28 w-full resize-none bg-transparent pr-4 pt-3 text-sm outline-none ${replyTarget ? "pl-10" : "pl-4"}`}
                 />
+                </div>
                 {mentionStartIndex !== null && visibleMentionCandidates.length > 0 && (
                   <div className="absolute bottom-[calc(100%+8px)] left-5 z-30 max-h-72 w-[420px] overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
                     {visibleMentionCandidates.map((candidate, index) => (
@@ -1519,7 +1764,7 @@ function MessageContent() {
                     ))}
                   </div>
                 )}
-                <div className="flex items-center gap-3 text-slate-600">
+                <div className="flex items-center gap-3 px-4 text-slate-600">
                   <button
                     type="button"
                     aria-label="첨부"
@@ -1990,6 +2235,7 @@ function MentionText({ content }: { content: string }) {
 
 function MessageBubble({
   message,
+  isOriginalHighlighted,
   isMine,
   isDirect,
   isGroup,
@@ -1999,8 +2245,12 @@ function MessageBubble({
   showTail,
   onOpenReadMembers,
   onProfileClick,
+  onCopy,
+  onReply,
+  onOpenOriginal,
 }: {
   message: ChatMessage;
+  isOriginalHighlighted: boolean;
   isMine: boolean;
   isDirect: boolean;
   isGroup: boolean;
@@ -2010,7 +2260,29 @@ function MessageBubble({
   showTail: boolean;
   onOpenReadMembers: (message: ChatMessage) => Promise<void>;
   onProfileClick: (membershipId: number) => void;
+  onCopy: (message: ChatMessage) => void;
+  onReply: (message: ChatMessage) => void;
+  onOpenOriginal: (messageId: number) => void;
 }) {
+  // ⋮ 클릭과 말풍선 우클릭이 같은 메뉴·닫기 동작을 공유.
+  const [menuPosition, setMenuPosition] = useState<MessageMenuPosition | null>(null);
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const bubble = bubbleRef.current;
+    if (!isOriginalHighlighted || !bubble) return;
+    // 두 번 통통 튄 뒤 원래 자리로 복귀. 테두리 상태는 별도로 유지.
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const animation = bubble.animate(reducedMotion ? [
+      { opacity: 0.6 }, { opacity: 1 },
+    ] : [
+      { transform: "translateY(0)", offset: 0 },
+      { transform: "translateY(-10px)", offset: 0.25 },
+      { transform: "translateY(0)", offset: 0.5 },
+      { transform: "translateY(-5px)", offset: 0.75 },
+      { transform: "translateY(0)", offset: 1 },
+    ], { duration: reducedMotion ? 250 : 1150, easing: "ease-in-out" });
+    return () => animation.cancel();
+  }, [isOriginalHighlighted]);
   const time = new Date(message.createdAt).toLocaleTimeString("ko-KR", {
     hour: "2-digit",
     minute: "2-digit",
@@ -2032,18 +2304,40 @@ function MessageBubble({
   // 읽음은 메시지별 상태라 매 말풍선에 표시하고, 시간만 같은 분 묶음의 마지막에 표시.
   const meta = readLabel || showMeta ? (
     <div
-      className={`flex shrink-0 flex-col pb-1 text-[12px] text-slate-400 ${isMine ? "items-end text-right" : "items-start text-left"}`}
+      className={`flex shrink-0 flex-col text-[12px] text-slate-400 ${isMine ? "items-end text-right" : "items-start text-left"}`}
     >
       {readLabel}
       {showMeta ? <span>{time}</span> : null}
     </div>
   ) : null;
+  const messageMenu = <MessageActionMenu isMine={isMine} position={menuPosition} onPositionChange={setMenuPosition} onCopy={() => onCopy(message)} onReply={() => onReply(message)} />;
+  // 시간과 메뉴의 밑선을 맞추고, 메뉴가 숨겨져도 공간을 유지해 말풍선 흔들림 방지.
+  const messageActions = (
+    <div className="flex shrink-0 items-end gap-1 pb-1">
+      {isMine ? <>{messageMenu}{meta}</> : <>{meta}{messageMenu}</>}
+    </div>
+  );
   // 꼬리는 프로필 쪽을 향하는 위쪽 대각선의 직각삼각형으로 표현.
+  const reply = message.reply;
   const bubble = (
     <div
-      className={`relative ${isGroup && !isMine ? "max-w-full" : "max-w-[70%]"} whitespace-pre-wrap break-words px-4 py-3 text-sm leading-6 ${isMine ? "rounded-2xl bg-blue-100" : "rounded-2xl bg-slate-100"} ${showTail ? (isMine ? "after:absolute after:-right-2 after:top-3 after:h-3 after:w-3 after:bg-blue-100 after:[clip-path:polygon(0_0,0_100%,100%_0)]" : "after:absolute after:-left-2 after:top-3 after:h-3 after:w-3 after:bg-slate-100 after:[clip-path:polygon(100%_0,100%_100%,0_0)]") : ""}`}
+      ref={bubbleRef}
+      data-message-bubble
+      onContextMenu={(event) => {
+        // 브라우저 기본 메뉴를 막고 커서 위치에 메시지 메뉴를 표시.
+        event.preventDefault();
+        event.stopPropagation();
+        setMenuPosition({
+          left: Math.max(8, Math.min(event.clientX, window.innerWidth - 152)),
+          top: Math.max(8, Math.min(event.clientY, window.innerHeight - 100)),
+        });
+      }}
+      className={`relative min-w-0 ${isGroup && !isMine ? "max-w-full" : "max-w-[70%]"} whitespace-pre-wrap break-words ${reply ? "w-[380px]" : "px-4 py-3"} text-sm leading-6 ${isMine ? "rounded-2xl bg-blue-100" : "rounded-2xl bg-slate-100"} ${showTail ? (isMine ? "after:absolute after:-right-2 after:top-3 after:h-3 after:w-3 after:bg-blue-100 after:[clip-path:polygon(0_0,0_100%,100%_0)]" : "after:absolute after:-left-2 after:top-3 after:h-3 after:w-3 after:bg-slate-100 after:[clip-path:polygon(100%_0,100%_100%,0_0)]") : ""}`}
     >
-      <MentionText content={message.content} />
+      {/* 꼬리 가상 요소보다 앞에 테두리를 그려 접점에서도 파란 선이 가려지지 않게 처리. */}
+      {isOriginalHighlighted && <span aria-hidden="true" style={{ position: "absolute", inset: 0, zIndex: 2, pointerEvents: "none", borderRadius: "inherit", outline: "2px solid #3b82f6", outlineOffset: "0px" }} />}
+      {reply && <MessageQuote reply={reply} onOpen={() => onOpenOriginal(reply.messageId)} />}
+      {reply ? <div className="px-3 py-2"><MentionText content={message.content} /></div> : <MentionText content={message.content} />}
     </div>
   );
   if (!isMine && isGroup) {
@@ -2073,7 +2367,7 @@ function MessageBubble({
           )}
           <div className={`${showSender ? "mt-1" : ""} flex items-end gap-2`}>
             {bubble}
-            {meta}
+            {messageActions}
           </div>
         </div>
       </div>
@@ -2087,13 +2381,13 @@ function MessageBubble({
       >
         {isMine ? (
           <>
-            {meta}
+            {messageActions}
             {bubble}
           </>
         ) : (
           <>
             {bubble}
-            {meta}
+            {messageActions}
           </>
         )}
       </div>

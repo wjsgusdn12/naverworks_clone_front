@@ -11,9 +11,12 @@ export type ChatMessage = {
   id: number; senderMembershipId: number; senderName: string; content: string; type: "TEXT" | "SYSTEM";
   // unreadCount와 readCount를 분리해 "안 읽었는데 읽음"으로 보이지 않게 처리.
   createdAt: string; unreadCount: number; readCount: number; mentionedMembershipIds: number[];
+  reply: ChatReply | null;
 };
 
-export type ChatMessagePage = { messages: ChatMessage[]; nextCursor: number | null };
+// 원문 위치와 답장 당시 인용 정보를 함께 전달.
+export type ChatReply = { messageId: number; senderName: string; content: string };
+export type ChatMessagePage = { messages: ChatMessage[]; nextCursor: number | null; newerCursor: number | null };
 export type ChatReadMember = { membershipId: number; displayName: string; jobGrade: string | null; departmentName: string | null; read: boolean };
 export type ChatMemberProfile = { membershipId: number; displayName: string; jobGradeName: string | null; departmentName: string | null; companyName: string };
 export type ChatRoomDetail = { room: ChatRoom; memberIds: number[]; members: ChatMemberProfile[] };
@@ -54,7 +57,10 @@ export const chatApi = {
   updateNotification: (token: string, roomId: number, mode: "ALL" | "MENTION" | "NONE") => request<void>(`/api/v1/chatRoom/notification/update?chatRoomId=${roomId}`, token, { method: "POST", body: JSON.stringify({ mode }) }),
   detail: (token: string, roomId: number) => request<ChatRoomDetail>(`/api/v1/chatRoom/detail?chatRoomId=${roomId}`, token),
   messages: (token: string, roomId: number, cursor?: number) => request<ChatMessagePage>(`/api/v1/chatRoom/message?chatRoomId=${roomId}${cursor ? `&cursor=${cursor}` : ""}`, token),
-  send: (token: string, roomId: number, content: string, mentionedMembershipIds: number[] = []) => request<ChatMessage>(`/api/v1/chatRoom/message/create?chatRoomId=${roomId}`, token, { method: "POST", body: JSON.stringify({ content, mentionedMembershipIds }) }),
+  // 원문 이동은 해당 위치만 조회하고, 이후 페이지는 다음 커서로 연결.
+  messageAnchor: (token: string, roomId: number, messageId: number) => request<ChatMessagePage>(`/api/v1/chatRoom/message?chatRoomId=${roomId}&anchorMessageId=${messageId}`, token),
+  newerMessages: (token: string, roomId: number, cursor: number) => request<ChatMessagePage>(`/api/v1/chatRoom/message?chatRoomId=${roomId}&afterCursor=${cursor}`, token),
+  send: (token: string, roomId: number, content: string, mentionedMembershipIds: number[] = [], replyToMessageId?: number) => request<ChatMessage>(`/api/v1/chatRoom/message/create?chatRoomId=${roomId}`, token, { method: "POST", body: JSON.stringify({ content, mentionedMembershipIds, replyToMessageId }) }),
   // 현재 보고 있는 방에 도착한 메시지는 즉시 읽음 위치를 서버에도 반영.
   markRead: (token: string, roomId: number) => request<void>(`/api/v1/chatRoom/read/update?chatRoomId=${roomId}`, token, { method: "POST" }),
   readMembers: (token: string, roomId: number, messageId: number, read: boolean) => request<ChatReadMember[]>(`/api/v1/chatRoom/message/readMember?chatRoomId=${roomId}&messageId=${messageId}&read=${read}`, token),
