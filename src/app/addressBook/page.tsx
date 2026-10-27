@@ -4,13 +4,14 @@ import { GlobalHeader } from "@/components/common/global-header";
 import { FavoriteButton } from "@/components/address-book/favorite-button";
 import { Toast } from "@/components/common/toast";
 import { useAuth } from "@/components/auth/auth-provider";
+import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import { addressBookApi, type AddressBookMember, type AddressBookMemberDetail, type AddressBookSearchHistory } from "@/lib/api/address-book-api";
 import { chatApi } from "@/lib/api/chat-api";
 import { markAuthenticationRequired } from "@/lib/auth-required-notice";
 import { useToast } from "@/hooks/use-toast";
 import { Building2, CalendarDays, Check, ChevronDown, ChevronRight, Clock3, ExternalLink, Mail, MessageCircle, Search, Star, UsersRound, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject, type UIEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject, type UIEvent } from "react";
 
 type AddressBookView = "favorite" | "group" | "company" | "department";
 
@@ -24,6 +25,7 @@ const statusClassName = {
 export default function AddressBookPage() {
   const router = useRouter();
   const { accessToken, member, status, logout } = useAuth();
+  const { presenceByMembershipId } = useChatNotification();
   const { toast, showToast, dismissToast, resetToast } = useToast();
   const [view, setView] = useState<AddressBookView>("company");
   const [departmentId, setDepartmentId] = useState<number | null>(null);
@@ -51,6 +53,16 @@ export default function AddressBookPage() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const previewRequestIdRef = useRef(0);
+  // REST 조회 결과 위에 WebSocket의 최신 접속 상태를 덮어 실시간 배지를 유지.
+  const displayMembers = useMemo(
+    () => members.map((target) => {
+      const online = presenceByMembershipId[target.membershipId];
+      return online === undefined
+        ? target
+        : { ...target, presenceStatus: online ? "ONLINE" as const : "OFFLINE" as const };
+    }),
+    [members, presenceByMembershipId],
+  );
 
   // 주소록 프로필에서 1:1 채팅방을 준비한 뒤 해당 방을 바로 엶.
   const openDirectMessage = async (targetMembershipId: number) => {
@@ -360,7 +372,7 @@ export default function AddressBookPage() {
             </div>
             <div className="flex min-h-[calc(100vh-15rem)] border-y border-slate-200">
               <div className="min-w-0 flex-1 overflow-auto">
-                <table className="w-full min-w-[900px] border-collapse text-left text-sm"><thead className="border-b border-slate-200 bg-white text-slate-700"><tr><th className="w-11 px-3 py-3" />{[["name", "이름"], ["jobGrade", "직책/직급"], ["department", "부서"], ["company", "소속"], ["email", "이메일"], ["phone", "전화번호"]].map(([key, label]) => <th key={key} className="px-4 py-3 font-semibold"><button className="cursor-pointer hover:text-blue-600" onClick={() => selectSort(key)}>{label}{sort === key ? (direction === "asc" ? " ↓" : " ↑") : ""}</button></th>)}</tr></thead><tbody>{members.map((target) => <tr key={target.membershipId} className={`cursor-pointer border-b border-slate-100 transition hover:bg-blue-50 ${selectedMember?.membershipId === target.membershipId ? "bg-blue-50" : ""}`} onClick={() => void selectMember(target)}><td className="px-3 py-3"><span onClick={(event) => event.stopPropagation()}><CustomCheckbox label={`${target.displayName} 선택`} checked={selectedMemberIds.includes(target.membershipId)} onChange={() => toggleMemberSelection(target.membershipId)} /></span></td><td className="px-4 py-3"><div className="flex items-center gap-2"><span className="shrink-0" onClick={(event) => event.stopPropagation()}><FavoriteButton active={target.favorite} onClick={() => void toggleFavorite(target)} /></span><MemberAvatar member={target} /><b>{target.displayName}</b></div></td><td className="px-4 py-3">{[target.jobTitle, target.jobGradeName].filter(Boolean).join(" / ") || "-"}</td><td className="px-4 py-3">{target.departmentName ?? "-"}</td><td className="px-4 py-3">{target.companyName}</td><td className="px-4 py-3">{target.email}</td><td className="px-4 py-3">{target.phoneNumber ?? "-"}</td></tr>)}</tbody></table>{members.length === 0 && <p className="p-12 text-center text-sm text-slate-500">표시할 구성원이 없습니다.</p>}</div>
+                <table className="w-full min-w-[900px] border-collapse text-left text-sm"><thead className="border-b border-slate-200 bg-white text-slate-700"><tr><th className="w-11 px-3 py-3" />{[["name", "이름"], ["jobGrade", "직책/직급"], ["department", "부서"], ["company", "소속"], ["email", "이메일"], ["phone", "전화번호"]].map(([key, label]) => <th key={key} className="px-4 py-3 font-semibold"><button className="cursor-pointer hover:text-blue-600" onClick={() => selectSort(key)}>{label}{sort === key ? (direction === "asc" ? " ↓" : " ↑") : ""}</button></th>)}</tr></thead><tbody>{displayMembers.map((target) => <tr key={target.membershipId} className={`cursor-pointer border-b border-slate-100 transition hover:bg-blue-50 ${selectedMember?.membershipId === target.membershipId ? "bg-blue-50" : ""}`} onClick={() => void selectMember(target)}><td className="px-3 py-3"><span onClick={(event) => event.stopPropagation()}><CustomCheckbox label={`${target.displayName} 선택`} checked={selectedMemberIds.includes(target.membershipId)} onChange={() => toggleMemberSelection(target.membershipId)} /></span></td><td className="px-4 py-3"><div className="flex items-center gap-2"><span className="shrink-0" onClick={(event) => event.stopPropagation()}><FavoriteButton active={target.favorite} onClick={() => void toggleFavorite(target)} /></span><MemberAvatar member={target} /><b>{target.displayName}</b></div></td><td className="px-4 py-3">{[target.jobTitle, target.jobGradeName].filter(Boolean).join(" / ") || "-"}</td><td className="px-4 py-3">{target.departmentName ?? "-"}</td><td className="px-4 py-3">{target.companyName}</td><td className="px-4 py-3">{target.email}</td><td className="px-4 py-3">{target.phoneNumber ?? "-"}</td></tr>)}</tbody></table>{displayMembers.length === 0 && <p className="p-12 text-center text-sm text-slate-500">표시할 구성원이 없습니다.</p>}</div>
               {selectedMember && <MemberPanel member={selectedMember} onClose={() => setSelectedMember(null)} onToggleFavorite={() => void toggleFavorite(selectedMember)} onMessage={() => void openDirectMessage(selectedMember.membershipId)} showToast={showToast} />}
             </div>
           </>}

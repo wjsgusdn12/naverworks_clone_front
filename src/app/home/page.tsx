@@ -55,7 +55,10 @@ export default function HomePage() {
         isAuthenticated
       />
       {/* 아직 연결되지 않은 홈 기능은 공통 안내 토스트로 처리. */}
-      <HomeDashboard onFeatureClick={(featureName) => featureName === "메시지" ? router.push("/message") : showToast(`${featureName} 기능은 준비 중입니다.`)} />
+      <HomeDashboard
+        displayName={member.displayName}
+        onFeatureClick={(featureName) => featureName === "메시지" ? router.push("/message") : showToast(`${featureName} 기능은 준비 중입니다.`)}
+      />
       {toast && <Toast key={toast.id} message={toast.message} phase={toast.phase} onClose={dismissToast} />}
     </div>
   );

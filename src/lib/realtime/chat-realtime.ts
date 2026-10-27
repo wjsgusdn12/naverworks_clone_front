@@ -22,6 +22,12 @@ type ChatReadEvent = {
   lastReadMessageId: number;
 };
 
+export type PresenceRealtimeEvent = {
+  type: "PRESENCE_CHANGED";
+  membershipId: number;
+  online: boolean;
+};
+
 const websocketUrl = () => {
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
   if (!apiBaseUrl) throw new Error("NEXT_PUBLIC_API_BASE_URL 환경 변수가 필요합니다.");
@@ -41,6 +47,14 @@ type ConnectChatRoomOptions = {
   onTypingChanged: (event: ChatTypingEvent) => void;
   onGlobalTypingChanged: (event: ChatTypingEvent) => void;
   onConnected?: (sendTyping: (typing: boolean) => void) => void;
+  onError: (message: string) => void;
+};
+
+type ConnectChatNotificationOptions = {
+  accessToken: string;
+  subscribedChatRoomIds: number[];
+  onMessageCreated: (event: ChatRealtimeEvent) => void;
+  onPresenceChanged?: (event: PresenceRealtimeEvent) => void;
   onError: (message: string) => void;
 };
 
@@ -101,6 +115,52 @@ export const connectChatRoom = ({
   return {
     // 연결 완료 전에는 발행하지 않아 방 이동 중 이전 방에 이벤트가 남지 않게 함.
     sendTyping: publishTyping,
+    disconnect: () => {
+      void client.deactivate();
+    },
+  };
+};
+
+// 메시지 화면 밖에서도 새 메시지 알림을 받기 위한 읽기 전용 구독.
+export const connectChatNotification = ({
+  accessToken,
+  subscribedChatRoomIds,
+  onMessageCreated,
+  onPresenceChanged,
+  onError,
+}: ConnectChatNotificationOptions) => {
+  const client = new Client({
+    brokerURL: websocketUrl(),
+    connectHeaders: { Authorization: `Bearer ${accessToken}` },
+    reconnectDelay: 3_000,
+    debug: () => undefined,
+    onConnect: () => {
+      client.subscribe("/topic/presence", (frame) => {
+        try {
+          const event = JSON.parse(frame.body) as PresenceRealtimeEvent;
+          if (event.type === "PRESENCE_CHANGED") onPresenceChanged?.(event);
+        } catch {
+          onError("실시간 상태 데이터를 해석하지 못했습니다.");
+        }
+      });
+      [...new Set(subscribedChatRoomIds)].forEach((chatRoomId) => {
+        client.subscribe(`/topic/chatRoom/${chatRoomId}`, (frame) => {
+          try {
+            const event = JSON.parse(frame.body) as ChatRealtimeEvent;
+            if (event.type === "MESSAGE_CREATED") onMessageCreated(event);
+          } catch {
+            onError("실시간 메시지 알림 데이터를 해석하지 못했습니다.");
+          }
+        });
+      });
+    },
+    onStompError: (frame) =>
+      onError(frame.headers.message ?? "실시간 메시지 알림 연결이 거부되었습니다."),
+    onWebSocketError: () => onError("실시간 메시지 알림 서버 연결에 실패했습니다."),
+  });
+  client.activate();
+
+  return {
     disconnect: () => {
       void client.deactivate();
     },

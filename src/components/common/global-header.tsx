@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import type { AuthMember } from "@/lib/api/auth-api";
 import { useAuth } from "@/components/auth/auth-provider";
+import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import { useRouter } from "next/navigation";
 
 // 상단 헤더에서 반복 렌더링할 서비스 아이콘 정보.
@@ -75,18 +76,29 @@ export function GlobalHeader({
   role,
 }: GlobalHeaderProps) {
   const { sessionExpiresAt } = useAuth();
+  const {
+    notificationCount,
+    notifications,
+    notificationEnabled,
+    notificationMode,
+    acknowledgeNotifications,
+    markNotificationRead,
+    setNotificationMode,
+  } = useChatNotification();
   const [now, setNow] = useState(0);
+  const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
+  const [isNotificationModeOpen, setIsNotificationModeOpen] = useState(false);
   // 공통 헤더의 서비스 이동은 어느 화면에서나 같은 경로를 사용.
   const router = useRouter();
   // 프로필 버튼과 메뉴 영역을 함께 참조해 바깥 클릭을 판별.
   const profileMenuRef = useRef<HTMLSpanElement>(null);
+  const notificationPanelRef = useRef<HTMLSpanElement>(null);
   // 한글·영문·이모지 모두 글자 단위가 깨지지 않도록 앞 세 글자만 사용.
   const profileAvatarText = Array.from(profileName).slice(0, 3).join("") || "사용자";
   const sessionRemainingSeconds = sessionExpiresAt && now > 0
     ? Math.max(0, Math.floor((new Date(sessionExpiresAt).getTime() - now) / 1000))
     : null;
   const sessionRemainingText = sessionRemainingSeconds === null ? null : `${String(Math.floor(sessionRemainingSeconds / 3600)).padStart(2, "0")}:${String(Math.floor((sessionRemainingSeconds % 3600) / 60)).padStart(2, "0")}:${String(sessionRemainingSeconds % 60).padStart(2, "0")}`;
-
   useEffect(() => {
     if (!sessionExpiresAt) return;
     const updateNow = () => setNow(Date.now());
@@ -126,6 +138,24 @@ export function GlobalHeader({
     };
   }, [isProfileMenuOpen, onCloseProfileMenu]);
 
+  useEffect(() => {
+    if (!isNotificationPanelOpen) return;
+    const closeNotificationPanel = (event: MouseEvent) => {
+      if (!notificationPanelRef.current?.contains(event.target as Node)) {
+        setIsNotificationPanelOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsNotificationPanelOpen(false);
+    };
+    document.addEventListener("mousedown", closeNotificationPanel);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeNotificationPanel);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isNotificationPanelOpen]);
+
   return (
     <header className="relative z-50 flex h-14 shrink-0 items-center justify-between gap-6 bg-zinc-950 px-5 text-white shadow-sm sm:px-8">
       <div className="flex min-w-fit items-center gap-8">
@@ -155,8 +185,10 @@ export function GlobalHeader({
             ? onHomeAction
             : label === "메시지"
               ? () => isAuthenticated ? router.push("/message") : onServiceAction(label)
-              : label === "주소록" || label === "조직도"
+            : label === "주소록" || label === "조직도"
                 ? () => isAuthenticated ? router.push("/addressBook") : onServiceAction(label)
+                : label === "알림"
+                  ? () => setIsNotificationPanelOpen((current) => !current)
                 : label === "내 프로필"
                   ? onProfileAction
                   : () => onServiceAction(label);
@@ -164,12 +196,14 @@ export function GlobalHeader({
           return (
             <span
               key={label}
-              ref={label === "내 프로필" ? profileMenuRef : undefined}
+              ref={label === "내 프로필" ? profileMenuRef : label === "알림" ? notificationPanelRef : undefined}
               className="group relative"
             >
               <button
                 type="button"
-                aria-label={label}
+                aria-label={label === "알림" && notificationCount > 0 ? `알림 ${notificationCount}개` : label}
+                aria-expanded={label === "알림" ? isNotificationPanelOpen : label === "내 프로필" ? isProfileMenuOpen : undefined}
+                aria-haspopup={label === "알림" || label === "내 프로필" ? "menu" : undefined}
                 onClick={onClick}
                 className={`flex h-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-zinc-300 transition hover:-translate-y-0.5 hover:bg-zinc-800 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${label === "내 프로필" && isAuthenticated ? "min-w-9 px-0.5" : "w-9"}`}
               >
@@ -179,11 +213,20 @@ export function GlobalHeader({
                     {profileAvatarText}
                     <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-slate-950" />
                   </span>
+                ) : label === "알림" ? (
+                  <span className="relative">
+                    <Icon size={19} strokeWidth={1.9} aria-hidden="true" />
+                    {notificationCount > 0 && (
+                      <span aria-atomic="true" aria-live="polite" className="absolute -right-2 -top-2 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold leading-none text-white ring-2 ring-zinc-950">
+                        {notificationCount > 99 ? "99+" : notificationCount}
+                      </span>
+                    )}
+                  </span>
                 ) : (
                   <Icon size={19} strokeWidth={1.9} aria-hidden="true" />
                 )}
               </button>
-              {!(label === "내 프로필" && isProfileMenuOpen) && (
+              {!(label === "내 프로필" && isProfileMenuOpen) && !(label === "알림" && isNotificationPanelOpen) && (
                 <span
                   role="tooltip"
                   className="pointer-events-none absolute left-1/2 top-11 z-[70] hidden -translate-x-1/2 whitespace-nowrap rounded bg-zinc-700 px-2 py-1 text-[11px] font-medium text-white shadow-md sm:group-hover:block"
@@ -203,6 +246,65 @@ export function GlobalHeader({
                     로그아웃
                   </button>
                 </div>
+              )}
+              {label === "알림" && isNotificationPanelOpen && (
+                <section className="absolute right-0 top-11 z-[60] w-[360px] overflow-hidden rounded-lg border border-slate-200 bg-white text-slate-800 shadow-xl">
+                  <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+                    <strong className="text-sm">알림</strong>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={acknowledgeNotifications}
+                        className="cursor-pointer rounded-md px-2 py-1 text-xs font-medium text-blue-600 transition hover:bg-blue-50"
+                      >
+                        모두 읽음
+                      </button>
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setIsNotificationModeOpen((current) => !current)}
+                          className={`cursor-pointer rounded-md px-2 py-1 text-xs font-semibold transition ${notificationEnabled ? "bg-blue-50 text-blue-600 hover:bg-blue-100" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}
+                        >
+                          알림 {notificationMode === "ALL" ? "ON" : notificationMode === "MENTION" ? "멘션" : "OFF"}
+                        </button>
+                        {isNotificationModeOpen && (
+                          <div className="absolute right-0 top-8 z-10 w-48 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                            {([ ["ALL", "모든 메시지 알림"], ["MENTION", "내가 멘션된 메시지만"], ["NONE", "알림 받지 않기"] ] as const).map(([mode, label]) => (
+                              <button key={mode} type="button" onClick={() => { setNotificationMode(mode); setIsNotificationModeOpen(false); }} className={`w-full cursor-pointer rounded-md px-3 py-2 text-left text-xs transition hover:bg-slate-50 ${notificationMode === mode ? "bg-blue-50 text-blue-600" : "text-slate-700"}`}>{label}</button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="h-[360px] overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <p className="flex h-full items-center justify-center text-sm text-slate-400">새 알림이 없습니다.</p>
+                    ) : (
+                      notifications.map((notification) => (
+                        <button
+                          key={notification.id}
+                          type="button"
+                          onClick={() => {
+                            markNotificationRead(notification.id);
+                            setIsNotificationPanelOpen(false);
+                            router.push(`/message?roomId=${notification.chatRoomId}`);
+                          }}
+                          className={`block w-full cursor-pointer border-b border-slate-100 px-4 py-3 text-left transition hover:bg-slate-100 ${notification.read ? "bg-white" : "bg-blue-50/70"}`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <strong className="truncate text-sm">{notification.mentioned && <span className="mr-1 text-blue-600">@</span>}{notification.roomName}</strong>
+                            <time className="shrink-0 text-[11px] text-slate-400">
+                              {new Date(notification.createdAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+                            </time>
+                          </div>
+                          <p className="mt-1 truncate text-xs font-medium text-slate-600">{notification.senderName}</p>
+                          <p className="mt-1 line-clamp-2 whitespace-pre-wrap break-words text-sm leading-5 text-slate-500">{notification.content}</p>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </section>
               )}
             </span>
           );

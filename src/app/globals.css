@@ -162,6 +162,50 @@ body {
   animation: new-message-notice-arrow 0.9s ease-in-out infinite;
 }
 
+/* 최신 메시지 이동 버튼의 화살표가 아래 방향을 자연스럽게 안내. */
+@keyframes scroll-to-bottom-arrow {
+  0%, 100% { transform: translateY(-2px); }
+  50% { transform: translateY(3px); }
+}
+
+.scroll-to-bottom-button {
+  animation: new-message-notice-enter 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.scroll-to-bottom-arrow {
+  animation: scroll-to-bottom-arrow 1.15s ease-in-out infinite;
+}
+
+/* 메시지 알림 카드는 아래에서 떠오르고, 닫힐 때 다시 아래로 빠짐. */
+@keyframes message-notification-enter {
+  from { opacity: 0; transform: translateY(20px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes message-notification-exit {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(20px) scale(0.98); }
+}
+
+.message-notification-enter {
+  animation: message-notification-enter 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.message-notification-exit {
+  animation: message-notification-exit 0.26s ease-in both;
+}
+
+@keyframes notification-bell-switch {
+  0% { opacity: 0; transform: scale(0.55) rotate(-18deg); }
+  70% { opacity: 1; transform: scale(1.13) rotate(5deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+
+.notification-bell-on,
+.notification-bell-off {
+  animation: notification-bell-switch 0.26s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
 /* 체크 시 아이콘이 튀어나오는 짧은 피드백 모션. */
 @keyframes checkbox-check {
   0% {

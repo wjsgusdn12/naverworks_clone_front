@@ -13,6 +13,7 @@ import {
 
 // 카드와 버튼이 눌렸을 때 부모 페이지가 토스트를 표시하도록 전달하는 함수.
 type HomeDashboardProps = {
+  displayName: string;
   onFeatureClick: (featureName: string) => void;
 };
 
@@ -45,7 +46,7 @@ const teamMembers = [
   { name: "이서연", team: "디자인팀", online: false },
 ];
 
-export function HomeDashboard({ onFeatureClick }: HomeDashboardProps) {
+export function HomeDashboard({ displayName, onFeatureClick }: HomeDashboardProps) {
   // 사용자 브라우저의 한국어 형식으로 오늘 날짜를 만듦.
   const today = new Intl.DateTimeFormat("ko-KR", {
     month: "long",
@@ -58,7 +59,8 @@ export function HomeDashboard({ onFeatureClick }: HomeDashboardProps) {
       <section className="mb-7 flex flex-col gap-5 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-7 text-white shadow-sm sm:flex-row sm:items-end sm:justify-between sm:px-8">
         <div>
           <p className="text-sm text-slate-300">{today}</p>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">관리자님, 좋은 하루 되세요.</h1>
+          {/* 로그인한 구성원 이름을 사용해 역할과 무관하게 자연스러운 인사를 표시. */}
+          <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">{displayName}님, 좋은 하루 되세요.</h1>
           <p className="mt-2 text-sm text-slate-300">오늘의 협업 현황과 주요 일정을 한눈에 확인하세요.</p>
         </div>
         <button
