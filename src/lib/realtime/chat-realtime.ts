@@ -28,6 +28,16 @@ type ChatTypingEvent = {
   typing: boolean;
 };
 
+// 리액션 변화분. 전체 집계가 아니라 "누가 어떤 이모지를 추가/취소했는지"만 받아 클라이언트가 반영.
+export type ChatReactionEvent = {
+  type: "REACTION_UPDATED";
+  chatRoomId: number;
+  messageId: number;
+  emoji: string;
+  membershipId: number;
+  action: "added" | "removed";
+};
+
 type ChatReadEvent = {
   type: "READ_UPDATED";
   chatRoomId: number;
@@ -57,6 +67,7 @@ type ConnectChatRoomOptions = {
   onMessageCreated: (event: ChatRealtimeEvent) => void;
   onRoomMessageCreated: (event: ChatRealtimeEvent) => void;
   onMessageChanged: (event: ChatMessageChangeEvent) => void;
+  onReactionChanged: (event: ChatReactionEvent) => void;
   onReadUpdated: (event: ChatReadEvent) => void;
   onTypingChanged: (event: ChatTypingEvent) => void;
   onGlobalTypingChanged: (event: ChatTypingEvent) => void;
@@ -82,6 +93,7 @@ export const connectChatRoom = ({
   onMessageCreated,
   onRoomMessageCreated,
   onMessageChanged,
+  onReactionChanged,
   onReadUpdated,
   onTypingChanged,
   onGlobalTypingChanged,
@@ -105,7 +117,7 @@ export const connectChatRoom = ({
       [...new Set(subscribedChatRoomIds)].forEach((subscribedRoomId) => {
         client.subscribe(`/topic/chatRoom/${subscribedRoomId}`, (frame) => {
           try {
-            const event = JSON.parse(frame.body) as ChatRealtimeEvent | ChatTypingEvent | ChatReadEvent | ChatMessageChangeEvent;
+            const event = JSON.parse(frame.body) as ChatRealtimeEvent | ChatTypingEvent | ChatReadEvent | ChatMessageChangeEvent | ChatReactionEvent;
             if (event.type === "MESSAGE_CREATED") {
               // 방 목록은 모든 참여 방의 최신 메시지를 받아 즉시 갱신.
               onRoomMessageCreated(event);
@@ -118,6 +130,7 @@ export const connectChatRoom = ({
             }
             if (event.type === "READ_UPDATED") onReadUpdated(event);
             if (event.type === "MESSAGE_UPDATED" || event.type === "MESSAGE_DELETED") onMessageChanged(event);
+            if (event.type === "REACTION_UPDATED" && event.chatRoomId === chatRoomId) onReactionChanged(event);
           } catch {
             onError("실시간 메시지 데이터를 해석하지 못했습니다.");
           }

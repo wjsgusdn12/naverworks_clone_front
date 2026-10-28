@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyMessageChange, applyRoomMessageChange, DELETED_MESSAGE_CONTENT } from "../src/lib/chat-message-state.ts";
+import { applyMessageChange, applyReactionChange, applyRoomMessageChange, DELETED_MESSAGE_CONTENT } from "../src/lib/chat-message-state.ts";
 
 const message = (overrides = {}) => ({
   id: 10, senderMembershipId: 1, senderName: "작성자", content: "원문", type: "TEXT",
@@ -10,6 +10,38 @@ const message = (overrides = {}) => ({
 const room = (overrides = {}) => ({
   id: 1, lastMessageId: 10, lastMessageVersion: 0, lastMessage: "원문", lastMessageMentioned: false,
   lastMessageAt: "2026-10-27T00:00:00Z", unreadCount: 3, ...overrides,
+});
+
+const ME = 1;
+const OTHER = 2;
+
+test("리액션 추가 변화분은 새 이모지 묶음을 만들고, 같은 이모지는 수만 올림", () => {
+  const one = applyReactionChange([], { emoji: "thumbs_up", membershipId: OTHER, action: "added" }, ME);
+  assert.deepEqual(one, [{ emoji: "thumbs_up", count: 1, reactedByMe: false }]);
+  const two = applyReactionChange(one, { emoji: "thumbs_up", membershipId: ME, action: "added" }, ME);
+  assert.deepEqual(two, [{ emoji: "thumbs_up", count: 2, reactedByMe: true }]);
+});
+
+test("내 추가 응답과 실시간 이벤트가 둘 다 와도 수가 두 번 오르지 않음", () => {
+  const once = applyReactionChange([], { emoji: "heart", membershipId: ME, action: "added" }, ME);
+  const twice = applyReactionChange(once, { emoji: "heart", membershipId: ME, action: "added" }, ME);
+  assert.equal(twice, once);
+});
+
+test("마지막 사람이 취소하면 묶음이 사라지고, 누른 적 없는 취소는 무시", () => {
+  const start = [{ emoji: "laugh", count: 2, reactedByMe: true }];
+  const afterOther = applyReactionChange(start, { emoji: "laugh", membershipId: OTHER, action: "removed" }, ME);
+  assert.deepEqual(afterOther, [{ emoji: "laugh", count: 1, reactedByMe: true }]);
+  const afterMe = applyReactionChange(afterOther, { emoji: "laugh", membershipId: ME, action: "removed" }, ME);
+  assert.deepEqual(afterMe, []);
+  assert.equal(applyReactionChange(afterMe, { emoji: "laugh", membershipId: ME, action: "removed" }, ME), afterMe);
+});
+
+test("수정 이벤트를 병합해도 내 화면의 리액션 집계(reactedByMe)는 유지", () => {
+  const mine = message({ reactions: [{ emoji: "pray", count: 1, reactedByMe: true }] });
+  const result = applyMessageChange(mine, message({ version: 1, content: "수정", reactions: [{ emoji: "pray", count: 1, reactedByMe: false }] }));
+  assert.equal(result.content, "수정");
+  assert.equal(result.reactions[0].reactedByMe, true);
 });
 
 test("늦게 도착한 REST 응답으로 최신 수정·삭제를 되돌리지 않음", () => {

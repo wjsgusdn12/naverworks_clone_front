@@ -14,7 +14,12 @@ export type ChatMessage = {
   createdAt: string; unreadCount: number; readCount: number; mentionedMembershipIds: number[];
   reply: ChatReply | null;
   editedAt: string | null; deletedAt: string | null; version: number;
+  // 이모지별 집계. reactedByMe는 로그인한 사용자 기준.
+  reactions: ChatReaction[];
 };
+
+// 서버에는 코드명(thumbs_up 등)으로 저장하고, 화면에서 문자로 바꿔 보여 줌.
+export type ChatReaction = { emoji: string; count: number; reactedByMe: boolean };
 
 // 원문 위치와 답장 당시 인용 정보를 함께 전달.
 export type ChatReply = { messageId: number; senderName: string; content: string; deleted?: boolean };
@@ -67,5 +72,9 @@ export const chatApi = {
   deleteMessage: (token: string, roomId: number, messageId: number, expectedVersion: number) => request<ChatMessage>(`/api/v1/chatRoom/message/delete/${messageId}?chatRoomId=${roomId}`, token, { method: "POST", body: JSON.stringify({ expectedVersion }) }),
   // 현재 보고 있는 방에 도착한 메시지는 즉시 읽음 위치를 서버에도 반영.
   markRead: (token: string, roomId: number) => request<void>(`/api/v1/chatRoom/read/update?chatRoomId=${roomId}`, token, { method: "POST" }),
+  // 추가·취소를 따로 두어 재시도해도 결과가 뒤집히지 않게 함(토글 아님).
+  addReaction: (token: string, roomId: number, messageId: number, emoji: string) => request<ChatReaction[]>(`/api/v1/chatRoom/message/reaction/add?chatRoomId=${roomId}&messageId=${messageId}`, token, { method: "POST", body: JSON.stringify({ emoji }) }),
+  removeReaction: (token: string, roomId: number, messageId: number, emoji: string) => request<ChatReaction[]>(`/api/v1/chatRoom/message/reaction/remove?chatRoomId=${roomId}&messageId=${messageId}`, token, { method: "POST", body: JSON.stringify({ emoji }) }),
+  reactionMembers: (token: string, roomId: number, messageId: number, emoji: string) => request<ChatMemberProfile[]>(`/api/v1/chatRoom/message/reaction/member?chatRoomId=${roomId}&messageId=${messageId}&emoji=${encodeURIComponent(emoji)}`, token),
   readMembers: (token: string, roomId: number, messageId: number, read: boolean) => request<ChatReadMember[]>(`/api/v1/chatRoom/message/readMember?chatRoomId=${roomId}&messageId=${messageId}&read=${read}`, token),
 };

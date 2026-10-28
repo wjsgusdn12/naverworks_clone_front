@@ -4,6 +4,7 @@ import { Copy, MoreVertical, Pencil, Reply, Trash2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Tooltip } from "@/components/common/tooltip";
+import { REACTION_EMOJIS } from "@/lib/chat-reactions";
 
 export type MessageMenuPosition = { left: number; top: number };
 
@@ -17,6 +18,9 @@ type MessageActionMenuProps = {
   canEdit: boolean;
   position: MessageMenuPosition | null;
   onPositionChange: (position: MessageMenuPosition | null) => void;
+  // 내가 이미 누른 이모지 코드. 빠른 선택 바에서 강조 표시.
+  reactedEmojis: string[];
+  onReact: (emoji: string) => void;
   onCopy: () => void;
   onReply: () => void;
   onEdit: () => void;
@@ -24,7 +28,7 @@ type MessageActionMenuProps = {
 };
 
 // 목록의 overflow 영역 밖에 메뉴를 띄워 말풍선·스크롤 경계에 가려지는 현상 방지.
-export function MessageActionMenu({ isMine, canEdit, position, onPositionChange, onCopy, onReply, onEdit, onDelete }: MessageActionMenuProps) {
+export function MessageActionMenu({ isMine, canEdit, position, onPositionChange, reactedEmojis, onReact, onCopy, onReply, onEdit, onDelete }: MessageActionMenuProps) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -73,8 +77,8 @@ export function MessageActionMenu({ isMine, canEdit, position, onPositionChange,
           const left = event.detail === 0 ? (isMine ? rect.left - 148 : rect.right + 4) : event.clientX;
           const top = event.detail === 0 ? rect.bottom + 4 : event.clientY;
           onPositionChange({
-            left: Math.max(8, Math.min(left, window.innerWidth - 152)),
-            top: Math.max(8, Math.min(top, window.innerHeight - (isMine ? 184 : 100))),
+            left: Math.max(8, Math.min(left, window.innerWidth - 196)),
+            top: Math.max(8, Math.min(top, window.innerHeight - (isMine ? 228 : 144))),
           });
         }}
         className={`flex h-5 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-slate-500 transition duration-150 hover:bg-slate-100 hover:text-slate-900 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-blue-500 active:scale-95 [@media(hover:none)]:opacity-100 ${position ? "bg-slate-100 opacity-100" : "opacity-0 group-hover/message:opacity-100 group-focus-within/message:opacity-100"}`}
@@ -82,7 +86,25 @@ export function MessageActionMenu({ isMine, canEdit, position, onPositionChange,
         <MoreVertical size={17} aria-hidden="true" />
       </button>
       {position && createPortal(
-        <div ref={menuRef} role="group" aria-label="메시지 작업" style={position} className="message-action-menu fixed z-[110] w-36 rounded-md border border-slate-200 bg-white p-1 text-sm text-slate-700 shadow-lg">
+        <div ref={menuRef} role="group" aria-label="메시지 작업" style={position} className="message-action-menu fixed z-[110] w-[188px] rounded-md border border-slate-200 bg-white p-1 text-sm text-slate-700 shadow-lg">
+          {/* 자주 쓰는 이모지 빠른 선택 바. 이미 누른 건 파란 배경, 다시 누르면 취소. */}
+          <div role="group" aria-label="리액션" className="mb-1 flex items-center justify-between border-b border-slate-100 px-1 pb-1.5 pt-0.5">
+            {REACTION_EMOJIS.map((item) => {
+              const reacted = reactedEmojis.includes(item.code);
+              return (
+                <button
+                  key={item.code}
+                  type="button"
+                  aria-label={`${item.label} ${reacted ? "취소" : "리액션"}`}
+                  aria-pressed={reacted}
+                  onClick={() => { onPositionChange(null); onReact(item.code); }}
+                  className={`flex h-7 w-7 cursor-pointer items-center justify-center rounded-full text-base leading-none transition hover:scale-125 ${reacted ? "bg-blue-100 ring-1 ring-blue-400" : "hover:bg-slate-100"}`}
+                >
+                  {item.char}
+                </button>
+              );
+            })}
+          </div>
           <button type="button" onClick={() => { onPositionChange(null); onCopy(); }} className="flex w-full cursor-pointer items-center gap-2 rounded px-3 py-2 text-left transition hover:bg-slate-100 focus-visible:bg-slate-100 active:scale-[0.98]">
             <Copy size={15} aria-hidden="true" />복사
           </button>

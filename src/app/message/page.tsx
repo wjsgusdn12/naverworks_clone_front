@@ -7,7 +7,8 @@ import { EDIT_EXPIRED_MESSAGE, EDIT_WINDOW_HOURS, MessageActionMenu, type Messag
 import { Tooltip } from "@/components/common/tooltip";
 import { MessageQuote } from "@/components/chat/message-quote";
 import { MessageDeleteDialog } from "@/components/chat/message-change-dialog";
-import { applyMessageChange, applyRoomMessageChange } from "@/lib/chat-message-state";
+import { applyMessageChange, applyReactionChange, applyRoomMessageChange } from "@/lib/chat-message-state";
+import { reactionChar, reactionLabel } from "@/lib/chat-reactions";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
   chatApi,
@@ -157,6 +158,8 @@ const readStoredInputHeight = (membershipId: number | undefined) => {
 };
 // 읽음/안 읽음 목록을 함께 보관해 탭 전환 시 다시 조회하지 않음.
 type ReadModalState = { message: ChatMessage; readMembers: ChatReadMember[]; unreadMembers: ChatReadMember[]; read: boolean };
+// 특정 이모지를 누른 사람 목록 모달.
+type ReactionModalState = { message: ChatMessage; emoji: string; members: Awaited<ReturnType<typeof chatApi.reactionMembers>> };
 
 const sortRooms = (rooms: ChatRoom[], sort: RoomSort) => {
   if (sort !== "UNREAD") return sortRoomsByLatestActivity(rooms);
@@ -246,6 +249,7 @@ function MessageContent() {
   const [search, setSearch] = useState("");
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [readModal, setReadModal] = useState<ReadModalState | null>(null);
+  const [reactionModal, setReactionModal] = useState<ReactionModalState | null>(null);
   const [newRoomModalOpen, setNewRoomModalOpen] = useState(
     searchParams.get("create") === "group",
   );
@@ -736,6 +740,14 @@ function MessageContent() {
       onMessageChanged: (event) => {
         applyChangedMessage(event.chatRoomId, event.message);
         if (event.message.deletedAt) void loadRooms().catch(() => showToast("메시지는 삭제됐으나 목록을 새로 불러오지 못했습니다."));
+      },
+      // 리액션은 변화분만 받아 해당 메시지의 집계에 더하거나 뺌.
+      onReactionChanged: (event) => {
+        const myMembershipId = member?.membershipId;
+        if (myMembershipId === undefined) return;
+        setMessages((current) => current.map((item) => item.id === event.messageId
+          ? { ...item, reactions: applyReactionChange(item.reactions ?? [], event, myMembershipId) }
+          : item));
       },
       onReadUpdated: (event) => {
         if (event.chatRoomId !== selectedRoomId) return;
@@ -1441,6 +1453,39 @@ function MessageContent() {
     }
   };
 
+  // 리액션 추가/취소: 화면에 먼저 반영(낙관적)하고, 서버 응답으로 확정. 실패하면 서버 집계로 되돌림.
+  const toggleReaction = async (message: ChatMessage, emoji: string) => {
+    if (!accessToken || !selectedRoomId || !member || message.deletedAt || message.type !== "TEXT") return;
+    const roomId = selectedRoomId;
+    const reacted = (message.reactions ?? []).some((reaction) => reaction.emoji === emoji && reaction.reactedByMe);
+    const action = reacted ? "removed" : "added";
+    setMessages((current) => current.map((item) => item.id === message.id
+      ? { ...item, reactions: applyReactionChange(item.reactions ?? [], { emoji, membershipId: member.membershipId, action }, member.membershipId) }
+      : item));
+    try {
+      const reactions = reacted
+        ? await chatApi.removeReaction(accessToken, roomId, message.id, emoji)
+        : await chatApi.addReaction(accessToken, roomId, message.id, emoji);
+      setMessages((current) => current.map((item) => item.id === message.id ? { ...item, reactions } : item));
+    } catch (error) {
+      // 되돌리기: 방금 낙관적으로 적용한 변화를 반대로 적용.
+      setMessages((current) => current.map((item) => item.id === message.id
+        ? { ...item, reactions: applyReactionChange(item.reactions ?? [], { emoji, membershipId: member.membershipId, action: reacted ? "added" : "removed" }, member.membershipId) }
+        : item));
+      showToast(error instanceof Error ? error.message : "리액션을 반영하지 못했습니다.");
+    }
+  };
+
+  const openReactionMembers = async (message: ChatMessage, emoji: string) => {
+    if (!accessToken || !selectedRoomId) return;
+    try {
+      const members = await chatApi.reactionMembers(accessToken, selectedRoomId, message.id, emoji);
+      setReactionModal({ message, emoji, members });
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "리액션 멤버를 조회하지 못했습니다.");
+    }
+  };
+
   const closeRoomManageModal = useCallback(() => setRoomManageOpen(false), []);
 
   const loadNewerMessages = useCallback(async (roomId: number, cursor: number) => {
@@ -1566,6 +1611,8 @@ function MessageContent() {
   const stableStartEdit = useStableCallback(startEdit);
   const stableStartDelete = useStableCallback(startDelete);
   const stableJumpToOriginal = useStableCallback((messageId: number) => void jumpToOriginal(messageId));
+  const stableToggleReaction = useStableCallback((message: ChatMessage, emoji: string) => void toggleReaction(message, emoji));
+  const stableOpenReactionMembers = useStableCallback((message: ChatMessage, emoji: string) => void openReactionMembers(message, emoji));
 
   return (
     <div className="min-h-screen bg-white text-slate-900">
@@ -1838,6 +1885,8 @@ function MessageContent() {
                   onEdit={stableStartEdit}
                   onDelete={stableStartDelete}
                   onOpenOriginal={stableJumpToOriginal}
+                  onToggleReaction={stableToggleReaction}
+                  onOpenReactionMembers={stableOpenReactionMembers}
                 />
                 {newerCursor === null && typingMembers.length > 0 && (
                   <TypingBubble
@@ -2211,6 +2260,14 @@ function MessageContent() {
           onTab={(read) => setReadModal((current) => current && { ...current, read })}
         />
       )}
+      {reactionModal && (
+        <ReactionMemberModal
+          modal={reactionModal}
+          presenceByMemberId={presenceByMembershipId}
+          onClose={() => setReactionModal(null)}
+          onProfileClick={openUserProfile}
+        />
+      )}
       {profileMember && accessToken && (
         <UserProfileModal
           member={profileMember}
@@ -2533,6 +2590,8 @@ const MessageList = memo(function MessageList({
   onEdit,
   onDelete,
   onOpenOriginal,
+  onToggleReaction,
+  onOpenReactionMembers,
 }: {
   messages: ChatMessage[];
   highlightedMessageId: number | null;
@@ -2546,6 +2605,8 @@ const MessageList = memo(function MessageList({
   onEdit: (message: ChatMessage) => void;
   onDelete: (message: ChatMessage) => void;
   onOpenOriginal: (messageId: number) => void;
+  onToggleReaction: (message: ChatMessage, emoji: string) => void;
+  onOpenReactionMembers: (message: ChatMessage, emoji: string) => void;
 }) {
   return (
     <>
@@ -2605,6 +2666,8 @@ const MessageList = memo(function MessageList({
                   onEdit={onEdit}
                   onDelete={onDelete}
                   onOpenOriginal={onOpenOriginal}
+                  onToggleReaction={onToggleReaction}
+                  onOpenReactionMembers={onOpenReactionMembers}
                 />
               )}
             </div>
@@ -2633,6 +2696,8 @@ const MessageBubble = memo(function MessageBubble({
   onEdit,
   onDelete,
   onOpenOriginal,
+  onToggleReaction,
+  onOpenReactionMembers,
 }: {
   message: ChatMessage;
   isOriginalHighlighted: boolean;
@@ -2650,6 +2715,8 @@ const MessageBubble = memo(function MessageBubble({
   onEdit: (message: ChatMessage) => void;
   onDelete: (message: ChatMessage) => void;
   onOpenOriginal: (messageId: number) => void;
+  onToggleReaction: (message: ChatMessage, emoji: string) => void;
+  onOpenReactionMembers: (message: ChatMessage, emoji: string) => void;
 }) {
   // ⋮ 클릭과 말풍선 우클릭이 같은 메뉴·닫기 동작을 공유.
   const [menuPosition, setMenuPosition] = useState<MessageMenuPosition | null>(null);
@@ -2697,7 +2764,28 @@ const MessageBubble = memo(function MessageBubble({
       {showMeta ? <span>{time}</span> : null}
     </div>
   ) : null;
-  const messageMenu = message.deletedAt ? <span aria-hidden="true" className="h-5 w-6 shrink-0" /> : <MessageActionMenu isMine={isMine} canEdit={isMessageEditable(message)} position={menuPosition} onPositionChange={setMenuPosition} onCopy={() => onCopy(message)} onReply={() => onReply(message)} onEdit={() => onEdit(message)} onDelete={() => onDelete(message)} />;
+  const reactions = message.deletedAt ? [] : (message.reactions ?? []);
+  const messageMenu = message.deletedAt ? <span aria-hidden="true" className="h-5 w-6 shrink-0" /> : <MessageActionMenu isMine={isMine} canEdit={isMessageEditable(message)} position={menuPosition} onPositionChange={setMenuPosition} reactedEmojis={reactions.filter((reaction) => reaction.reactedByMe).map((reaction) => reaction.emoji)} onReact={(emoji) => onToggleReaction(message, emoji)} onCopy={() => onCopy(message)} onReply={() => onReply(message)} onEdit={() => onEdit(message)} onDelete={() => onDelete(message)} />;
+  // 말풍선 아래 리액션 묶음. 클릭하면 추가/취소, 우클릭하면 누른 사람 목록.
+  const reactionRow = reactions.length > 0 ? (
+    <div className={`flex flex-wrap gap-1 ${message.editedAt ? "mt-5" : "mt-1"} ${isMine ? "justify-end" : "justify-start"}`}>
+      {reactions.map((reaction) => (
+        <Tooltip key={reaction.emoji} label={`${reactionLabel(reaction.emoji)} ${reaction.count} · 우클릭: 누른 사람 보기`}>
+          <button
+            type="button"
+            aria-pressed={reaction.reactedByMe}
+            aria-label={`${reactionLabel(reaction.emoji)} ${reaction.count}명${reaction.reactedByMe ? ", 내가 누름" : ""}`}
+            onClick={() => onToggleReaction(message, reaction.emoji)}
+            onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); onOpenReactionMembers(message, reaction.emoji); }}
+            className={`flex h-6 cursor-pointer items-center gap-1 rounded-full border px-2 text-xs transition active:scale-95 ${reaction.reactedByMe ? "border-blue-400 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"}`}
+          >
+            <span className="text-sm leading-none">{reactionChar(reaction.emoji)}</span>
+            <span className="font-medium tabular-nums">{reaction.count}</span>
+          </button>
+        </Tooltip>
+      ))}
+    </div>
+  ) : null;
   // 시간과 메뉴의 밑선을 맞추고, 메뉴가 숨겨져도 공간을 유지해 말풍선 흔들림 방지.
   const messageActions = (
     <div className="flex shrink-0 items-end gap-1 pb-1">
@@ -2708,7 +2796,8 @@ const MessageBubble = memo(function MessageBubble({
   const reply = message.deletedAt ? null : message.reply;
   // "수정됨"은 말풍선 바로 아래 오른쪽에 띄우고, 그 높이만큼 메시지 아래 여백을 늘려 다음 메시지와 겹치지 않게 처리.
   const editedLabel = message.editedAt ? <span className="pointer-events-none absolute right-1 top-full mt-1 whitespace-nowrap text-xs leading-4 text-slate-500">수정됨</span> : null;
-  const rowSpacing = message.editedAt ? "mb-7" : showMeta ? "mb-2" : "mb-1";
+  // 리액션 줄이 있으면 "수정됨" 라벨 공간을 리액션 줄의 위 여백(mt-5)으로 대신함.
+  const rowSpacing = reactions.length > 0 ? (showMeta ? "mb-2" : "mb-1") : message.editedAt ? "mb-7" : showMeta ? "mb-2" : "mb-1";
   const bubble = (
     <div
       ref={bubbleRef}
@@ -2762,6 +2851,7 @@ const MessageBubble = memo(function MessageBubble({
             {bubble}
             {messageActions}
           </div>
+          {reactionRow}
         </div>
       </div>
     );
@@ -2784,9 +2874,57 @@ const MessageBubble = memo(function MessageBubble({
           </>
         )}
       </div>
+      {reactionRow}
     </div>
   );
 });
+
+// 특정 이모지를 누른 사람 목록. 읽은 멤버 모달과 같은 틀로 보여 줌.
+function ReactionMemberModal({
+  modal,
+  presenceByMemberId,
+  onClose,
+  onProfileClick,
+}: {
+  modal: ReactionModalState;
+  presenceByMemberId: Record<number, boolean>;
+  onClose: () => void;
+  onProfileClick: (membershipId: number) => void;
+}) {
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/20 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section role="dialog" aria-modal="true" aria-label={`${reactionLabel(modal.emoji)} 리액션 멤버`} className="message-action-menu flex h-[420px] w-full max-w-sm flex-col rounded-xl border border-slate-200 bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+          <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900">
+            <span className="text-2xl leading-none">{reactionChar(modal.emoji)}</span>
+            {reactionLabel(modal.emoji)}
+            <span className="text-sm font-medium text-slate-400">{modal.members.length}명</span>
+          </h2>
+          <button type="button" aria-label="닫기" onClick={onClose} className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 active:scale-90"><X size={18} /></button>
+        </div>
+        <ul className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+          {modal.members.length === 0 && <li className="py-10 text-center text-sm text-slate-400">아직 아무도 누르지 않았습니다.</li>}
+          {modal.members.map((item) => (
+            <li key={item.membershipId}>
+              <button type="button" onClick={() => onProfileClick(item.membershipId)} className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-left transition hover:bg-slate-50">
+                <MessageMemberAvatar name={item.displayName} presenceStatus={presenceByMemberId[item.membershipId] ? "ONLINE" : "OFFLINE"} />
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-slate-800">{item.displayName}</span>
+                  <span className="block truncate text-xs text-slate-500">{[item.jobGradeName, item.departmentName, item.companyName].filter(Boolean).join(" · ")}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </div>
+  );
+}
 
 // 실제 수신 말풍선과 같은 구조로 입력 중 상태만 표시.
 function TypingBubble({
