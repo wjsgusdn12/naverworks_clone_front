@@ -24,14 +24,18 @@ body {
 }
 
 /* 모든 목록·모달에서 공유하는 얇고 눈에 덜 띄는 스크롤바. */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #d1d5db transparent;
+/* 표준 속성(scrollbar-width 등)이 있으면 크롬·엣지는 ::-webkit-scrollbar 규칙을 통째로 무시하므로,
+   ::-webkit-scrollbar를 지원하지 않는 브라우저(파이어폭스)에서만 표준 속성을 사용. */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db transparent;
+  }
 }
 
 *::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 12px;
+  height: 12px;
 }
 
 *::-webkit-scrollbar-track {
@@ -49,6 +53,13 @@ body {
 *::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
   background-clip: content-box;
+}
+
+/* 스크롤바 양 끝의 위·아래 화살표 버튼을 숨김(크롬·엣지). */
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 /* 토스트가 아래에서 자연스럽게 나타나는 애니메이션. */

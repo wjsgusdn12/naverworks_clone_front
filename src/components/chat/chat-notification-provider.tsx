@@ -10,6 +10,7 @@ import {
   connectChatNotification,
   type PresenceRealtimeEvent,
 } from "@/lib/realtime/chat-realtime";
+import { notificationApi, type NotificationItem } from "@/lib/api/notification-api";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useMessageNotificationToast } from "@/hooks/use-message-notification-toast";
 import { useRouter } from "next/navigation";
@@ -17,7 +18,9 @@ import { applyRoomMessageChange } from "@/lib/chat-message-state";
 
 type ChatNotificationContextValue = {
   notificationCount: number;
-  notifications: ChatNotificationItem[];
+  notifications: NotificationItem[];
+  // 서버에서 최근 30일 알림을 한 번이라도 받아왔는지(패널의 "불러오는 중" 표시용).
+  notificationsLoaded: boolean;
   notificationEnabled: boolean;
   notificationMode: "ALL" | "MENTION" | "NONE";
   presenceByMembershipId: Record<number, boolean>;
@@ -31,24 +34,14 @@ type ChatNotificationContextValue = {
   refreshChatRooms: () => Promise<ChatRoom[]>;
 };
 
-export type ChatNotificationItem = {
-  id: number;
-  chatRoomId: number;
-  roomName: string;
-  senderName: string;
-  content: string;
-  createdAt: string;
-  read: boolean;
-  mentioned: boolean;
-  version: number;
-};
-
 const ChatNotificationContext = createContext<ChatNotificationContextValue | null>(null);
 
 export function ChatNotificationProvider({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();
   const { accessToken, member, status } = useAuth();
-  const [notifications, setNotifications] = useState<ChatNotificationItem[]>([]);
+  // 알림 목록은 서버(notification 테이블)가 원본. 실시간 이벤트는 그 위에 새 항목만 얹음.
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsLoaded, setNotificationsLoaded] = useState(false);
   const [notificationMode, setNotificationModeState] = useState<"ALL" | "MENTION" | "NONE">(() => {
     if (typeof window === "undefined") return "ALL";
     const stored = window.localStorage.getItem("naverworks:notificationMode");
@@ -98,9 +91,11 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
   }, []);
   const notificationEnabled = notificationMode !== "NONE";
 
+  // 화면은 먼저 바꾸고 서버 반영은 뒤에서 처리(실패해도 다음 조회 때 서버 값으로 돌아옴).
   const acknowledgeNotifications = useCallback(() => {
     setNotifications((current) => current.map((item) => ({ ...item, read: true })));
-  }, []);
+    if (accessToken) void notificationApi.readAll(accessToken).catch(() => undefined);
+  }, [accessToken]);
 
   const markNotificationRead = useCallback((notificationId: number) => {
     setNotifications((current) =>
@@ -108,7 +103,8 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
         item.id === notificationId ? { ...item, read: true } : item,
       ),
     );
-  }, []);
+    if (accessToken) void notificationApi.read(accessToken, notificationId).catch(() => undefined);
+  }, [accessToken]);
 
   const notificationCount = notifications.filter((item) => !item.read).length;
 
@@ -130,6 +126,21 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
 
     void refreshChatRooms().catch(() => undefined);
   }, [accessToken, status, refreshChatRooms]);
+
+  // 로그인 직후 최근 30일 알림을 서버에서 불러옴. 토큰이 바뀌거나 로그아웃하면 정리 단계에서 비움.
+  useEffect(() => {
+    if (status !== "authenticated" || !accessToken) return;
+    let cancelled = false;
+    notificationApi.list(accessToken)
+      .then((items) => { if (!cancelled) setNotifications(items); })
+      .catch(() => undefined)
+      .finally(() => { if (!cancelled) setNotificationsLoaded(true); });
+    return () => {
+      cancelled = true;
+      setNotifications([]);
+      setNotificationsLoaded(false);
+    };
+  }, [accessToken, status]);
 
   useEffect(() => {
     if (status !== "authenticated" || !accessToken || !member) return;
@@ -159,26 +170,12 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
         const roomName = room.type === "DIRECT"
           ? room.directDisplayName ?? "1:1 메시지"
           : room.name ?? "그룹 메시지";
-        const notification = {
-          id: event.message.id,
-          chatRoomId: event.chatRoomId,
-          roomName,
-          senderName: event.message.senderName,
-          content: event.message.content,
-          createdAt: event.message.createdAt,
-          read: false,
-          mentioned,
-          version: event.message.version,
-        };
-        // 동일 메시지가 재전송되어도 알림 목록에는 한 번만 남김.
-        setNotifications((current) => [
-          notification,
-          ...current.filter((item) => item.id !== notification.id),
-        ].slice(0, 50));
+        // 패널 목록은 서버 알림 이벤트가 채우고, 여기서는 우측 하단 토스트만 띄움.
         showMessageNotification({
-          notificationId: notification.id,
+          notificationId: event.message.id,
           chatRoomId: event.chatRoomId,
           roomName,
+          senderMembershipId: event.message.senderMembershipId,
           senderName: event.message.senderName,
           content: event.message.content,
           version: event.message.version,
@@ -188,11 +185,6 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
         const incoming = event.message;
         syncChatRooms(roomRef.current.map((room) => room.id === event.chatRoomId
           ? applyRoomMessageChange(room, incoming, member.membershipId) : room));
-        setNotifications((current) => incoming.deletedAt
-          ? current.filter((item) => item.id !== incoming.id)
-          : current.map((item) => item.id === incoming.id && (item.version ?? 0) <= incoming.version
-            ? { ...item, content: incoming.content, mentioned: incoming.mentionedMembershipIds.includes(member.membershipId), version: incoming.version }
-            : item));
         updateMessageNotification(incoming.id, incoming.content, Boolean(incoming.deletedAt), incoming.version);
         // 삭제된 메시지는 안 읽음 집계에서도 빠지므로 서버의 정식 집계로 재동기화.
         if (incoming.deletedAt) void refreshChatRooms().catch(() => undefined);
@@ -202,6 +194,13 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
           ...current,
           [event.membershipId]: event.online,
         }));
+      },
+      // 재연결로 같은 알림이 두 번 와도 목록에는 한 번만 남김.
+      onNotificationCreated: (event) => {
+        setNotifications((current) => [
+          event.notification,
+          ...current.filter((item) => item.id !== event.notification.id),
+        ]);
       },
       // 전역 알림 연결 실패는 일반 화면 이용을 막지 않음.
       onError: () => undefined,
@@ -214,6 +213,7 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
     () => ({
       notificationCount: status === "authenticated" ? notificationCount : 0,
       notifications,
+      notificationsLoaded,
       notificationEnabled,
       notificationMode,
       presenceByMembershipId,
@@ -234,6 +234,7 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
       notificationEnabled,
       notificationMode,
       notifications,
+      notificationsLoaded,
       presenceByMembershipId,
       setNotificationEnabled,
       setNotificationMode,
@@ -250,6 +251,7 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
         <MessageNotificationToast
           key={messageNotification.id}
           notification={messageNotification}
+          senderOnline={presenceByMembershipId[messageNotification.senderMembershipId] ?? false}
           onClose={dismissMessageNotification}
           onOpenChatRoom={(notificationId, chatRoomId) => {
             markNotificationRead(notificationId);

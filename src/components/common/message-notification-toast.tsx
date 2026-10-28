@@ -1,9 +1,11 @@
-import { Bell, BellOff, MessageCircle, X } from "lucide-react";
+import { Bell, BellOff, X } from "lucide-react";
 import type { MessageNotificationToastState } from "@/hooks/use-message-notification-toast";
 import { useState } from "react";
 
 type MessageNotificationToastProps = {
   notification: MessageNotificationToastState;
+  // 보낸 사람의 접속 여부. 프로필 아바타의 상태 점 색에 사용.
+  senderOnline: boolean;
   onClose: () => void;
   onOpenChatRoom: (notificationId: number, chatRoomId: number) => void;
   onDisableNotifications: (chatRoomId: number) => Promise<void>;
@@ -12,6 +14,7 @@ type MessageNotificationToastProps = {
 // 새 메시지만 우측 하단 카드로 보여 일반 안내 토스트와 목적을 구분.
 export function MessageNotificationToast({
   notification,
+  senderOnline,
   onClose,
   onOpenChatRoom,
   onDisableNotifications,
@@ -49,17 +52,18 @@ export function MessageNotificationToast({
       }}
       className={`fixed bottom-6 right-6 z-[100] w-[calc(100%-2rem)] max-w-sm cursor-pointer rounded-md border border-slate-200 bg-white p-4 text-slate-900 shadow-xl outline-none transition-all duration-300 hover:border-blue-200 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-blue-500 ${animationClassName}`}
     >
-      <div className="flex min-w-0 items-start gap-3">
-        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-          <MessageCircle size={17} aria-hidden="true" />
+      <div className="flex min-w-0 items-center gap-3">
+        {/* 메시지 화면의 프로필 아바타와 같은 모양: 이름 앞 글자 + 접속 상태 점. */}
+        <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-xs font-bold text-slate-800">
+          <span className="whitespace-nowrap">{notification.senderName.slice(0, 3)}</span>
+          <span
+            className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full ring-2 ring-white ${senderOnline ? "bg-emerald-500" : "bg-slate-300"}`}
+          />
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold">{notification.roomName}</p>
           <p className="mt-1 text-xs font-medium text-slate-600">
             {notification.senderName}
-          </p>
-          <p className="mt-1 line-clamp-2 whitespace-pre-wrap break-words text-sm leading-5 text-slate-500">
-            {notification.content}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -91,6 +95,11 @@ export function MessageNotificationToast({
           </button>
         </div>
       </div>
+      {/* 카드 패딩(p-4)만큼 좌우로 밀어, 선이 카드 끝에서 끝까지 이어지게. */}
+      <div className="-mx-4 my-3 border-t border-slate-200" />
+      <p className="line-clamp-2 whitespace-pre-wrap break-words text-sm leading-5 text-slate-500">
+        {notification.content}
+      </p>
     </aside>
   );
 }

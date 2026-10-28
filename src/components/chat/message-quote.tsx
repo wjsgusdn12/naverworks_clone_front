@@ -21,7 +21,7 @@ export function MessageQuote({ reply, onOpen, avatar }: { reply: ChatReply; onOp
   }
   const content = (
     <>
-      <span className="block truncate text-sm font-semibold text-slate-600">{reply.senderName}님에게 답장</span>
+      <span className="block truncate text-sm font-semibold text-slate-600">{reply.senderName}</span>
       <span className="reply-quote-content mt-0.5 max-h-12 text-sm leading-6 text-slate-500">
         {/* 원문의 줄바꿈을 명시적으로 유지하고, 두 줄 초과분만 CSS로 말줄임. */}
         {reply.content.split(/\r\n|\r|\n/).map((line, index) => (

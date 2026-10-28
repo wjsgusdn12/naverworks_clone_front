@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { AuthMember } from "@/lib/api/auth-api";
+import type { NotificationCategory, NotificationItem } from "@/lib/api/notification-api";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import { useRouter } from "next/navigation";
@@ -40,6 +41,31 @@ const headerActions: HeaderAction[] = [
   { label: "설정", icon: Settings },
   { label: "내 프로필", icon: UserRound },
 ];
+
+// 알림 패널 칩 목록. 아직 기능이 없는 서비스(캘린더 등)는 칩을 만들지 않음.
+const notificationChips: { key: "ALL" | NotificationCategory; label: string }[] = [
+  { key: "ALL", label: "전체" },
+  { key: "MESSAGE", label: "메시지" },
+  { key: "ADDRESS_BOOK", label: "주소록" },
+  { key: "SYSTEM", label: "시스템" },
+];
+
+// 분류별 카드 상단에 붙는 아이콘·이름.
+const notificationCategoryMeta: Record<NotificationCategory, { label: string; icon: LucideIcon; className: string }> = {
+  MESSAGE: { label: "메시지 알림", icon: MessageCircle, className: "bg-blue-50 text-blue-600" },
+  ADDRESS_BOOK: { label: "주소록 알림", icon: BookUser, className: "bg-emerald-50 text-emerald-600" },
+  SYSTEM: { label: "로그인 알림", icon: ShieldCheck, className: "bg-violet-50 text-violet-600" },
+};
+
+// 카드 우측 날짜: 오늘이면 시각, 아니면 "10월 20일".
+const formatNotificationDate = (value: string) => {
+  const date = new Date(value);
+  const today = new Date();
+  const sameDay = date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth() && date.getDate() === today.getDate();
+  return sameDay
+    ? date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
+    : date.toLocaleDateString("ko-KR", { month: "long", day: "2-digit" });
+};
 
 // 화면마다 다른 이동·토스트 동작을 부모로부터 전달받음.
 type GlobalHeaderProps = {
@@ -79,6 +105,7 @@ export function GlobalHeader({
   const {
     notificationCount,
     notifications,
+    notificationsLoaded,
     notificationEnabled,
     notificationMode,
     acknowledgeNotifications,
@@ -88,6 +115,11 @@ export function GlobalHeader({
   const [now, setNow] = useState(0);
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
   const [isNotificationModeOpen, setIsNotificationModeOpen] = useState(false);
+  // 알림 패널 상단 칩. "ALL"은 서버 분류와 무관하게 전체를 뜻함.
+  const [notificationFilter, setNotificationFilter] = useState<"ALL" | NotificationCategory>("ALL");
+  const visibleNotifications = notificationFilter === "ALL"
+    ? notifications
+    : notifications.filter((item) => item.category === notificationFilter);
   // 공통 헤더의 서비스 이동은 어느 화면에서나 같은 경로를 사용.
   const router = useRouter();
   // 프로필 버튼과 메뉴 영역을 함께 참조해 바깥 클릭을 판별.
@@ -248,60 +280,96 @@ export function GlobalHeader({
                 </div>
               )}
               {label === "알림" && isNotificationPanelOpen && (
-                <section className="absolute right-0 top-11 z-[60] w-[360px] overflow-hidden rounded-lg border border-slate-200 bg-white text-slate-800 shadow-xl">
-                  <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-                    <strong className="text-sm">알림</strong>
+                // 네이버웍스처럼 화면 오른쪽 끝에 붙는 세로로 긴 패널. 종 아이콘 위치와 무관하게 fixed로 고정하고 내부만 스크롤.
+                <section className="fixed right-3 top-[60px] z-[60] flex h-[min(720px,calc(100vh-76px))] w-[400px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-800 shadow-2xl">
+                  <div className="flex items-center justify-between px-5 pb-2 pt-4">
+                    <strong className="text-lg">서비스 알림</strong>
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
                         onClick={acknowledgeNotifications}
-                        className="cursor-pointer rounded-md px-2 py-1 text-xs font-medium text-blue-600 transition hover:bg-blue-50"
+                        disabled={notificationCount === 0}
+                        className="cursor-pointer rounded-md px-2 py-1 text-xs font-medium text-blue-600 transition hover:bg-blue-50 disabled:cursor-default disabled:text-slate-300 disabled:hover:bg-transparent"
                       >
                         모두 읽음
                       </button>
                       <div className="relative">
+                        {/* 메시지 알림 수신 범위(전체·멘션만·끔) 설정. */}
                         <button
                           type="button"
+                          aria-label="알림 설정"
+                          aria-expanded={isNotificationModeOpen}
                           onClick={() => setIsNotificationModeOpen((current) => !current)}
-                          className={`cursor-pointer rounded-md px-2 py-1 text-xs font-semibold transition ${notificationEnabled ? "bg-blue-50 text-blue-600 hover:bg-blue-100" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}
+                          className={`relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-md transition hover:bg-slate-100 ${notificationEnabled ? "text-slate-700" : "text-slate-400"}`}
                         >
-                          알림 {notificationMode === "ALL" ? "ON" : notificationMode === "MENTION" ? "멘션" : "OFF"}
+                          <Bell size={18} aria-hidden="true" />
+                          <span className={`absolute right-1 top-1 h-1.5 w-1.5 rounded-full ${notificationMode === "ALL" ? "bg-blue-500" : notificationMode === "MENTION" ? "bg-amber-500" : "bg-slate-300"}`} />
                         </button>
                         {isNotificationModeOpen && (
-                          <div className="absolute right-0 top-8 z-10 w-48 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
-                            {([ ["ALL", "모든 메시지 알림"], ["MENTION", "내가 멘션된 메시지만"], ["NONE", "알림 받지 않기"] ] as const).map(([mode, label]) => (
-                              <button key={mode} type="button" onClick={() => { setNotificationMode(mode); setIsNotificationModeOpen(false); }} className={`w-full cursor-pointer rounded-md px-3 py-2 text-left text-xs transition hover:bg-slate-50 ${notificationMode === mode ? "bg-blue-50 text-blue-600" : "text-slate-700"}`}>{label}</button>
+                          <div className="absolute right-0 top-9 z-10 w-52 rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                            <p className="px-3 pb-1 pt-2 text-[11px] font-semibold text-slate-400">메시지 알림 받기</p>
+                            {([ ["ALL", "모든 메시지"], ["MENTION", "내가 멘션된 메시지만"], ["NONE", "받지 않기"] ] as const).map(([mode, modeLabel]) => (
+                              <button key={mode} type="button" onClick={() => { setNotificationMode(mode); setIsNotificationModeOpen(false); }} className={`w-full cursor-pointer rounded-md px-3 py-2 text-left text-xs transition hover:bg-slate-50 ${notificationMode === mode ? "bg-blue-50 font-semibold text-blue-600" : "text-slate-700"}`}>{modeLabel}</button>
                             ))}
                           </div>
                         )}
                       </div>
                     </div>
                   </div>
-                  <div className="h-[360px] overflow-y-auto">
-                    {notifications.length === 0 ? (
-                      <p className="flex h-full items-center justify-center text-sm text-slate-400">새 알림이 없습니다.</p>
+                  {/* 분류 칩. 고른 칩만 파란색으로 강조. */}
+                  <div className="flex flex-wrap gap-2 px-5 pb-3 pt-1">
+                    {notificationChips.map((chip) => (
+                      <button
+                        key={chip.key}
+                        type="button"
+                        aria-pressed={notificationFilter === chip.key}
+                        onClick={() => setNotificationFilter(chip.key)}
+                        className={`cursor-pointer rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${notificationFilter === chip.key ? "border-blue-600 bg-blue-600 text-white" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`}
+                      >
+                        {chip.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-4 py-3">
+                    {!notificationsLoaded ? (
+                      <p className="flex h-full items-center justify-center text-sm text-slate-400">알림을 불러오는 중입니다...</p>
+                    ) : visibleNotifications.length === 0 ? (
+                      <p className="flex h-full items-center justify-center text-sm text-slate-400">최근 30일간 받은 알림이 없습니다.</p>
                     ) : (
-                      notifications.map((notification) => (
-                        <button
-                          key={notification.id}
-                          type="button"
-                          onClick={() => {
-                            markNotificationRead(notification.id);
-                            setIsNotificationPanelOpen(false);
-                            router.push(`/message?roomId=${notification.chatRoomId}`);
-                          }}
-                          className={`block w-full cursor-pointer border-b border-slate-100 px-4 py-3 text-left transition hover:bg-slate-100 ${notification.read ? "bg-white" : "bg-blue-50/70"}`}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <strong className="truncate text-sm">{notification.mentioned && <span className="mr-1 text-blue-600">@</span>}{notification.roomName}</strong>
-                            <time className="shrink-0 text-[11px] text-slate-400">
-                              {new Date(notification.createdAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
-                            </time>
-                          </div>
-                          <p className="mt-1 truncate text-xs font-medium text-slate-600">{notification.senderName}</p>
-                          <p className="mt-1 line-clamp-2 whitespace-pre-wrap break-words text-sm leading-5 text-slate-500">{notification.content}</p>
-                        </button>
-                      ))
+                      <>
+                        {visibleNotifications.map((notification: NotificationItem) => {
+                          const meta = notificationCategoryMeta[notification.category];
+                          const CategoryIcon = meta.icon;
+                          return (
+                            <button
+                              key={notification.id}
+                              type="button"
+                              onClick={() => {
+                                markNotificationRead(notification.id);
+                                // 이동할 곳이 없는 알림(로그인 알림 등)은 읽음 처리만 함.
+                                if (!notification.linkPath) return;
+                                setIsNotificationPanelOpen(false);
+                                router.push(notification.linkPath);
+                              }}
+                              className={`mb-2.5 block w-full cursor-pointer rounded-xl border bg-white px-4 py-3.5 text-left shadow-sm transition hover:border-blue-200 hover:shadow ${notification.read ? "border-slate-200" : "border-blue-200 ring-1 ring-blue-100"}`}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="flex min-w-0 items-center gap-2">
+                                  <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${meta.className}`}>
+                                    <CategoryIcon size={14} aria-hidden="true" />
+                                  </span>
+                                  <span className="truncate text-xs font-medium text-slate-500">{meta.label}</span>
+                                  {!notification.read && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" aria-label="안 읽음" />}
+                                </span>
+                                <time className="shrink-0 text-xs text-slate-400">{formatNotificationDate(notification.createdAt)}</time>
+                              </div>
+                              <p className="mt-2 truncate text-[15px] font-semibold text-slate-900">{notification.title}</p>
+                              <p className="mt-1 line-clamp-2 whitespace-pre-wrap break-words text-sm leading-5 text-slate-500">{notification.body}</p>
+                            </button>
+                          );
+                        })}
+                        <p className="py-6 text-center text-sm text-slate-400">최근 30일간 받은 알림을 모두 확인했습니다.</p>
+                      </>
                     )}
                   </div>
                 </section>

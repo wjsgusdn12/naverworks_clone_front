@@ -2,7 +2,6 @@
 
 import { LoaderCircle, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { ChatMessage } from "@/lib/api/chat-api";
 
 type DialogShellProps = { title: string; onClose: () => void; children: ReactNode; widthClassName?: string };
 
@@ -42,41 +41,7 @@ function MessageDialogShell({ title, onClose, children, widthClassName = "max-w-
   );
 }
 
-type MessageEditDialogProps = { message: ChatMessage; onClose: () => void; onSave: (content: string) => Promise<void>; onNotice: (text: string) => void };
-
-export function MessageEditDialog({ message, onClose, onSave, onNotice }: MessageEditDialogProps) {
-  const [content, setContent] = useState(message.content);
-  const [saving, setSaving] = useState(false);
-  const [invalid, setInvalid] = useState(false);
-  const save = async () => {
-    if (saving) return;
-    if (!content.trim() || content.trim().length > 2000) {
-      setInvalid(true);
-      onNotice("메시지는 1~2,000자로 입력해 주세요.");
-      return;
-    }
-    setSaving(true);
-    try { await onSave(content.trim()); onClose(); }
-    catch (error) { onNotice(error instanceof Error ? error.message : "메시지를 수정하지 못했습니다."); }
-    finally { setSaving(false); }
-  };
-  return (
-    <MessageDialogShell title="메시지 수정" onClose={onClose}>
-      <form onSubmit={(event) => { event.preventDefault(); void save(); }}>
-        <textarea data-dialog-initial-focus aria-label="수정할 메시지" aria-invalid={invalid} value={content} maxLength={2000} disabled={saving}
-          onChange={(event) => { setContent(event.target.value); setInvalid(false); }}
-          onKeyDown={(event) => { if (event.nativeEvent.isComposing) return; if ((event.ctrlKey || event.metaKey) && event.key === "Enter") { event.preventDefault(); void save(); } }}
-          className={`h-44 w-full resize-none rounded-lg border bg-slate-50 p-3 text-sm leading-6 outline-none transition focus:ring-2 focus:ring-blue-100 disabled:opacity-60 ${invalid ? "border-red-400" : "border-slate-200 focus:border-blue-400"}`} />
-        <div className="mt-2 flex justify-between text-xs text-slate-400"><span>Ctrl+Enter 저장 · Esc 취소</span><span>{content.length} / 2,000</span></div>
-        <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="cursor-pointer rounded-md border border-slate-200 px-4 py-2 text-sm transition hover:bg-slate-50 active:scale-95">취소</button>
-          <button type="submit" disabled={saving} className="flex cursor-pointer items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 active:scale-95 disabled:cursor-wait disabled:opacity-60">{saving && <LoaderCircle size={14} className="animate-spin" />}저장</button>
-        </div>
-      </form>
-    </MessageDialogShell>
-  );
-}
-
+// 메시지 수정은 답장과 같은 입력칸 흐름으로 옮겨서, 여기에는 삭제 확인 모달만 남김.
 type MessageDeleteDialogProps = { onClose: () => void; onDelete: () => Promise<void>; onNotice: (text: string) => void };
 
 export function MessageDeleteDialog({ onClose, onDelete, onNotice }: MessageDeleteDialogProps) {

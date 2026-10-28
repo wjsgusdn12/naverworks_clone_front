@@ -5,7 +5,7 @@ import { Toast } from "@/components/common/toast";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import { MessageActionMenu, type MessageMenuPosition } from "@/components/chat/message-action-menu";
 import { MessageQuote } from "@/components/chat/message-quote";
-import { MessageEditDialog, MessageDeleteDialog } from "@/components/chat/message-change-dialog";
+import { MessageDeleteDialog } from "@/components/chat/message-change-dialog";
 import { applyMessageChange, applyRoomMessageChange } from "@/lib/chat-message-state";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
@@ -45,6 +45,7 @@ import {
   Mail,
   MessageCircle,
   Paperclip,
+  Pencil,
   Search,
   SmilePlus,
   Star,
@@ -123,6 +124,20 @@ const sortRoomsByLatestActivity = (rooms: ChatRoom[]) =>
   });
 
 type RoomSort = "LATEST" | "TYPE" | "UNREAD";
+// 메시지 입력창 높이는 사용자가 손잡이로 조절할 때만 바뀌고, 내용이 넘치면 입력창 안에서 스크롤.
+const DEFAULT_INPUT_HEIGHT = 144;
+const MIN_INPUT_HEIGHT = 96;
+const MAX_INPUT_HEIGHT = 400;
+const clampInputHeight = (height: number) => Math.round(Math.min(MAX_INPUT_HEIGHT, Math.max(MIN_INPUT_HEIGHT, height)));
+// 같은 브라우저를 여러 계정이 써도 섞이지 않게 계정(membershipId)별 키로 저장.
+const inputHeightStorageKey = (membershipId: number) => `naverworks:messageInputHeight:${membershipId}`;
+const readStoredInputHeight = (membershipId: number | undefined) => {
+  if (typeof window === "undefined" || membershipId === undefined) return DEFAULT_INPUT_HEIGHT;
+  try {
+    const saved = Number(window.localStorage.getItem(inputHeightStorageKey(membershipId)));
+    return saved ? clampInputHeight(saved) : DEFAULT_INPUT_HEIGHT;
+  } catch { return DEFAULT_INPUT_HEIGHT; }
+};
 // 읽음/안 읽음 목록을 함께 보관해 탭 전환 시 다시 조회하지 않음.
 type ReadModalState = { message: ChatMessage; readMembers: ChatReadMember[]; unreadMembers: ChatReadMember[]; read: boolean };
 
@@ -186,6 +201,8 @@ function MessageContent() {
   const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
   const [replyByRoomId, setReplyByRoomId] = useState<Record<number, ChatMessage>>({});
   const [editingMessage, setEditingMessage] = useState<{ roomId: number; message: ChatMessage } | null>(null);
+  // 수정을 시작하기 전에 쓰던 입력 내용. 수정을 취소하면 되돌려 줌.
+  const editDraftBackupRef = useRef<Record<number, string>>({});
   const [deletingMessage, setDeletingMessage] = useState<{ roomId: number; message: ChatMessage } | null>(null);
   const mutationScrollRef = useRef<{ top: number; height: number; adjustHeight: boolean } | null>(null);
   const pendingMessageScrollRef = useRef<number | null>(null);
@@ -194,6 +211,10 @@ function MessageContent() {
   const sendingRef = useRef(false);
   const [isLoadingPreviousMessages, setIsLoadingPreviousMessages] =
     useState(false);
+  // 방에 처음 들어가 메시지를 받아오는 동안 true. 빈 화면 대신 "불러오는 중" 안내를 보여 줌.
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  // 방 목록을 한 번이라도 받아왔는지. 받기 전에는 "방이 없다"는 안내를 띄우지 않기 위함.
+  const [hasLoadedRooms, setHasLoadedRooms] = useState(false);
   const [draftByRoomId, setDraftByRoomId] = useState<Record<number, string>>({});
   const [typingMembers, setTypingMembers] = useState<
     Array<{ membershipId: number; displayName: string }>
@@ -244,7 +265,7 @@ function MessageContent() {
   const [isMessageListAtBottom, setIsMessageListAtBottom] = useState(true);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const composerRef = useRef<HTMLFormElement>(null);
-  const [composerHeight, setComposerHeight] = useState(176);
+  const [composerHeight, setComposerHeight] = useState(160);
   const draftByRoomIdRef = useRef<Record<number, string>>({});
   const sendTypingRef = useRef<((typing: boolean) => void) | null>(null);
   const typingStartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -289,14 +310,35 @@ function MessageContent() {
   );
   const input = selectedRoomId ? (draftByRoomId[selectedRoomId] ?? "") : "";
   const replyTarget = selectedRoomId ? replyByRoomId[selectedRoomId] : undefined;
+  // 현재 방에서 수정 중인 메시지. 답장과 같은 자리(입력칸 위)에 표시.
+  const editingTarget = editingMessage && editingMessage.roomId === selectedRoomId ? editingMessage.message : null;
   useEffect(() => {
     const composer = composerRef.current;
     if (!composer) return;
     // 답장 인용의 높이가 달라져도 새 메시지 안내가 입력창을 덮지 않도록 측정.
-    const observer = new ResizeObserver(() => setComposerHeight(composer.offsetHeight + 40));
+    // +24는 입력창의 위아래 마진(my-3, 12px씩) 합계. 마진을 바꾸면 이 값도 같이 바꿔야 함.
+    const observer = new ResizeObserver(() => setComposerHeight(composer.offsetHeight + 24));
     observer.observe(composer);
     return () => observer.disconnect();
   }, [selectedRoomId]);
+  // 저장된 높이는 계정이 바뀔 때만 다시 읽고, 드래그 중인 높이는 현재 계정 값으로만 덮어씀.
+  const currentMembershipId = member?.membershipId;
+  const storedInputHeight = useMemo(() => readStoredInputHeight(currentMembershipId), [currentMembershipId]);
+  const [draggedInputHeight, setDraggedInputHeight] = useState<{ membershipId: number | undefined; height: number } | null>(null);
+  const inputHeight = draggedInputHeight && draggedInputHeight.membershipId === currentMembershipId ? draggedInputHeight.height : storedInputHeight;
+  const inputResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const saveInputHeight = (height: number) => {
+    if (currentMembershipId === undefined) return;
+    try { localStorage.setItem(inputHeightStorageKey(currentMembershipId), String(height)); } catch { /* 저장 실패는 무시. */ }
+  };
+  const resizeInput = (height: number) => {
+    setDraggedInputHeight({ membershipId: currentMembershipId, height: clampInputHeight(height) });
+    // 최하단을 보던 중이면 입력창이 커져도 최신 메시지가 가려지지 않게 스크롤을 따라 내림.
+    if (isMessageListAtBottomRef.current) requestAnimationFrame(() => {
+      const list = messageListRef.current;
+      if (list) list.scrollTop = list.scrollHeight;
+    });
+  };
   // 멘션 후보는 주소록 전체가 아니라 현재 메시지방에 참여 중인 구성원으로 제한.
   const mentionCandidates = useMemo(() => {
     return roomMentionMembers.filter((candidate) => candidate.membershipId !== member?.membershipId);
@@ -418,7 +460,13 @@ function MessageContent() {
 
   const loadRooms = useCallback(async () => {
     if (!accessToken) return;
-    const result = await refreshChatRooms();
+    let result: ChatRoom[];
+    try {
+      result = await refreshChatRooms();
+    } finally {
+      // 실패해도 "불러오는 중" 안내가 영원히 남지 않도록 완료 표시.
+      setHasLoadedRooms(true);
+    }
     setRooms(sortRoomsByLatestActivity(result));
     const savedRoomId =
       lastRoomStorageKey && typeof window !== "undefined"
@@ -491,6 +539,8 @@ function MessageContent() {
       if (cursor) {
         isLoadingPreviousMessagesRef.current = true;
         setIsLoadingPreviousMessages(true);
+      } else {
+        setIsLoadingMessages(true);
       }
       try {
         const result = await chatApi.messages(accessToken, roomId, cursor);
@@ -521,6 +571,9 @@ function MessageContent() {
         if (cursor) {
           isLoadingPreviousMessagesRef.current = false;
           setIsLoadingPreviousMessages(false);
+        } else if (messageWindowVersionRef.current === windowVersion) {
+          // 그 사이 다른 방으로 옮겼으면 새 방의 로딩 표시를 건드리지 않음.
+          setIsLoadingMessages(false);
         }
       }
     },
@@ -555,10 +608,16 @@ function MessageContent() {
         .then(() => {
           // 이전 방의 DOM 높이와 스크롤 위치가 새 방에 이어지지 않게 초기화.
           setMessages([]);
+          // 목록을 비운 직후 "메시지가 없다"는 안내가 잠깐 깜빡이지 않도록 먼저 로딩 상태로.
+          setIsLoadingMessages(true);
           setNextCursor(null);
           setNewerCursor(null);
           setIsLocatingOriginal(false);
           setHighlightedMessageId(null);
+          // 수정 중에 방을 옮기면 수정은 접고, 그 방의 입력칸은 수정 전 내용으로 되돌림.
+          const backups = editDraftBackupRef.current;
+          editDraftBackupRef.current = {};
+          if (Object.keys(backups).length > 0) setDraftByRoomId((current) => ({ ...current, ...backups }));
           setEditingMessage(null);
           setDeletingMessage(null);
           setUnseenMessageCount(0);
@@ -1066,6 +1125,8 @@ function MessageContent() {
 
   const startReply = (message: ChatMessage) => {
     if (!selectedRoomId) return;
+    // 답장과 수정은 입력칸을 같이 쓰므로 둘 중 하나만 켜 둠.
+    if (editingTarget) cancelEdit();
     setReplyByRoomId((current) => ({ ...current, [selectedRoomId]: message }));
     setMentionStartIndex(null);
     requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
@@ -1081,17 +1142,47 @@ function MessageContent() {
     inputRef.current?.focus({ preventScroll: true });
   };
 
+  // 답장하기와 같은 흐름: 입력칸 위에 원문을 띄우고, 입력칸에는 기존 본문을 채워 바로 고치게 함.
   const startEdit = (message: ChatMessage) => {
     if (!selectedRoomId || message.deletedAt || message.senderMembershipId !== member?.membershipId) return;
-    setEditingMessage({ roomId: selectedRoomId, message });
+    const roomId = selectedRoomId;
+    if (!(roomId in editDraftBackupRef.current)) editDraftBackupRef.current[roomId] = draftByRoomId[roomId] ?? "";
+    setReplyByRoomId((current) => {
+      if (!current[roomId]) return current;
+      const next = { ...current };
+      delete next[roomId];
+      return next;
+    });
+    setDraftByRoomId((current) => ({ ...current, [roomId]: message.content }));
+    setMentionStartIndex(null);
+    setEditingMessage({ roomId, message });
+    requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (!input) return;
+      input.focus({ preventScroll: true });
+      input.setSelectionRange(message.content.length, message.content.length);
+    });
+  };
+
+  // 수정 취소: 입력칸을 수정 전 내용으로 되돌림.
+  const cancelEdit = () => {
+    if (!editingMessage) return;
+    const roomId = editingMessage.roomId;
+    const backup = editDraftBackupRef.current[roomId] ?? "";
+    delete editDraftBackupRef.current[roomId];
+    setDraftByRoomId((current) => {
+      const next = { ...current };
+      if (backup) next[roomId] = backup; else delete next[roomId];
+      return next;
+    });
+    setEditingMessage(null);
+    inputRef.current?.focus({ preventScroll: true });
   };
   const startDelete = (message: ChatMessage) => {
     if (!selectedRoomId || message.deletedAt || message.senderMembershipId !== member?.membershipId) return;
     setDeletingMessage({ roomId: selectedRoomId, message });
   };
-  const editingMessageId = editingMessage?.message.id;
   const deletingMessageId = deletingMessage?.message.id;
-  const closeEdit = useCallback(() => setEditingMessage((current) => current?.message.id === editingMessageId ? null : current), [editingMessageId]);
   const closeDelete = useCallback(() => setDeletingMessage((current) => current?.message.id === deletingMessageId ? null : current), [deletingMessageId]);
 
   const saveEditedMessage = async (content: string) => {
@@ -1144,8 +1235,37 @@ function MessageContent() {
     }
   };
 
+  // 수정 중이면 Enter가 새 메시지 전송이 아니라 저장으로 동작.
+  const submitEdit = async () => {
+    if (!editingMessage || sendingRef.current) return;
+    const content = input.trim();
+    if (!content || content.length > 2000) {
+      showToast("메시지는 1~2,000자로 입력해 주세요.");
+      return;
+    }
+    const roomId = editingMessage.roomId;
+    sendingRef.current = true;
+    try {
+      stopTyping();
+      await saveEditedMessage(content);
+      delete editDraftBackupRef.current[roomId];
+      setDraftByRoomId((current) => {
+        const next = { ...current };
+        delete next[roomId];
+        return next;
+      });
+      setEditingMessage(null);
+      inputRef.current?.focus({ preventScroll: true });
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "메시지를 수정하지 못했습니다.");
+    } finally {
+      sendingRef.current = false;
+    }
+  };
+
   const submitMessage = async (event?: FormEvent) => {
     event?.preventDefault();
+    if (editingTarget) { await submitEdit(); return; }
     if (!accessToken || !selectedRoomId || !input.trim() || sendingRef.current) return;
     // 전송 중 방을 바꿔도 응답·초기화는 전송을 시작한 방에만 적용.
     const roomId = selectedRoomId;
@@ -1655,6 +1775,23 @@ function MessageContent() {
                 onScroll={showScrollDate}
                 className="min-h-0 flex-1 overflow-y-auto px-6 py-5"
               >
+                {/* 처음 불러오는 동안과 메시지가 하나도 없을 때의 안내. */}
+                {messages.length === 0 && (
+                  <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-slate-500">
+                    {isLoadingMessages ? (
+                      <>
+                        <LoaderCircle size={22} className="animate-spin text-blue-500" aria-hidden="true" />
+                        <p>메시지를 불러오는 중입니다...</p>
+                      </>
+                    ) : (
+                      <>
+                        <MessageCircle size={28} className="text-slate-300" aria-hidden="true" />
+                        <p>아직 주고받은 메시지가 없습니다.</p>
+                        <p className="text-xs text-slate-400">아래 입력칸에서 첫 메시지를 보내 보세요.</p>
+                      </>
+                    )}
+                  </div>
+                )}
                 {messages.map((message, index) => {
                   const label = formatChatDate(message.createdAt);
                   const showDate =
@@ -1738,8 +1875,9 @@ function MessageContent() {
                   type="button"
                   onClick={scrollToLatestMessage}
                   title="새 메시지 위치로 이동"
-                  style={{ bottom: composerHeight }}
-                  className="absolute left-5 right-5 z-30 flex h-11 cursor-pointer items-center gap-1.5 rounded-lg bg-black/85 px-5 text-left text-sm text-white shadow-md backdrop-blur-sm transition duration-200 hover:bg-black/90 active:scale-[0.995]"
+                  // composerHeight에는 입력창 위 마진(12px)이 포함돼 있어, 8을 빼면 입력창과 4px 간격으로 맞닿음.
+                  style={{ bottom: composerHeight - 8 }}
+                  className="absolute left-4 right-4 z-30 flex h-11 cursor-pointer items-center gap-1.5 rounded-lg bg-black/85 px-5 text-left text-sm text-white shadow-md backdrop-blur-sm transition duration-200 hover:bg-black/90 active:scale-[0.995]"
                 >
                   <strong className="shrink-0 font-semibold">{latestUnseenMessage.senderName}</strong>
                   <span className="shrink-0 text-slate-300">:</span>
@@ -1753,8 +1891,8 @@ function MessageContent() {
                   type="button"
                   aria-label="최하단 메시지로 이동"
                   onClick={scrollToLatestMessage}
-                  style={{ bottom: composerHeight + 16 }}
-                  className="scroll-to-bottom-button absolute right-7 z-20 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white/50 text-slate-600 shadow-sm backdrop-blur-sm transition duration-200 hover:bg-white/80 hover:text-blue-600 active:scale-95"
+                  style={{ bottom: composerHeight + 6 }}
+                  className="scroll-to-bottom-button absolute right-3 z-20 flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white/50 text-slate-600 shadow-sm backdrop-blur-sm transition duration-200 hover:bg-white/80 hover:text-blue-600 active:scale-95"
                 >
                   <ArrowDown
                     size={18}
@@ -1767,11 +1905,48 @@ function MessageContent() {
               <form
                 ref={composerRef}
                 onSubmit={submitMessage}
-                className="relative m-5 rounded-2xl bg-slate-100 pb-4"
+                className="relative mx-4 my-3 rounded-2xl bg-slate-100 pb-4"
               >
+                {/* 입력창 위쪽 손잡이를 위아래로 끌거나 방향키로 높이 조절, 더블클릭하면 기본 높이로 복원. */}
+                <div
+                  role="separator"
+                  aria-orientation="horizontal"
+                  aria-label="메시지 입력창 높이 조절"
+                  aria-valuemin={MIN_INPUT_HEIGHT}
+                  aria-valuemax={MAX_INPUT_HEIGHT}
+                  aria-valuenow={inputHeight}
+                  tabIndex={0}
+                  onPointerDown={(event) => {
+                    event.preventDefault();
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                    inputResizeRef.current = { startY: event.clientY, startHeight: inputHeight };
+                  }}
+                  onPointerMove={(event) => {
+                    const drag = inputResizeRef.current;
+                    if (drag) resizeInput(drag.startHeight + drag.startY - event.clientY);
+                  }}
+                  onPointerUp={() => {
+                    if (!inputResizeRef.current) return;
+                    inputResizeRef.current = null;
+                    saveInputHeight(inputHeight);
+                  }}
+                  onDoubleClick={() => { resizeInput(DEFAULT_INPUT_HEIGHT); saveInputHeight(DEFAULT_INPUT_HEIGHT); }}
+                  onKeyDown={(event) => {
+                    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+                    event.preventDefault();
+                    const next = clampInputHeight(inputHeight + (event.key === "ArrowUp" ? 16 : -16));
+                    resizeInput(next);
+                    saveInputHeight(next);
+                  }}
+                  className="group absolute inset-x-6 -top-2.5 z-10 flex h-5 cursor-row-resize touch-none items-center justify-center outline-none"
+                >
+                  <span className="h-1 w-10 rounded-full bg-slate-300 opacity-0 transition duration-150 group-hover:opacity-100 group-focus-visible:bg-blue-500 group-focus-visible:opacity-100 group-active:bg-blue-500 group-active:opacity-100" />
+                </div>
                 {replyTarget && (
                   <div className="message-action-menu flex items-center gap-3 rounded-t-2xl border border-slate-200 bg-white px-4 py-3">
                     <div className="min-w-0 flex-1">
+                      {/* 수정 바와 같은 자리에 같은 모양의 제목 딱지. */}
+                      <p className="mb-1 flex items-center gap-1 text-xs font-semibold text-blue-600"><Reply size={12} aria-hidden="true" />메시지 답장</p>
                       <MessageQuote
                         reply={{ messageId: replyTarget.id, senderName: replyTarget.senderName, content: replyTarget.content }}
                         avatar={<MessageMemberAvatar
@@ -1787,8 +1962,28 @@ function MessageContent() {
                     </button>
                   </div>
                 )}
+                {/* 수정 중 표시: 답장 바와 같은 자리·같은 모양에 원문을 보여 주고, X로 취소. */}
+                {editingTarget && (
+                  <div className="message-action-menu flex items-center gap-3 rounded-t-2xl border border-slate-200 bg-white px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="mb-1 flex items-center gap-1 text-xs font-semibold text-blue-600"><Pencil size={12} aria-hidden="true" />메시지 수정</p>
+                      <MessageQuote
+                        reply={{ messageId: editingTarget.id, senderName: editingTarget.senderName, content: editingTarget.content }}
+                        avatar={<MessageMemberAvatar
+                          name={editingTarget.senderName}
+                          presenceStatus="ONLINE"
+                        />}
+                      />
+                    </div>
+                    <button type="button" aria-label="수정 취소" onClick={cancelEdit} className="group relative flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 active:scale-90">
+                      <X size={17} aria-hidden="true" />
+                      <span role="tooltip" className="pointer-events-none absolute bottom-8 right-0 hidden whitespace-nowrap rounded bg-slate-700 px-2 py-1 text-xs text-white group-hover:block group-focus-visible:block">수정 취소</span>
+                    </button>
+                  </div>
+                )}
                 <div className="relative">
                   {replyTarget && <Reply size={16} strokeWidth={1.8} aria-hidden="true" className="pointer-events-none absolute left-4 top-3.5 text-slate-400" />}
+                  {editingTarget && <Pencil size={16} strokeWidth={1.8} aria-hidden="true" className="pointer-events-none absolute left-4 top-3.5 text-slate-400" />}
                   <textarea
                   ref={inputRef}
                   value={input}
@@ -1813,14 +2008,16 @@ function MessageContent() {
                         return;
                       }
                     }
+                    if (event.key === "Escape" && editingTarget) { cancelEdit(); return; }
                     if (event.key === "Escape" && replyTarget) { cancelReply(); return; }
                     if (event.key === "Enter" && !event.shiftKey) {
                       event.preventDefault();
                       void submitMessage();
                     }
                   }}
-                  placeholder="메시지를 입력해주세요. (Enter: 전송 / Shift + Enter: 줄바꿈)"
-                  className={`h-28 w-full resize-none bg-transparent pr-4 pt-3 text-sm outline-none ${replyTarget ? "pl-10" : "pl-4"}`}
+                  placeholder={editingTarget ? "수정할 내용을 입력해주세요. (Enter: 저장 / Esc: 취소)" : "메시지를 입력해주세요. (Enter: 전송 / Shift + Enter: 줄바꿈)"}
+                  style={{ height: inputHeight }}
+                  className={`w-full resize-none bg-transparent pr-4 pt-3 text-sm outline-none ${replyTarget || editingTarget ? "pl-10" : "pl-4"}`}
                 />
                 </div>
                 {mentionStartIndex !== null && visibleMentionCandidates.length > 0 && (
@@ -1940,8 +2137,37 @@ function MessageContent() {
               )}
           </div>
         </section>
+        {/* 아직 방을 고르지 않았을 때 오른쪽 영역 안내: 목록 로딩 중 → 방 없음 → 방 선택 순으로 구분. */}
+        {!selectedRoom && (
+          <section className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3 text-center text-slate-500">
+            {!hasLoadedRooms ? (
+              <>
+                <LoaderCircle size={24} className="animate-spin text-blue-500" aria-hidden="true" />
+                <p className="text-sm">메시지방을 불러오는 중입니다...</p>
+              </>
+            ) : rooms.length === 0 ? (
+              <>
+                <MessageCircle size={36} className="text-slate-300" aria-hidden="true" />
+                <p className="text-base font-semibold text-slate-700">아직 메시지방이 없습니다.</p>
+                <p className="text-sm">새 메시지를 시작해 동료와 대화를 나눠 보세요.</p>
+                <button
+                  type="button"
+                  onClick={() => setNewRoomModalOpen(true)}
+                  className="mt-1 cursor-pointer rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-blue-700 active:scale-95"
+                >
+                  새 메시지 시작
+                </button>
+              </>
+            ) : (
+              <>
+                <MessageCircle size={36} className="text-slate-300" aria-hidden="true" />
+                <p className="text-base font-semibold text-slate-700">메시지방을 선택해 주세요.</p>
+                <p className="text-sm">왼쪽 목록에서 대화를 고르면 여기에 내용이 표시됩니다.</p>
+              </>
+            )}
+          </section>
+        )}
       </main>
-      {editingMessage && <MessageEditDialog key={editingMessage.message.id} message={editingMessage.message} onClose={closeEdit} onSave={saveEditedMessage} onNotice={showToast} />}
       {deletingMessage && <MessageDeleteDialog key={deletingMessage.message.id} onClose={closeDelete} onDelete={deleteSelectedMessage} onNotice={showToast} />}
       {hideConfirmOpen && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/25 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setHideConfirmOpen(false); }}>
@@ -2124,7 +2350,7 @@ function MessageRoomItem({
       "OFFLINE");
 
   return (
-    <div data-room-menu className={`group relative flex w-[calc(100%-1rem)] gap-3 rounded-xl ${isCollapsed ? "mx-2 my-1 justify-center px-2 py-3" : "mx-2 my-1 px-3 py-3"} text-left transition-colors duration-200 hover:bg-blue-50 ${isSelected ? "bg-blue-100" : ""}`}>
+    <div data-room-menu className={`group relative flex w-[calc(100%-1rem)] gap-3 rounded-lg ${isCollapsed ? "mx-2 my-1 justify-center px-2 py-3" : "mx-2 my-1 px-3 py-3"} text-left transition-colors duration-200 hover:bg-blue-50 ${isSelected ? "bg-blue-100" : ""}`}>
       {hideSelectionMode && !isCollapsed && <button type="button" role="checkbox" aria-checked={hiddenSelected} onClick={onToggleHidden} className={`custom-checkbox-button mt-1 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-md border transition ${hiddenSelected ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white"}`}>{hiddenSelected && <Check size={14} strokeWidth={3} />}</button>}
       <div
         role="button"

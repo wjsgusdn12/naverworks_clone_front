@@ -1,5 +1,12 @@
 import { Client } from "@stomp/stompjs";
 import type { ChatMessage } from "@/lib/api/chat-api";
+import type { NotificationItem } from "@/lib/api/notification-api";
+
+// 서버가 내 전용 큐(/user/queue/notification)로 보내는 새 서비스 알림.
+export type NotificationRealtimeEvent = {
+  type: "NOTIFICATION_CREATED";
+  notification: NotificationItem;
+};
 
 type ChatRealtimeEvent = {
   type: "MESSAGE_CREATED";
@@ -63,6 +70,7 @@ type ConnectChatNotificationOptions = {
   onMessageCreated: (event: ChatRealtimeEvent) => void;
   onMessageChanged: (event: ChatMessageChangeEvent) => void;
   onPresenceChanged?: (event: PresenceRealtimeEvent) => void;
+  onNotificationCreated?: (event: NotificationRealtimeEvent) => void;
   onError: (message: string) => void;
 };
 
@@ -138,6 +146,7 @@ export const connectChatNotification = ({
   onMessageCreated,
   onPresenceChanged,
   onMessageChanged,
+  onNotificationCreated,
   onError,
 }: ConnectChatNotificationOptions) => {
   const client = new Client({
@@ -152,6 +161,15 @@ export const connectChatNotification = ({
           if (event.type === "PRESENCE_CHANGED") onPresenceChanged?.(event);
         } catch {
           onError("실시간 상태 데이터를 해석하지 못했습니다.");
+        }
+      });
+      // 서비스 알림은 방과 무관하게 로그인한 사용자 전용 큐로 받음.
+      client.subscribe("/user/queue/notification", (frame) => {
+        try {
+          const event = JSON.parse(frame.body) as NotificationRealtimeEvent;
+          if (event.type === "NOTIFICATION_CREATED") onNotificationCreated?.(event);
+        } catch {
+          onError("실시간 알림 데이터를 해석하지 못했습니다.");
         }
       });
       [...new Set(subscribedChatRoomIds)].forEach((chatRoomId) => {

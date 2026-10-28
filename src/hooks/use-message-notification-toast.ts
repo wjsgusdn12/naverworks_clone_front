@@ -9,6 +9,7 @@ export type MessageNotification = {
   notificationId: number;
   chatRoomId: number;
   roomName: string;
+  senderMembershipId: number;
   senderName: string;
   content: string;
   version?: number;
