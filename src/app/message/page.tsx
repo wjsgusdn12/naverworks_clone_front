@@ -58,8 +58,10 @@ import {
   FormEvent,
   Fragment,
   Suspense,
+  memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -126,6 +128,16 @@ const sortRoomsByLatestActivity = (rooms: ChatRoom[]) =>
 
 type RoomSort = "LATEST" | "TYPE" | "UNREAD";
 // 메시지 입력창 높이는 사용자가 손잡이로 조절할 때만 바뀌고, 내용이 넘치면 입력창 안에서 스크롤.
+// 매 렌더마다 새로 만들어지는 함수를 늘 같은 참조로 감싸 줌.
+// memo된 자식(메시지 목록)에 넘길 때 "함수가 바뀌었다"는 이유로 다시 그려지는 것을 막음.
+function useStableCallback<Args extends unknown[], Result>(callback: (...args: Args) => Result) {
+  const ref = useRef(callback);
+  useLayoutEffect(() => {
+    ref.current = callback;
+  });
+  return useCallback((...args: Args) => ref.current(...args), []);
+}
+
 // 보낸 지 24시간이 지나지 않은 메시지만 수정 가능(서버도 같은 기준으로 거부).
 const isMessageEditable = (message: ChatMessage) =>
   Date.now() - new Date(message.createdAt).getTime() < EDIT_WINDOW_HOURS * 60 * 60 * 1000;
@@ -1034,6 +1046,18 @@ function MessageContent() {
   );
   const groupRooms = filteredRooms.filter((room) => room.type === "GROUP");
   const generalRooms = filteredRooms.filter((room) => room.type !== "GROUP");
+  // 방 항목(memo)에 넘기는 콜백은 방마다 새로 만들지 않고 고정 함수 하나를 공유(방 ID를 인자로 받음).
+  const selectRoom = useCallback((roomId: number) => setSelectedRoomId(roomId), []);
+  const toggleRoomMenu = useCallback((roomId: number) => setRoomMenuId((current) => current === roomId ? null : roomId), []);
+  const toggleHiddenRoom = useCallback((roomId: number) => setHiddenRoomIds((current) => { const next = new Set(current); if (next.has(roomId)) next.delete(roomId); else next.add(roomId); return next; }), []);
+  const handleRoomAction = useStableCallback(async (room: ChatRoom, action: "notification" | "pin" | "hide" | "leave") => {
+    if (!accessToken) return;
+    setRoomMenuId(null);
+    if (action === "hide") { setHideSelectionMode(true); setHiddenRoomIds(new Set([room.id])); return; }
+    if (action === "leave") { await chatApi.leave(accessToken, room.id); setRooms((current) => current.filter((target) => target.id !== room.id)); if (selectedRoomId === room.id) setSelectedRoomId(null); showToast("채팅방에서 나갔습니다."); return; }
+    if (action === "pin") { await chatApi.togglePin(accessToken, room.id); await loadRooms(); showToast(room.pinned ? "고정을 해제했습니다." : "채팅방을 고정했습니다."); return; }
+    setNotificationRoom(room);
+  });
   const renderRoomItem = (room: ChatRoom) => (
     <MessageRoomItem
       key={room.id}
@@ -1049,21 +1073,14 @@ function MessageContent() {
           : `${roomTypingMembers[0].displayName}님이 입력 중입니다`;
       })()}
       isCollapsed={isSidebarCollapsed}
-      onClick={() => setSelectedRoomId(room.id)}
+      onSelect={selectRoom}
       onProfileClick={openUserProfile}
       menuOpen={roomMenuId === room.id}
       hideSelectionMode={hideSelectionMode}
       hiddenSelected={hiddenRoomIds.has(room.id)}
-      onToggleMenu={() => setRoomMenuId((current) => current === room.id ? null : room.id)}
-      onToggleHidden={() => setHiddenRoomIds((current) => { const next = new Set(current); if (next.has(room.id)) next.delete(room.id); else next.add(room.id); return next; })}
-      onAction={async (action) => {
-        if (!accessToken) return;
-        setRoomMenuId(null);
-        if (action === "hide") { setHideSelectionMode(true); setHiddenRoomIds(new Set([room.id])); return; }
-        if (action === "leave") { await chatApi.leave(accessToken, room.id); setRooms((current) => current.filter((target) => target.id !== room.id)); if (selectedRoomId === room.id) setSelectedRoomId(null); showToast("채팅방에서 나갔습니다."); return; }
-        if (action === "pin") { await chatApi.togglePin(accessToken, room.id); await loadRooms(); showToast(room.pinned ? "고정을 해제했습니다." : "채팅방을 고정했습니다."); return; }
-        setNotificationRoom(room);
-      }}
+      onToggleMenu={toggleRoomMenu}
+      onToggleHidden={toggleHiddenRoom}
+      onAction={handleRoomAction}
     />
   );
   const displayRoomName = (room: ChatRoom) =>
@@ -1541,6 +1558,15 @@ function MessageContent() {
     };
   }, []);
 
+  // 메시지 목록은 memo로 분리돼 있어, 입력칸 타이핑 등 다른 state 변화에 다시 그려지지 않음.
+  // 그러려면 넘기는 함수들의 참조가 고정돼야 하므로 여기서 한 번 감쌈.
+  const stableOpenReadMembers = useStableCallback(openReadMembers);
+  const stableCopyMessage = useStableCallback((target: ChatMessage) => void copyMessage(target));
+  const stableStartReply = useStableCallback(startReply);
+  const stableStartEdit = useStableCallback(startEdit);
+  const stableStartDelete = useStableCallback(startDelete);
+  const stableJumpToOriginal = useStableCallback((messageId: number) => void jumpToOriginal(messageId));
+
   return (
     <div className="min-h-screen bg-white text-slate-900">
       {member && (
@@ -1799,73 +1825,20 @@ function MessageContent() {
                     )}
                   </div>
                 )}
-                {messages.map((message, index) => {
-                  const label = formatChatDate(message.createdAt);
-                  const showDate =
-                    index === 0 ||
-                    dateKey(messages[index - 1].createdAt) !==
-                    dateKey(message.createdAt);
-                  const sender = contactMemberById.get(
-                    message.senderMembershipId,
-                  );
-                  const previousMessage = messages[index - 1];
-                  const nextMessage = messages[index + 1];
-                  const isGroupedWithPrevious =
-                    message.type === "TEXT" &&
-                    previousMessage?.type === "TEXT" &&
-                    previousMessage.senderMembershipId === message.senderMembershipId &&
-                    minuteKey(previousMessage.createdAt) === minuteKey(message.createdAt);
-                  const isGroupedWithNext =
-                    message.type === "TEXT" &&
-                    nextMessage?.type === "TEXT" &&
-                    nextMessage.senderMembershipId === message.senderMembershipId &&
-                    minuteKey(nextMessage.createdAt) === minuteKey(message.createdAt);
-                  return (
-                    <Fragment key={message.id}>
-                      {showDate && (
-                        <p className="my-5 text-center">
-                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500">
-                            {label}
-                          </span>
-                        </p>
-                      )}
-                      <div
-                        data-message-id={message.id}
-                        className="group/message relative w-full"
-                        data-message-date={dateKey(message.createdAt)}
-                        data-message-label={label}
-                      >
-                        {message.type === "SYSTEM" ? (
-                          <p className="my-5 text-center text-xs text-slate-400">
-                            {message.content}
-                          </p>
-                        ) : (
-                          <MessageBubble
-                            message={message}
-                            isOriginalHighlighted={highlightedMessageId === message.id}
-                            isMine={
-                              message.senderMembershipId ===
-                              member?.membershipId
-                            }
-                            isDirect={selectedRoom?.type === "DIRECT"}
-                            isGroup={selectedRoom?.type === "GROUP"}
-                            senderProfile={sender}
-                            showSender={!isGroupedWithPrevious}
-                            showMeta={!isGroupedWithNext}
-                            showTail={!isGroupedWithPrevious}
-                            onOpenReadMembers={openReadMembers}
-                            onProfileClick={openUserProfile}
-                            onCopy={(target) => void copyMessage(target)}
-                            onReply={startReply}
-                            onEdit={startEdit}
-                            onDelete={startDelete}
-                            onOpenOriginal={(messageId) => void jumpToOriginal(messageId)}
-                          />
-                        )}
-                      </div>
-                    </Fragment>
-                  );
-                })}
+                <MessageList
+                  messages={messages}
+                  highlightedMessageId={highlightedMessageId}
+                  myMembershipId={member?.membershipId ?? null}
+                  roomType={selectedRoom?.type ?? null}
+                  contactMemberById={contactMemberById}
+                  onOpenReadMembers={stableOpenReadMembers}
+                  onProfileClick={openUserProfile}
+                  onCopy={stableCopyMessage}
+                  onReply={stableStartReply}
+                  onEdit={stableStartEdit}
+                  onDelete={stableStartDelete}
+                  onOpenOriginal={stableJumpToOriginal}
+                />
                 {newerCursor === null && typingMembers.length > 0 && (
                   <TypingBubble
                     member={typingMembers[0]}
@@ -2298,14 +2271,16 @@ function MessageContent() {
   );
 }
 
-function MessageRoomItem({
+// 방 항목은 memo로 묶어, 메시지 입력·수신 등으로 부모가 다시 그려져도 자기 props가 같으면 건너뜀.
+// 그래서 콜백은 방마다 새 함수를 만들지 않고, 어느 방인지를 인자로 받는 고정 함수를 사용.
+const MessageRoomItem = memo(function MessageRoomItem({
   room,
   currentMember,
   contactMemberById,
   isSelected,
   typingPreviewLabel,
   isCollapsed,
-  onClick,
+  onSelect,
   onProfileClick,
   menuOpen,
   hideSelectionMode,
@@ -2320,14 +2295,14 @@ function MessageRoomItem({
   isSelected: boolean;
   typingPreviewLabel: string | null;
   isCollapsed: boolean;
-  onClick: () => void;
+  onSelect: (roomId: number) => void;
   onProfileClick: (membershipId: number) => void;
   menuOpen: boolean;
   hideSelectionMode: boolean;
   hiddenSelected: boolean;
-  onToggleMenu: () => void;
-  onToggleHidden: () => void;
-  onAction: (action: "notification" | "pin" | "hide" | "leave") => void;
+  onToggleMenu: (roomId: number) => void;
+  onToggleHidden: (roomId: number) => void;
+  onAction: (room: ChatRoom, action: "notification" | "pin" | "hide" | "leave") => void;
 }) {
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [menuPosition, setMenuPosition] = useState<{ left: number; top: number } | null>(null);
@@ -2360,16 +2335,16 @@ function MessageRoomItem({
 
   return (
     <div data-room-menu className={`group relative flex w-[calc(100%-1rem)] gap-3 rounded-lg ${isCollapsed ? "mx-2 my-1 justify-center px-2 py-3" : "mx-2 my-1 px-3 py-3"} text-left transition-colors duration-200 hover:bg-blue-50 ${isSelected ? "bg-blue-100" : ""}`}>
-      {hideSelectionMode && !isCollapsed && <button type="button" role="checkbox" aria-checked={hiddenSelected} onClick={onToggleHidden} className={`custom-checkbox-button mt-1 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-md border transition ${hiddenSelected ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white"}`}>{hiddenSelected && <Check size={14} strokeWidth={3} />}</button>}
+      {hideSelectionMode && !isCollapsed && <button type="button" role="checkbox" aria-checked={hiddenSelected} onClick={() => onToggleHidden(room.id)} className={`custom-checkbox-button mt-1 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-md border transition ${hiddenSelected ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white"}`}>{hiddenSelected && <Check size={14} strokeWidth={3} />}</button>}
       <div
         role="button"
         tabIndex={0}
         aria-label={displayName}
-        onClick={onClick}
+        onClick={() => onSelect(room.id)}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            onClick();
+            onSelect(room.id);
           }
         }}
         className="flex min-w-0 flex-1 cursor-pointer gap-3 text-left"
@@ -2415,7 +2390,7 @@ function MessageRoomItem({
                 <small className={`absolute right-3 top-3 whitespace-nowrap text-right leading-5 text-slate-500 transition-opacity duration-150 group-hover:opacity-0 ${menuOpen ? "opacity-0" : ""}`}>
                   {formatRoomTime(room.lastMessageAt)}
                 </small>
-                <button ref={menuButtonRef} type="button" aria-label="메시지방 메뉴" onClick={(event) => { event.preventDefault(); event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect(); setMenuPosition({ left: rect.left, top: rect.bottom + 6 }); onToggleMenu(); }} className={`absolute right-3 top-1/2 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded text-slate-600 opacity-0 transition-opacity duration-150 hover:bg-slate-200 group-hover:pointer-events-auto group-hover:opacity-100 ${menuOpen ? "pointer-events-auto opacity-100" : "pointer-events-none"}`}><MoreVertical size={17} /></button>
+                <button ref={menuButtonRef} type="button" aria-label="메시지방 메뉴" onClick={(event) => { event.preventDefault(); event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect(); setMenuPosition({ left: rect.left, top: rect.bottom + 6 }); onToggleMenu(room.id); }} className={`absolute right-3 top-1/2 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded text-slate-600 opacity-0 transition-opacity duration-150 hover:bg-slate-200 group-hover:pointer-events-auto group-hover:opacity-100 ${menuOpen ? "pointer-events-auto opacity-100" : "pointer-events-none"}`}><MoreVertical size={17} /></button>
               </span>
             </span>
             <span className="mt-0.5 flex items-start gap-2">
@@ -2460,10 +2435,10 @@ function MessageRoomItem({
             </span>
       </span>
         )}</div>
-      {menuOpen && !isCollapsed && menuPosition && createPortal(<div data-room-menu className="fixed z-[200] w-36 rounded-xl border border-slate-200 bg-white py-1 shadow-lg animate-in fade-in zoom-in-95" style={menuPosition}><button type="button" onClick={() => onAction("notification")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><Bell size={15} />알림 설정</button><button type="button" onClick={() => onAction("pin")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><Pin size={15} />{room.pinned ? "핀 고정 해제" : "핀 고정"}</button><button type="button" onClick={() => onAction("hide")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><EyeOff size={15} />숨김</button><button type="button" onClick={() => onAction("leave")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50"><LogOut size={15} />나가기</button></div>, document.body)}
+      {menuOpen && !isCollapsed && menuPosition && createPortal(<div data-room-menu className="fixed z-[200] w-36 rounded-xl border border-slate-200 bg-white py-1 shadow-lg animate-in fade-in zoom-in-95" style={menuPosition}><button type="button" onClick={() => onAction(room, "notification")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><Bell size={15} />알림 설정</button><button type="button" onClick={() => onAction(room, "pin")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><Pin size={15} />{room.pinned ? "핀 고정 해제" : "핀 고정"}</button><button type="button" onClick={() => onAction(room, "hide")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><EyeOff size={15} />숨김</button><button type="button" onClick={() => onAction(room, "leave")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50"><LogOut size={15} />나가기</button></div>, document.body)}
     </div>
   );
-}
+});
 
 function GroupAvatar({
   name,
@@ -2543,7 +2518,105 @@ function MentionText({ content }: { content: string }) {
   return <>{content.split(/(@(?:All|[\p{L}\p{N}_-]+))/gu).map((part, index) => part.startsWith("@") ? <span key={`${part}-${index}`} className="text-blue-600">{part}</span> : part)}</>;
 }
 
-function MessageBubble({
+// 메시지 목록만 따로 memo로 묶어, 입력칸 타이핑·상대 입력 표시·접속 상태 같은 다른 state가 바뀔 때
+// 말풍선 50개를 매번 다시 계산하지 않게 함. messages 배열이나 강조 ID가 바뀔 때만 다시 그려짐.
+const MessageList = memo(function MessageList({
+  messages,
+  highlightedMessageId,
+  myMembershipId,
+  roomType,
+  contactMemberById,
+  onOpenReadMembers,
+  onProfileClick,
+  onCopy,
+  onReply,
+  onEdit,
+  onDelete,
+  onOpenOriginal,
+}: {
+  messages: ChatMessage[];
+  highlightedMessageId: number | null;
+  myMembershipId: number | null;
+  roomType: ChatRoom["type"] | null;
+  contactMemberById: Map<number, AddressBookMember>;
+  onOpenReadMembers: (message: ChatMessage) => Promise<void>;
+  onProfileClick: (membershipId: number) => void;
+  onCopy: (message: ChatMessage) => void;
+  onReply: (message: ChatMessage) => void;
+  onEdit: (message: ChatMessage) => void;
+  onDelete: (message: ChatMessage) => void;
+  onOpenOriginal: (messageId: number) => void;
+}) {
+  return (
+    <>
+      {messages.map((message, index) => {
+        const label = formatChatDate(message.createdAt);
+        const showDate =
+          index === 0 ||
+          dateKey(messages[index - 1].createdAt) !==
+          dateKey(message.createdAt);
+        const sender = contactMemberById.get(message.senderMembershipId);
+        const previousMessage = messages[index - 1];
+        const nextMessage = messages[index + 1];
+        const isGroupedWithPrevious =
+          message.type === "TEXT" &&
+          previousMessage?.type === "TEXT" &&
+          previousMessage.senderMembershipId === message.senderMembershipId &&
+          minuteKey(previousMessage.createdAt) === minuteKey(message.createdAt);
+        const isGroupedWithNext =
+          message.type === "TEXT" &&
+          nextMessage?.type === "TEXT" &&
+          nextMessage.senderMembershipId === message.senderMembershipId &&
+          minuteKey(nextMessage.createdAt) === minuteKey(message.createdAt);
+        return (
+          <Fragment key={message.id}>
+            {showDate && (
+              <p className="my-5 text-center">
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500">
+                  {label}
+                </span>
+              </p>
+            )}
+            <div
+              data-message-id={message.id}
+              className="group/message relative w-full"
+              data-message-date={dateKey(message.createdAt)}
+              data-message-label={label}
+            >
+              {message.type === "SYSTEM" ? (
+                <p className="my-5 text-center text-xs text-slate-400">
+                  {message.content}
+                </p>
+              ) : (
+                <MessageBubble
+                  message={message}
+                  isOriginalHighlighted={highlightedMessageId === message.id}
+                  isMine={message.senderMembershipId === myMembershipId}
+                  isDirect={roomType === "DIRECT"}
+                  isGroup={roomType === "GROUP"}
+                  senderProfile={sender}
+                  showSender={!isGroupedWithPrevious}
+                  showMeta={!isGroupedWithNext}
+                  showTail={!isGroupedWithPrevious}
+                  onOpenReadMembers={onOpenReadMembers}
+                  onProfileClick={onProfileClick}
+                  onCopy={onCopy}
+                  onReply={onReply}
+                  onEdit={onEdit}
+                  onDelete={onDelete}
+                  onOpenOriginal={onOpenOriginal}
+                />
+              )}
+            </div>
+          </Fragment>
+        );
+      })}
+    </>
+  );
+});
+
+// 말풍선 하나는 자기 props가 바뀔 때만 다시 그림(목록 안에서 다른 말풍선이 바뀌어도 영향 없음).
+const MessageBubble = memo(function MessageBubble({
   message,
   isOriginalHighlighted,
   isMine,
@@ -2713,7 +2786,7 @@ function MessageBubble({
       </div>
     </div>
   );
-}
+});
 
 // 실제 수신 말풍선과 같은 구조로 입력 중 상태만 표시.
 function TypingBubble({
