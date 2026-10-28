@@ -25,7 +25,14 @@ const MARGIN = 8;
 
 // 프로젝트 공통 툴팁. body에 portal로 그려서 overflow·모달 경계에 잘리지 않고,
 // 실제 크기를 잰 뒤 화면 안에 들어오도록 위치와 방향(위/아래)을 보정.
-export function Tooltip({ label, children, placement = "bottom", disabled = false, multiline = false, className = "" }: TooltipProps) {
+export function Tooltip({
+  label,
+  children,
+  placement = "bottom",
+  disabled = false,
+  multiline = false,
+  className = "",
+}: TooltipProps) {
   const anchorRef = useRef<HTMLSpanElement>(null);
   const tipRef = useRef<HTMLSpanElement>(null);
   const [open, setOpen] = useState(false);
@@ -83,17 +90,18 @@ export function Tooltip({ label, children, placement = "bottom", disabled = fals
       onBlur={hide}
     >
       {children}
-      {visible && createPortal(
-        <span
-          ref={tipRef}
-          role="tooltip"
-          style={{ position: "fixed", left: 0, top: 0, visibility: "hidden" }}
-          className={`pointer-events-none z-[130] rounded bg-zinc-700 text-white shadow-md ${multiline ? "max-w-56 whitespace-normal px-2.5 py-1.5 text-xs leading-5" : "whitespace-nowrap px-2 py-1 text-[11px] font-medium"}`}
-        >
-          {label}
-        </span>,
-        document.body,
-      )}
+      {visible &&
+        createPortal(
+          <span
+            ref={tipRef}
+            role="tooltip"
+            style={{ position: "fixed", left: 0, top: 0, visibility: "hidden" }}
+            className={`pointer-events-none z-[130] rounded bg-zinc-700 text-white shadow-md ${multiline ? "max-w-60 whitespace-normal px-3 py-2 text-[13px] leading-5" : "whitespace-nowrap px-2.5 py-1.5 text-xs font-medium"}`}
+          >
+            {label}
+          </span>,
+          document.body,
+        )}
     </span>
   );
 }
