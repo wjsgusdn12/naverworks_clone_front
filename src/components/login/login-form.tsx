@@ -3,6 +3,7 @@
 import { Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { Tooltip } from "@/components/common/tooltip";
+import { LoadingInline } from "@/components/common/loading";
 import { FcGoogle } from "react-icons/fc";
 import { RiKakaoTalkFill } from "react-icons/ri";
 import { SiNaver } from "react-icons/si";
@@ -21,8 +22,20 @@ type LoginFormProps = {
 
 // 실제 소셜 인증 전까지 사용하는 로그인 버튼 표시 정보.
 const socialProviders = [
-  { name: "NAVER", tooltip: "네이버 로그인", icon: SiNaver, iconSize: 20, className: "bg-[#03c75a] text-white" },
-  { name: "KAKAO", tooltip: "카카오 로그인", icon: RiKakaoTalkFill, iconSize: 24, className: "bg-[#fee500] text-[#191919]" },
+  {
+    name: "NAVER",
+    tooltip: "네이버 로그인",
+    icon: SiNaver,
+    iconSize: 20,
+    className: "bg-[#03c75a] text-white",
+  },
+  {
+    name: "KAKAO",
+    tooltip: "카카오 로그인",
+    icon: RiKakaoTalkFill,
+    iconSize: 24,
+    className: "bg-[#fee500] text-[#191919]",
+  },
   { name: "Google", tooltip: "Google 로그인", icon: FcGoogle, iconSize: 24, className: "bg-white" },
 ];
 
@@ -126,7 +139,10 @@ export function LoginForm({ onToast, onLogin }: LoginFormProps) {
                   : "border-slate-300 focus:border-blue-600 focus:ring-blue-100"
               }`}
             />
-            <Tooltip label={isPasswordVisible ? "비밀번호 숨기기" : "비밀번호 보기"} className="absolute inset-y-0 right-0 w-12">
+            <Tooltip
+              label={isPasswordVisible ? "비밀번호 숨기기" : "비밀번호 보기"}
+              className="absolute inset-y-0 right-0 w-12"
+            >
               <button
                 type="button"
                 aria-label={isPasswordVisible ? "비밀번호 숨기기" : "비밀번호 보기"}
@@ -172,7 +188,11 @@ export function LoginForm({ onToast, onLogin }: LoginFormProps) {
           disabled={isSubmitting}
           className="flex h-12 w-full cursor-pointer items-center justify-center rounded-lg bg-blue-600 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-md disabled:cursor-wait disabled:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
         >
-          {isSubmitting ? "로그인 중..." : "로그인"}
+          {isSubmitting ? (
+            <LoadingInline message="로그인 중..." spinnerClassName="text-white" />
+          ) : (
+            "로그인"
+          )}
         </button>
       </form>
 
