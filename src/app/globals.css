@@ -74,14 +74,24 @@ body {
 }
 
 @keyframes message-action-menu {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.message-action-menu { animation: message-action-menu 160ms ease-out; }
+.message-action-menu {
+  animation: message-action-menu 160ms ease-out;
+}
 
 @media (prefers-reduced-motion: reduce) {
-  .message-action-menu { animation: none; }
+  .message-action-menu {
+    animation: none;
+  }
 }
 
 @keyframes toast-enter {
@@ -141,13 +151,25 @@ body {
 }
 
 @keyframes typing-bubble-enter {
-  from { opacity: 0; transform: translateY(8px) scale(0.94); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes typing-bubble-exit {
-  from { opacity: 1; transform: translateY(0) scale(1); }
-  to { opacity: 0; transform: translateY(5px) scale(0.96); }
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(5px) scale(0.96);
+  }
 }
 
 .typing-bubble-enter {
@@ -159,8 +181,15 @@ body {
 }
 
 @keyframes typing-dot-bounce {
-  0%, 100% { transform: translateY(0) scale(0.9); opacity: 0.6; }
-  50% { transform: translateY(-2px) scale(1.03); opacity: 0.95; }
+  0%,
+  100% {
+    transform: translateY(0) scale(0.9);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translateY(-2px) scale(1.03);
+    opacity: 0.95;
+  }
 }
 
 .typing-dot {
@@ -177,13 +206,24 @@ body {
 
 /* 새 메시지 안내는 등장 후 아래 이동 동작을 명확히 보여 준다. */
 @keyframes new-message-notice-enter {
-  from { opacity: 0; transform: translate(-50%, 10px) scale(0.96); }
-  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
 }
 
 @keyframes new-message-notice-arrow {
-  0%, 100% { transform: translateY(-2px); }
-  50% { transform: translateY(4px); }
+  0%,
+  100% {
+    transform: translateY(-2px);
+  }
+  50% {
+    transform: translateY(4px);
+  }
 }
 
 .new-message-notice {
@@ -196,8 +236,13 @@ body {
 
 /* 최신 메시지 이동 버튼의 화살표가 아래 방향을 자연스럽게 안내. */
 @keyframes scroll-to-bottom-arrow {
-  0%, 100% { transform: translateY(-2px); }
-  50% { transform: translateY(3px); }
+  0%,
+  100% {
+    transform: translateY(-2px);
+  }
+  50% {
+    transform: translateY(3px);
+  }
 }
 
 .scroll-to-bottom-button {
@@ -210,13 +255,25 @@ body {
 
 /* 메시지 알림 카드는 아래에서 떠오르고, 닫힐 때 다시 아래로 빠짐. */
 @keyframes message-notification-enter {
-  from { opacity: 0; transform: translateY(20px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes message-notification-exit {
-  from { opacity: 1; transform: translateY(0) scale(1); }
-  to { opacity: 0; transform: translateY(20px) scale(0.98); }
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
 }
 
 .message-notification-enter {
@@ -228,9 +285,18 @@ body {
 }
 
 @keyframes notification-bell-switch {
-  0% { opacity: 0; transform: scale(0.55) rotate(-18deg); }
-  70% { opacity: 1; transform: scale(1.13) rotate(5deg); }
-  100% { opacity: 1; transform: scale(1) rotate(0); }
+  0% {
+    opacity: 0;
+    transform: scale(0.55) rotate(-18deg);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.13) rotate(5deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+  }
 }
 
 .notification-bell-on,
@@ -258,7 +324,10 @@ body {
 
 /* 숨긴 기본 input과 연결된 프로젝트 전용 체크박스 UI. */
 .custom-checkbox-control {
-  transition: background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease,
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
     transform 0.18s ease;
 }
 

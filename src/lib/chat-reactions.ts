@@ -12,5 +12,7 @@ export const REACTION_EMOJIS = [
 export type ReactionCode = (typeof REACTION_EMOJIS)[number]["code"];
 
 // 모르는 코드가 와도 화면이 깨지지 않게 코드 문자열을 그대로 보여 줌.
-export const reactionChar = (code: string) => REACTION_EMOJIS.find((item) => item.code === code)?.char ?? code;
-export const reactionLabel = (code: string) => REACTION_EMOJIS.find((item) => item.code === code)?.label ?? code;
+export const reactionChar = (code: string) =>
+  REACTION_EMOJIS.find((item) => item.code === code)?.char ?? code;
+export const reactionLabel = (code: string) =>
+  REACTION_EMOJIS.find((item) => item.code === code)?.label ?? code;

@@ -77,7 +77,11 @@ const request = async <T>(path: string, init: RequestInit): Promise<T> => {
     });
   } catch {
     // 네트워크 단절·서버 미기동처럼 HTTP 응답이 없는 경우를 구분.
-    throw new ApiClientError("인증 서버에 연결할 수 없습니다. 서버 상태를 확인해 주세요.", 0, "NETWORK_ERROR");
+    throw new ApiClientError(
+      "인증 서버에 연결할 수 없습니다. 서버 상태를 확인해 주세요.",
+      0,
+      "NETWORK_ERROR",
+    );
   }
 
   const responseBody = (await response.json().catch(() => ({}))) as Partial<ApiResponse<T>>;
@@ -116,11 +120,17 @@ export const authApi = {
         credentials: "include",
       });
     } catch {
-      throw new ApiClientError("인증 서버에 연결할 수 없습니다. 서버 상태를 확인해 주세요.", 0, "NETWORK_ERROR");
+      throw new ApiClientError(
+        "인증 서버에 연결할 수 없습니다. 서버 상태를 확인해 주세요.",
+        0,
+        "NETWORK_ERROR",
+      );
     }
 
     if (!response.ok) {
-      const responseBody = (await response.json().catch(() => ({}))) as Partial<ApiResponse<unknown>>;
+      const responseBody = (await response.json().catch(() => ({}))) as Partial<
+        ApiResponse<unknown>
+      >;
       throw toApiClientError(response.status, responseBody);
     }
   },

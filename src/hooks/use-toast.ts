@@ -40,31 +40,34 @@ export function useToast() {
     };
   }, [clearToastTimers]);
 
-  const showToast = useCallback((message: string) => {
-    // 연속 클릭 시 이전 종료 예약을 취소하고 새 토스트 시간을 시작.
-    clearToastTimers();
+  const showToast = useCallback(
+    (message: string) => {
+      // 연속 클릭 시 이전 종료 예약을 취소하고 새 토스트 시간을 시작.
+      clearToastTimers();
 
-    // 재클릭하면 key를 바꿔 애니메이션을 다시 재생.
-    toastSequenceRef.current += 1;
-    const toastId = toastSequenceRef.current;
+      // 재클릭하면 key를 바꿔 애니메이션을 다시 재생.
+      toastSequenceRef.current += 1;
+      const toastId = toastSequenceRef.current;
 
-    setToast((currentToast) => ({
-      id: toastId,
-      message,
-      phase: currentToast ? "replay" : "enter",
-    }));
+      setToast((currentToast) => ({
+        id: toastId,
+        message,
+        phase: currentToast ? "replay" : "enter",
+      }));
 
-    // 종료 애니메이션이 보일 수 있도록 제거보다 먼저 단계만 변경.
-    toastHideTimerRef.current = setTimeout(() => {
-      setToast((currentToast) =>
-        currentToast?.id === toastId ? { ...currentToast, phase: "exit" } : currentToast,
-      );
-    }, TOAST_DURATION_MS - TOAST_EXIT_DURATION_MS);
+      // 종료 애니메이션이 보일 수 있도록 제거보다 먼저 단계만 변경.
+      toastHideTimerRef.current = setTimeout(() => {
+        setToast((currentToast) =>
+          currentToast?.id === toastId ? { ...currentToast, phase: "exit" } : currentToast,
+        );
+      }, TOAST_DURATION_MS - TOAST_EXIT_DURATION_MS);
 
-    toastRemoveTimerRef.current = setTimeout(() => {
-      setToast((currentToast) => (currentToast?.id === toastId ? null : currentToast));
-    }, TOAST_DURATION_MS);
-  }, [clearToastTimers]);
+      toastRemoveTimerRef.current = setTimeout(() => {
+        setToast((currentToast) => (currentToast?.id === toastId ? null : currentToast));
+      }, TOAST_DURATION_MS);
+    },
+    [clearToastTimers],
+  );
 
   const dismissToast = useCallback(() => {
     // 수동 닫기 후 이전 자동 종료 타이머가 다시 실행되지 않게 제거.

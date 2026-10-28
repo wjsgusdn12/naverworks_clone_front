@@ -71,10 +71,18 @@ export function useMessageNotificationToast() {
   }, [clearTimers]);
 
   // 이미 표시 중인 알림만 갱신하며, 수정·삭제로 새 알림을 만들지는 않음.
-  const updateMessageNotification = useCallback((messageId: number, content: string, deleted: boolean, version: number) => {
-    setMessageNotification((current) => current?.notificationId === messageId && (current.version ?? 0) <= version
-      ? (deleted ? null : { ...current, content, version }) : current);
-  }, []);
+  const updateMessageNotification = useCallback(
+    (messageId: number, content: string, deleted: boolean, version: number) => {
+      setMessageNotification((current) =>
+        current?.notificationId === messageId && (current.version ?? 0) <= version
+          ? deleted
+            ? null
+            : { ...current, content, version }
+          : current,
+      );
+    },
+    [],
+  );
 
   return {
     messageNotification,

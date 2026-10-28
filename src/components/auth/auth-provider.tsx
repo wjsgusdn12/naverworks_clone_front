@@ -7,7 +7,15 @@ import {
   type AuthTokenResponse,
   type LoginInput,
 } from "@/lib/api/auth-api";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 type AuthenticationStatus = "loading" | "authenticated" | "unauthenticated";
 
@@ -40,13 +48,16 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
     setStatus("unauthenticated");
   }, []);
 
-  const establishAuthentication = useCallback((session: AuthTokenResponse, authenticatedMember: AuthMember) => {
-    setAccessToken(session.accessToken);
-    setAccessTokenExpiresAt(Date.now() + session.expiresIn * 1000);
-    setSessionExpiresAt(session.sessionExpiresAt);
-    setMember(authenticatedMember);
-    setStatus("authenticated");
-  }, []);
+  const establishAuthentication = useCallback(
+    (session: AuthTokenResponse, authenticatedMember: AuthMember) => {
+      setAccessToken(session.accessToken);
+      setAccessTokenExpiresAt(Date.now() + session.expiresIn * 1000);
+      setSessionExpiresAt(session.sessionExpiresAt);
+      setMember(authenticatedMember);
+      setStatus("authenticated");
+    },
+    [],
+  );
 
   const restoreAuthentication = useCallback(async () => {
     const requestVersion = authRequestVersionRef.current;
@@ -122,10 +133,13 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
 
     // 전체 로그인 유효 시간이 끝나면 즉시 로그인 화면으로 이동.
     const sessionDelay = new Date(sessionExpiresAt).getTime() - Date.now();
-    const timer = window.setTimeout(() => {
-      clearAuthentication();
-      window.location.replace("/");
-    }, Math.max(0, sessionDelay));
+    const timer = window.setTimeout(
+      () => {
+        clearAuthentication();
+        window.location.replace("/");
+      },
+      Math.max(0, sessionDelay),
+    );
     return () => window.clearTimeout(timer);
   }, [clearAuthentication, sessionExpiresAt]);
 

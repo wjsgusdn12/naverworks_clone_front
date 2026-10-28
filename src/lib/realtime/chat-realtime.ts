@@ -117,7 +117,12 @@ export const connectChatRoom = ({
       [...new Set(subscribedChatRoomIds)].forEach((subscribedRoomId) => {
         client.subscribe(`/topic/chatRoom/${subscribedRoomId}`, (frame) => {
           try {
-            const event = JSON.parse(frame.body) as ChatRealtimeEvent | ChatTypingEvent | ChatReadEvent | ChatMessageChangeEvent | ChatReactionEvent;
+            const event = JSON.parse(frame.body) as
+              | ChatRealtimeEvent
+              | ChatTypingEvent
+              | ChatReadEvent
+              | ChatMessageChangeEvent
+              | ChatReactionEvent;
             if (event.type === "MESSAGE_CREATED") {
               // 방 목록은 모든 참여 방의 최신 메시지를 받아 즉시 갱신.
               onRoomMessageCreated(event);
@@ -129,8 +134,10 @@ export const connectChatRoom = ({
               if (event.chatRoomId === chatRoomId) onTypingChanged(event);
             }
             if (event.type === "READ_UPDATED") onReadUpdated(event);
-            if (event.type === "MESSAGE_UPDATED" || event.type === "MESSAGE_DELETED") onMessageChanged(event);
-            if (event.type === "REACTION_UPDATED" && event.chatRoomId === chatRoomId) onReactionChanged(event);
+            if (event.type === "MESSAGE_UPDATED" || event.type === "MESSAGE_DELETED")
+              onMessageChanged(event);
+            if (event.type === "REACTION_UPDATED" && event.chatRoomId === chatRoomId)
+              onReactionChanged(event);
           } catch {
             onError("실시간 메시지 데이터를 해석하지 못했습니다.");
           }
@@ -138,7 +145,8 @@ export const connectChatRoom = ({
       });
       onConnected?.(publishTyping);
     },
-    onStompError: (frame) => onError(frame.headers.message ?? "실시간 메시지 연결이 거부되었습니다."),
+    onStompError: (frame) =>
+      onError(frame.headers.message ?? "실시간 메시지 연결이 거부되었습니다."),
     onWebSocketError: () => onError("실시간 메시지 서버 연결에 실패했습니다."),
   });
   client.activate();
@@ -190,7 +198,8 @@ export const connectChatNotification = ({
           try {
             const event = JSON.parse(frame.body) as ChatRealtimeEvent | ChatMessageChangeEvent;
             if (event.type === "MESSAGE_CREATED") onMessageCreated(event);
-            if (event.type === "MESSAGE_UPDATED" || event.type === "MESSAGE_DELETED") onMessageChanged(event);
+            if (event.type === "MESSAGE_UPDATED" || event.type === "MESSAGE_DELETED")
+              onMessageChanged(event);
           } catch {
             onError("실시간 메시지 알림 데이터를 해석하지 못했습니다.");
           }

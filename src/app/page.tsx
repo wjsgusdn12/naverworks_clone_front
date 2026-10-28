@@ -57,7 +57,9 @@ export default function Home() {
       <main className="flex flex-1 items-center justify-center px-5 py-12 sm:px-8">
         <LoginForm onToast={showToast} onLogin={handleLogin} />
       </main>
-      {toast && <Toast key={toast.id} message={toast.message} phase={toast.phase} onClose={dismissToast} />}
+      {toast && (
+        <Toast key={toast.id} message={toast.message} phase={toast.phase} onClose={dismissToast} />
+      )}
     </div>
   );
 }

@@ -2,16 +2,18 @@
 
 import { MessageNotificationToast } from "@/components/common/message-notification-toast";
 import { useAuth } from "@/components/auth/auth-provider";
-import {
-  chatApi,
-  type ChatRoom,
-} from "@/lib/api/chat-api";
-import {
-  connectChatNotification,
-  type PresenceRealtimeEvent,
-} from "@/lib/realtime/chat-realtime";
+import { chatApi, type ChatRoom } from "@/lib/api/chat-api";
+import { connectChatNotification, type PresenceRealtimeEvent } from "@/lib/realtime/chat-realtime";
 import { notificationApi, type NotificationItem } from "@/lib/api/notification-api";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useMessageNotificationToast } from "@/hooks/use-message-notification-toast";
 import { useRouter } from "next/navigation";
 import { applyRoomMessageChange } from "@/lib/chat-message-state";
@@ -69,12 +71,15 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
     if (!accessToken) return Promise.resolve([]);
     // 전역 알림과 메시지 화면이 같은 삭제 이벤트를 받아도 목록 API는 한 번만 요청.
     if (refreshRequestRef.current?.token === accessToken) return refreshRequestRef.current.promise;
-    const promise = chatApi.rooms(accessToken).then((result) => {
-      if (refreshRequestRef.current?.token === accessToken) syncChatRooms(result);
-      return result;
-    }).finally(() => {
-      if (refreshRequestRef.current?.promise === promise) refreshRequestRef.current = null;
-    });
+    const promise = chatApi
+      .rooms(accessToken)
+      .then((result) => {
+        if (refreshRequestRef.current?.token === accessToken) syncChatRooms(result);
+        return result;
+      })
+      .finally(() => {
+        if (refreshRequestRef.current?.promise === promise) refreshRequestRef.current = null;
+      });
     refreshRequestRef.current = { token: accessToken, promise };
     return promise;
   }, [accessToken, syncChatRooms]);
@@ -97,19 +102,25 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
     if (accessToken) void notificationApi.readAll(accessToken).catch(() => undefined);
   }, [accessToken]);
 
-  const markNotificationRead = useCallback((notificationId: number) => {
-    setNotifications((current) =>
-      current.map((item) =>
-        item.id === notificationId ? { ...item, read: true } : item,
-      ),
-    );
-    if (accessToken) void notificationApi.read(accessToken, notificationId).catch(() => undefined);
-  }, [accessToken]);
+  const markNotificationRead = useCallback(
+    (notificationId: number) => {
+      setNotifications((current) =>
+        current.map((item) => (item.id === notificationId ? { ...item, read: true } : item)),
+      );
+      if (accessToken)
+        void notificationApi.read(accessToken, notificationId).catch(() => undefined);
+    },
+    [accessToken],
+  );
 
   const notificationCount = notifications.filter((item) => !item.read).length;
 
   const roomIdsKey = useMemo(
-    () => chatRooms.map((room) => room.id).sort((left, right) => left - right).join(","),
+    () =>
+      chatRooms
+        .map((room) => room.id)
+        .sort((left, right) => left - right)
+        .join(","),
     [chatRooms],
   );
 
@@ -131,10 +142,15 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
   useEffect(() => {
     if (status !== "authenticated" || !accessToken) return;
     let cancelled = false;
-    notificationApi.list(accessToken)
-      .then((items) => { if (!cancelled) setNotifications(items); })
+    notificationApi
+      .list(accessToken)
+      .then((items) => {
+        if (!cancelled) setNotifications(items);
+      })
       .catch(() => undefined)
-      .finally(() => { if (!cancelled) setNotificationsLoaded(true); });
+      .finally(() => {
+        if (!cancelled) setNotificationsLoaded(true);
+      });
     return () => {
       cancelled = true;
       setNotifications([]);
@@ -150,9 +166,20 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
       subscribedChatRoomIds: roomRef.current.map((room) => room.id),
       onMessageCreated: (event) => {
         // 메시지 화면 밖에서도 마지막 메시지 ID를 유지해야 이후 수정·삭제 대상을 구분할 수 있음.
-        syncChatRooms(roomRef.current.map((target) => target.id === event.chatRoomId && (target.lastMessageId ?? 0) <= event.message.id
-          ? { ...target, lastMessageId: event.message.id, lastMessageVersion: event.message.version, lastMessage: event.message.content, lastMessageAt: event.message.createdAt, lastSenderMembershipId: event.message.senderMembershipId }
-          : target));
+        syncChatRooms(
+          roomRef.current.map((target) =>
+            target.id === event.chatRoomId && (target.lastMessageId ?? 0) <= event.message.id
+              ? {
+                  ...target,
+                  lastMessageId: event.message.id,
+                  lastMessageVersion: event.message.version,
+                  lastMessage: event.message.content,
+                  lastMessageAt: event.message.createdAt,
+                  lastSenderMembershipId: event.message.senderMembershipId,
+                }
+              : target,
+          ),
+        );
         const room = roomRef.current.find((target) => target.id === event.chatRoomId);
         const mentioned = event.message.mentionedMembershipIds.includes(member.membershipId);
         // 방별 모드가 MENTION이면 직접 멘션한 메시지만 전역 알림 대상으로 처리.
@@ -167,9 +194,10 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
         ) {
           return;
         }
-        const roomName = room.type === "DIRECT"
-          ? room.directDisplayName ?? "1:1 메시지"
-          : room.name ?? "그룹 메시지";
+        const roomName =
+          room.type === "DIRECT"
+            ? (room.directDisplayName ?? "1:1 메시지")
+            : (room.name ?? "그룹 메시지");
         // 패널 목록은 서버 알림 이벤트가 채우고, 여기서는 우측 하단 토스트만 띄움.
         showMessageNotification({
           notificationId: event.message.id,
@@ -183,9 +211,19 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
       },
       onMessageChanged: (event) => {
         const incoming = event.message;
-        syncChatRooms(roomRef.current.map((room) => room.id === event.chatRoomId
-          ? applyRoomMessageChange(room, incoming, member.membershipId) : room));
-        updateMessageNotification(incoming.id, incoming.content, Boolean(incoming.deletedAt), incoming.version);
+        syncChatRooms(
+          roomRef.current.map((room) =>
+            room.id === event.chatRoomId
+              ? applyRoomMessageChange(room, incoming, member.membershipId)
+              : room,
+          ),
+        );
+        updateMessageNotification(
+          incoming.id,
+          incoming.content,
+          Boolean(incoming.deletedAt),
+          incoming.version,
+        );
         // 삭제된 메시지는 안 읽음 집계에서도 빠지므로 서버의 정식 집계로 재동기화.
         if (incoming.deletedAt) void refreshChatRooms().catch(() => undefined);
       },
@@ -207,7 +245,18 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
     });
 
     return () => connection.disconnect();
-  }, [accessToken, member, notificationEnabled, notificationMode, roomIdsKey, showMessageNotification, status, syncChatRooms, refreshChatRooms, updateMessageNotification]);
+  }, [
+    accessToken,
+    member,
+    notificationEnabled,
+    notificationMode,
+    roomIdsKey,
+    showMessageNotification,
+    status,
+    syncChatRooms,
+    refreshChatRooms,
+    updateMessageNotification,
+  ]);
 
   const value = useMemo(
     () => ({
@@ -279,7 +328,9 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
 export function useChatNotification() {
   const context = useContext(ChatNotificationContext);
   if (!context) {
-    throw new Error("useChatNotification은 ChatNotificationProvider 내부에서만 사용할 수 있습니다.");
+    throw new Error(
+      "useChatNotification은 ChatNotificationProvider 내부에서만 사용할 수 있습니다.",
+    );
   }
   return context;
 }

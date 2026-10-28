@@ -19,10 +19,34 @@ type HomeDashboardProps = {
 
 // API 연동 전 홈 화면 구조를 확인하기 위한 임시 요약 데이터.
 const summaryCards = [
-  { label: "오늘 일정", value: "3", suffix: "건", icon: CalendarDays, accent: "bg-blue-50 text-blue-600" },
-  { label: "안 읽은 메시지", value: "12", suffix: "건", icon: MessageCircleMore, accent: "bg-violet-50 text-violet-600" },
-  { label: "온라인 구성원", value: "28", suffix: "명", icon: UsersRound, accent: "bg-emerald-50 text-emerald-600" },
-  { label: "회의실 예약", value: "2", suffix: "건", icon: DoorOpen, accent: "bg-amber-50 text-amber-600" },
+  {
+    label: "오늘 일정",
+    value: "3",
+    suffix: "건",
+    icon: CalendarDays,
+    accent: "bg-blue-50 text-blue-600",
+  },
+  {
+    label: "안 읽은 메시지",
+    value: "12",
+    suffix: "건",
+    icon: MessageCircleMore,
+    accent: "bg-violet-50 text-violet-600",
+  },
+  {
+    label: "온라인 구성원",
+    value: "28",
+    suffix: "명",
+    icon: UsersRound,
+    accent: "bg-emerald-50 text-emerald-600",
+  },
+  {
+    label: "회의실 예약",
+    value: "2",
+    suffix: "건",
+    icon: DoorOpen,
+    accent: "bg-amber-50 text-amber-600",
+  },
 ];
 
 // 오늘 일정 영역에 표시할 임시 일정 데이터.
@@ -60,23 +84,29 @@ export function HomeDashboard({ displayName, onFeatureClick }: HomeDashboardProp
         <div>
           <p className="text-sm text-slate-300">{today}</p>
           {/* 로그인한 구성원 이름을 사용해 역할과 무관하게 자연스러운 인사를 표시. */}
-          <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">{displayName}님, 좋은 하루 되세요.</h1>
-          <p className="mt-2 text-sm text-slate-300">오늘의 협업 현황과 주요 일정을 한눈에 확인하세요.</p>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
+            {displayName}님, 좋은 하루 되세요.
+          </h1>
+          <p className="mt-2 text-sm text-slate-300">
+            오늘의 협업 현황과 주요 일정을 한눈에 확인하세요.
+          </p>
         </div>
         <button
           type="button"
           onClick={() => onFeatureClick("새 일정")}
           className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-slate-900 transition hover:-translate-y-0.5 hover:bg-slate-100 hover:shadow-md"
         >
-          <Plus size={17} />
-          새 일정
+          <Plus size={17} />새 일정
         </button>
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {/* 요약 카드 데이터만 추가하면 같은 디자인의 카드가 자동으로 늘어남. */}
         {summaryCards.map(({ label, value, suffix, icon: Icon, accent }) => (
-          <article key={label} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <article
+            key={label}
+            className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
+          >
             <div className="flex items-start justify-between">
               <p className="text-sm font-medium text-slate-500">{label}</p>
               <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${accent}`}>
@@ -110,7 +140,9 @@ export function HomeDashboard({ displayName, onFeatureClick }: HomeDashboardProp
             {/* 일정 배열을 시간 순서대로 반복 표시. */}
             {scheduleItems.map((schedule) => (
               <div key={schedule.time} className="flex gap-4">
-                <time className="w-11 pt-0.5 text-sm font-semibold text-blue-600">{schedule.time}</time>
+                <time className="w-11 pt-0.5 text-sm font-semibold text-blue-600">
+                  {schedule.time}
+                </time>
                 <span className="relative flex w-px bg-slate-200 before:absolute before:-left-1 before:top-1 before:h-2 before:w-2 before:rounded-full before:bg-blue-500" />
                 <div className="pb-3">
                   <p className="font-medium text-slate-800">{schedule.title}</p>
@@ -140,8 +172,12 @@ export function HomeDashboard({ displayName, onFeatureClick }: HomeDashboardProp
               >
                 <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-blue-500" />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-slate-800">{activity.title}</span>
-                  <span className="mt-1 block truncate text-xs text-slate-500">{activity.detail}</span>
+                  <span className="block truncate text-sm font-medium text-slate-800">
+                    {activity.title}
+                  </span>
+                  <span className="mt-1 block truncate text-xs text-slate-500">
+                    {activity.detail}
+                  </span>
                 </span>
                 <span className="shrink-0 text-xs text-slate-400">{activity.time}</span>
               </button>
@@ -222,7 +258,9 @@ export function HomeDashboard({ displayName, onFeatureClick }: HomeDashboardProp
             </span>
             <div>
               <p className="font-bold text-slate-900">오늘의 업무를 시작할 준비가 됐어요.</p>
-              <p className="mt-1 text-sm text-slate-500">로그인·데이터 연동 전의 정적 데모 대시보드입니다.</p>
+              <p className="mt-1 text-sm text-slate-500">
+                로그인·데이터 연동 전의 정적 데모 대시보드입니다.
+              </p>
             </div>
           </div>
         </article>

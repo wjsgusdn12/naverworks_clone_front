@@ -21,9 +21,7 @@ export function MessageNotificationToast({
 }: MessageNotificationToastProps) {
   const [isNotificationDisabled, setIsNotificationDisabled] = useState(false);
   const animationClassName =
-    notification.phase === "exit"
-      ? "message-notification-exit"
-      : "message-notification-enter";
+    notification.phase === "exit" ? "message-notification-exit" : "message-notification-enter";
 
   const disableRoomNotifications = async () => {
     if (isNotificationDisabled) return;
@@ -62,9 +60,7 @@ export function MessageNotificationToast({
         </span>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold">{notification.roomName}</p>
-          <p className="mt-1 text-xs font-medium text-slate-600">
-            {notification.senderName}
-          </p>
+          <p className="mt-1 text-xs font-medium text-slate-600">{notification.senderName}</p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <button
