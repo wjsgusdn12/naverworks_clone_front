@@ -3,12 +3,28 @@
 import { GlobalHeader } from "@/components/common/global-header";
 import { Toast } from "@/components/common/toast";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
-import { EDIT_EXPIRED_MESSAGE, EDIT_WINDOW_HOURS, MessageActionMenu, type MessageMenuPosition } from "@/components/chat/message-action-menu";
+import {
+  DELETE_EXPIRED_MESSAGE,
+  EDIT_EXPIRED_MESSAGE,
+  EDIT_WINDOW_HOURS,
+  MessageActionMenu,
+  REACTION_EXPIRED_MESSAGE,
+  type MessageMenuPosition,
+} from "@/components/chat/message-action-menu";
 import { Tooltip } from "@/components/common/tooltip";
+import { LoadingInline, LoadingState } from "@/components/common/loading";
+import { ReactionEmoji } from "@/components/chat/reaction-emoji";
+import { ReactionPicker } from "@/components/chat/reaction-picker";
 import { MessageQuote } from "@/components/chat/message-quote";
 import { MessageDeleteDialog } from "@/components/chat/message-change-dialog";
-import { applyMessageChange, applyReactionChange, applyRoomMessageChange } from "@/lib/chat-message-state";
-import { reactionChar, reactionLabel } from "@/lib/chat-reactions";
+import {
+  applyMessageChange,
+  applyReactionChange,
+  applyReadCursors,
+  applyRoomMessageChange,
+  type ReadState,
+} from "@/lib/chat-message-state";
+import { reactionLabel } from "@/lib/chat-reactions";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
   chatApi,
@@ -42,7 +58,6 @@ import {
   Pin,
   EyeOff,
   LogOut,
-  LoaderCircle,
   ImagePlus,
   Mail,
   MessageCircle,
@@ -92,19 +107,9 @@ const formatRoomTime = (value: string | null) => {
   if (!value) return "";
   const target = new Date(value);
   const today = new Date();
-  const startOfToday = new Date(
-    today.getFullYear(),
-    today.getMonth(),
-    today.getDate(),
-  );
-  const startOfTarget = new Date(
-    target.getFullYear(),
-    target.getMonth(),
-    target.getDate(),
-  );
-  const dayDifference = Math.round(
-    (startOfToday.getTime() - startOfTarget.getTime()) / 86_400_000,
-  );
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const startOfTarget = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+  const dayDifference = Math.round((startOfToday.getTime() - startOfTarget.getTime()) / 86_400_000);
   if (dayDifference === 0)
     return target.toLocaleTimeString("ko-KR", {
       hour: "2-digit",
@@ -119,11 +124,10 @@ const sortRoomsByLatestActivity = (rooms: ChatRoom[]) =>
   [...rooms].sort((left, right) => {
     // 고정한 방은 최근 활동 시각보다 항상 먼저 보여 줌.
     if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
-    if (left.pinned && right.pinned) return new Date(left.pinnedAt ?? 0).getTime() - new Date(right.pinnedAt ?? 0).getTime();
+    if (left.pinned && right.pinned)
+      return new Date(left.pinnedAt ?? 0).getTime() - new Date(right.pinnedAt ?? 0).getTime();
     const leftTime = new Date(left.lastMessageAt ?? left.createdAt).getTime();
-    const rightTime = new Date(
-      right.lastMessageAt ?? right.createdAt,
-    ).getTime();
+    const rightTime = new Date(right.lastMessageAt ?? right.createdAt).getTime();
     return rightTime - leftTime;
   });
 
@@ -139,46 +143,55 @@ function useStableCallback<Args extends unknown[], Result>(callback: (...args: A
   return useCallback((...args: Args) => ref.current(...args), []);
 }
 
-// 보낸 지 24시간이 지나지 않은 메시지만 수정 가능(서버도 같은 기준으로 거부).
+// 보낸 지 24시간이 지나지 않은 메시지만 수정·삭제·리액션 가능(서버도 같은 기준으로 거부).
 const isMessageEditable = (message: ChatMessage) =>
   Date.now() - new Date(message.createdAt).getTime() < EDIT_WINDOW_HOURS * 60 * 60 * 1000;
 
 const DEFAULT_INPUT_HEIGHT = 144;
 const MIN_INPUT_HEIGHT = 96;
 const MAX_INPUT_HEIGHT = 400;
-const clampInputHeight = (height: number) => Math.round(Math.min(MAX_INPUT_HEIGHT, Math.max(MIN_INPUT_HEIGHT, height)));
+const clampInputHeight = (height: number) =>
+  Math.round(Math.min(MAX_INPUT_HEIGHT, Math.max(MIN_INPUT_HEIGHT, height)));
 // 같은 브라우저를 여러 계정이 써도 섞이지 않게 계정(membershipId)별 키로 저장.
-const inputHeightStorageKey = (membershipId: number) => `naverworks:messageInputHeight:${membershipId}`;
+const inputHeightStorageKey = (membershipId: number) =>
+  `naverworks:messageInputHeight:${membershipId}`;
 const readStoredInputHeight = (membershipId: number | undefined) => {
   if (typeof window === "undefined" || membershipId === undefined) return DEFAULT_INPUT_HEIGHT;
   try {
     const saved = Number(window.localStorage.getItem(inputHeightStorageKey(membershipId)));
     return saved ? clampInputHeight(saved) : DEFAULT_INPUT_HEIGHT;
-  } catch { return DEFAULT_INPUT_HEIGHT; }
+  } catch {
+    return DEFAULT_INPUT_HEIGHT;
+  }
 };
 // 읽음/안 읽음 목록을 함께 보관해 탭 전환 시 다시 조회하지 않음.
-type ReadModalState = { message: ChatMessage; readMembers: ChatReadMember[]; unreadMembers: ChatReadMember[]; read: boolean };
-// 특정 이모지를 누른 사람 목록 모달.
-type ReactionModalState = { message: ChatMessage; emoji: string; members: Awaited<ReturnType<typeof chatApi.reactionMembers>> };
+type ReadModalState = {
+  message: ChatMessage;
+  readMembers: ChatReadMember[];
+  unreadMembers: ChatReadMember[];
+  read: boolean;
+};
+// 메시지에 리액션한 사람 목록 모달(누가 어떤 이모지를 눌렀는지).
+type ReactionModalState = {
+  message: ChatMessage;
+  members: Awaited<ReturnType<typeof chatApi.reactionMembers>>;
+};
 
 const sortRooms = (rooms: ChatRoom[], sort: RoomSort) => {
   if (sort !== "UNREAD") return sortRoomsByLatestActivity(rooms);
   return [...rooms].sort((left, right) => {
     // 안 읽은 메시지 정렬에서도 고정한 방이 최우선.
     if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
-    if (left.pinned && right.pinned) return new Date(left.pinnedAt ?? 0).getTime() - new Date(right.pinnedAt ?? 0).getTime();
+    if (left.pinned && right.pinned)
+      return new Date(left.pinnedAt ?? 0).getTime() - new Date(right.pinnedAt ?? 0).getTime();
     const leftHasUnread = left.unreadCount > 0;
     const rightHasUnread = right.unreadCount > 0;
     if (leftHasUnread !== rightHasUnread) return leftHasUnread ? -1 : 1;
     if (leftHasUnread && rightHasUnread) {
       // 첫 미확인 메시지가 더 오래된 방부터 확인하도록 오름차순 정렬.
       return (
-        new Date(
-          left.oldestUnreadMessageAt ?? left.lastMessageAt ?? left.createdAt,
-        ).getTime() -
-        new Date(
-          right.oldestUnreadMessageAt ?? right.lastMessageAt ?? right.createdAt,
-        ).getTime()
+        new Date(left.oldestUnreadMessageAt ?? left.lastMessageAt ?? left.createdAt).getTime() -
+        new Date(right.oldestUnreadMessageAt ?? right.lastMessageAt ?? right.createdAt).getTime()
       );
     }
     return (
@@ -207,7 +220,8 @@ function MessageContent() {
     .filter(Number.isInteger);
   const { accessToken, member, status, logout } = useAuth();
   const { toast, showToast, dismissToast } = useToast();
-  const { setActiveChatRoomId, syncChatRooms, refreshChatRooms, presenceByMembershipId } = useChatNotification();
+  const { setActiveChatRoomId, syncChatRooms, refreshChatRooms, presenceByMembershipId } =
+    useChatNotification();
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -220,17 +234,24 @@ function MessageContent() {
   const [isLocatingOriginal, setIsLocatingOriginal] = useState(false);
   const [highlightedMessageId, setHighlightedMessageId] = useState<number | null>(null);
   const [replyByRoomId, setReplyByRoomId] = useState<Record<number, ChatMessage>>({});
-  const [editingMessage, setEditingMessage] = useState<{ roomId: number; message: ChatMessage } | null>(null);
+  const [editingMessage, setEditingMessage] = useState<{
+    roomId: number;
+    message: ChatMessage;
+  } | null>(null);
   // 수정을 시작하기 전에 쓰던 입력 내용. 수정을 취소하면 되돌려 줌.
   const editDraftBackupRef = useRef<Record<number, string>>({});
-  const [deletingMessage, setDeletingMessage] = useState<{ roomId: number; message: ChatMessage } | null>(null);
-  const mutationScrollRef = useRef<{ top: number; height: number; adjustHeight: boolean } | null>(null);
+  const [deletingMessage, setDeletingMessage] = useState<{
+    roomId: number;
+    message: ChatMessage;
+  } | null>(null);
+  const mutationScrollRef = useRef<{ top: number; height: number; adjustHeight: boolean } | null>(
+    null,
+  );
   const pendingMessageScrollRef = useRef<number | null>(null);
   const originalNavigationUntilRef = useRef(0);
   const messageWindowVersionRef = useRef(0);
   const sendingRef = useRef(false);
-  const [isLoadingPreviousMessages, setIsLoadingPreviousMessages] =
-    useState(false);
+  const [isLoadingPreviousMessages, setIsLoadingPreviousMessages] = useState(false);
   // 방에 처음 들어가 메시지를 받아오는 동안 true. 빈 화면 대신 "불러오는 중" 안내를 보여 줌.
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   // 방 목록을 한 번이라도 받아왔는지. 받기 전에는 "방이 없다"는 안내를 띄우지 않기 위함.
@@ -250,9 +271,12 @@ function MessageContent() {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [readModal, setReadModal] = useState<ReadModalState | null>(null);
   const [reactionModal, setReactionModal] = useState<ReactionModalState | null>(null);
-  const [newRoomModalOpen, setNewRoomModalOpen] = useState(
-    searchParams.get("create") === "group",
-  );
+  // 모달이 열린 동안 다른 사람의 리액션 변화가 오면 목록을 다시 불러오기 위한 현재 모달 메시지 id.
+  const reactionModalMessageIdRef = useRef<number | null>(null);
+  useEffect(() => {
+    reactionModalMessageIdRef.current = reactionModal?.message.id ?? null;
+  }, [reactionModal]);
+  const [newRoomModalOpen, setNewRoomModalOpen] = useState(searchParams.get("create") === "group");
   const [contactMembers, setContactMembers] = useState<AddressBookMember[]>([]);
   const [roomManageOpen, setRoomManageOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -265,16 +289,12 @@ function MessageContent() {
   const [hiddenRoomIds, setHiddenRoomIds] = useState<Set<number>>(new Set());
   const [hideConfirmOpen, setHideConfirmOpen] = useState(false);
   const [notificationRoom, setNotificationRoom] = useState<ChatRoom | null>(null);
-  const [selectedRoomProfile, setSelectedRoomProfile] =
-    useState<ChatMemberProfile | null>(null);
+  const [selectedRoomProfile, setSelectedRoomProfile] = useState<ChatMemberProfile | null>(null);
   const [roomMentionMembers, setRoomMentionMembers] = useState<ChatMemberProfile[]>([]);
   const [profileMemberId, setProfileMemberId] = useState<number | null>(null);
-  const [profileMember, setProfileMember] =
-    useState<AddressBookMemberDetail | null>(null);
+  const [profileMember, setProfileMember] = useState<AddressBookMemberDetail | null>(null);
   const [scrollDateLabel, setScrollDateLabel] = useState<string | null>(null);
-  const [scrollDatePhase, setScrollDatePhase] = useState<"visible" | "leaving">(
-    "visible",
-  );
+  const [scrollDatePhase, setScrollDatePhase] = useState<"visible" | "leaving">("visible");
   const [unseenMessageCount, setUnseenMessageCount] = useState(0);
   // 사용자가 위쪽 메시지를 읽는 동안에는 가장 최근 수신 내용을 입력창 위 안내 행에 표시.
   const [latestUnseenMessage, setLatestUnseenMessage] = useState<{
@@ -293,46 +313,39 @@ function MessageContent() {
   const typingHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const typingActiveRef = useRef(false);
   const typingExitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const typingExpiryTimerRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(
-    new Map(),
-  );
+  const typingExpiryTimerRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
   const typingMembersRef = useRef<Array<{ membershipId: number; displayName: string }>>([]);
-  const typingPreviewTimerRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
-    new Map(),
-  );
+  const typingPreviewTimerRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const messageListRef = useRef<HTMLDivElement>(null);
   const isLoadingPreviousMessagesRef = useRef(false);
   const shouldScrollToLatestRef = useRef(false);
   // 사용자가 최신 메시지를 보고 있을 때만 새 대화를 따라간다.
   const isMessageListAtBottomRef = useRef(true);
-  const preservedScrollRef = useRef<{ top: number; height: number } | null>(
-    null,
-  );
+  const preservedScrollRef = useRef<{ top: number; height: number } | null>(null);
   const activeDateKeyRef = useRef<string | null>(null);
   const scrollDateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const scrollDateFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
+  const scrollDateFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sortMenuRef = useRef<HTMLDivElement>(null);
   const selectedRoom = rooms.find((room) => room.id === selectedRoomId) ?? null;
   const selectedRoomIdRef = useRef<number | null>(selectedRoomId);
+  // 현재 방 구성원별 읽은 위치. 말풍선 읽음 수는 이벤트마다 +1 하지 않고 이 값으로 다시 계산해 어긋나지 않게 함.
+  const readStateRef = useRef<{ roomId: number | null; loaded: boolean; state: ReadState }>({
+    roomId: null,
+    loaded: false,
+    state: { cursors: {}, memberIds: [] },
+  });
   const roomsRef = useRef<ChatRoom[]>(rooms);
-  const subscribedChatRoomIdsKey = useMemo(
-    () => rooms.map((room) => room.id).join(","),
-    [rooms],
-  );
+  const subscribedChatRoomIdsKey = useMemo(() => rooms.map((room) => room.id).join(","), [rooms]);
   // 방의 내용만 바뀌어도 소켓을 다시 열지 않도록 방 ID 집합만 연결 기준으로 사용.
   const subscribedChatRoomIds = useMemo(
-    () =>
-      subscribedChatRoomIdsKey
-        ? subscribedChatRoomIdsKey.split(",").map(Number)
-        : [],
+    () => (subscribedChatRoomIdsKey ? subscribedChatRoomIdsKey.split(",").map(Number) : []),
     [subscribedChatRoomIdsKey],
   );
   const input = selectedRoomId ? (draftByRoomId[selectedRoomId] ?? "") : "";
   const replyTarget = selectedRoomId ? replyByRoomId[selectedRoomId] : undefined;
   // 현재 방에서 수정 중인 메시지. 답장과 같은 자리(입력칸 위)에 표시.
-  const editingTarget = editingMessage && editingMessage.roomId === selectedRoomId ? editingMessage.message : null;
+  const editingTarget =
+    editingMessage && editingMessage.roomId === selectedRoomId ? editingMessage.message : null;
   useEffect(() => {
     const composer = composerRef.current;
     if (!composer) return;
@@ -344,52 +357,73 @@ function MessageContent() {
   }, [selectedRoomId]);
   // 저장된 높이는 계정이 바뀔 때만 다시 읽고, 드래그 중인 높이는 현재 계정 값으로만 덮어씀.
   const currentMembershipId = member?.membershipId;
-  const storedInputHeight = useMemo(() => readStoredInputHeight(currentMembershipId), [currentMembershipId]);
-  const [draggedInputHeight, setDraggedInputHeight] = useState<{ membershipId: number | undefined; height: number } | null>(null);
-  const inputHeight = draggedInputHeight && draggedInputHeight.membershipId === currentMembershipId ? draggedInputHeight.height : storedInputHeight;
+  const storedInputHeight = useMemo(
+    () => readStoredInputHeight(currentMembershipId),
+    [currentMembershipId],
+  );
+  const [draggedInputHeight, setDraggedInputHeight] = useState<{
+    membershipId: number | undefined;
+    height: number;
+  } | null>(null);
+  const inputHeight =
+    draggedInputHeight && draggedInputHeight.membershipId === currentMembershipId
+      ? draggedInputHeight.height
+      : storedInputHeight;
   const inputResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const saveInputHeight = (height: number) => {
     if (currentMembershipId === undefined) return;
-    try { localStorage.setItem(inputHeightStorageKey(currentMembershipId), String(height)); } catch { /* 저장 실패는 무시. */ }
+    try {
+      localStorage.setItem(inputHeightStorageKey(currentMembershipId), String(height));
+    } catch {
+      /* 저장 실패는 무시. */
+    }
   };
   const resizeInput = (height: number) => {
     setDraggedInputHeight({ membershipId: currentMembershipId, height: clampInputHeight(height) });
     // 최하단을 보던 중이면 입력창이 커져도 최신 메시지가 가려지지 않게 스크롤을 따라 내림.
-    if (isMessageListAtBottomRef.current) requestAnimationFrame(() => {
-      const list = messageListRef.current;
-      if (list) list.scrollTop = list.scrollHeight;
-    });
+    if (isMessageListAtBottomRef.current)
+      requestAnimationFrame(() => {
+        const list = messageListRef.current;
+        if (list) list.scrollTop = list.scrollHeight;
+      });
   };
   // 멘션 후보는 주소록 전체가 아니라 현재 메시지방에 참여 중인 구성원으로 제한.
   const mentionCandidates = useMemo(() => {
-    return roomMentionMembers.filter((candidate) => candidate.membershipId !== member?.membershipId);
+    return roomMentionMembers.filter(
+      (candidate) => candidate.membershipId !== member?.membershipId,
+    );
   }, [member?.membershipId, roomMentionMembers]);
   const visibleMentionCandidates = useMemo(() => {
     if (mentionStartIndex === null) return [];
     const normalizedQuery = mentionQuery.toLocaleLowerCase();
     return [
-      { membershipId: -1, displayName: "All", jobGradeName: "모든 멤버 멘션하기", departmentName: "" },
+      {
+        membershipId: -1,
+        displayName: "All",
+        jobGradeName: "모든 멤버 멘션하기",
+        departmentName: "",
+      },
       ...mentionCandidates,
     ].filter((candidate) => candidate.displayName.toLocaleLowerCase().includes(normalizedQuery));
   }, [mentionCandidates, mentionQuery, mentionStartIndex]);
   // 탭 안에서 메시지 화면을 다시 열어도 마지막으로 보던 방을 복원.
-  const lastRoomStorageKey = member
-    ? `naverworks:message:lastRoom:${member.membershipId}`
-    : null;
+  const lastRoomStorageKey = member ? `naverworks:message:lastRoom:${member.membershipId}` : null;
   // 반복 find를 피하도록 구성원 프로필을 화면 단위 Map으로 캐싱.
   const contactMemberById = useMemo(
     () =>
-      new Map(contactMembers.map((contact) => [
-        contact.membershipId,
-        presenceByMembershipId[contact.membershipId] === undefined
-          ? contact
-          : {
-            ...contact,
-            presenceStatus: presenceByMembershipId[contact.membershipId]
-              ? "ONLINE"
-              : "OFFLINE" as PresenceStatus,
-          },
-      ])),
+      new Map(
+        contactMembers.map((contact) => [
+          contact.membershipId,
+          presenceByMembershipId[contact.membershipId] === undefined
+            ? contact
+            : {
+                ...contact,
+                presenceStatus: presenceByMembershipId[contact.membershipId]
+                  ? "ONLINE"
+                  : ("OFFLINE" as PresenceStatus),
+              },
+        ]),
+      ),
     [contactMembers, presenceByMembershipId],
   );
   const openUserProfile = useCallback(
@@ -400,6 +434,12 @@ function MessageContent() {
   useEffect(() => {
     // 늦게 도착한 이전 방 조회 응답이 현재 방 화면을 덮어쓰지 않게 보관.
     selectedRoomIdRef.current = selectedRoomId;
+    // 방이 바뀌면 이전 방의 읽음 위치는 버리고 새로 받을 때까지 서버 값 그대로 둠.
+    readStateRef.current = {
+      roomId: selectedRoomId,
+      loaded: false,
+      state: { cursors: {}, memberIds: [] },
+    };
   }, [selectedRoomId]);
 
   useEffect(() => {
@@ -458,21 +498,16 @@ function MessageContent() {
       openUserProfile(profileTarget.membershipId);
     };
     document.addEventListener("click", handleProfileAvatarClick, true);
-    return () =>
-      document.removeEventListener("click", handleProfileAvatarClick, true);
+    return () => document.removeEventListener("click", handleProfileAvatarClick, true);
   }, [contactMembers, member, openUserProfile]);
 
   const showDateChip = useCallback((label: string) => {
-    if (scrollDateFadeTimerRef.current)
-      clearTimeout(scrollDateFadeTimerRef.current);
+    if (scrollDateFadeTimerRef.current) clearTimeout(scrollDateFadeTimerRef.current);
     if (scrollDateTimerRef.current) clearTimeout(scrollDateTimerRef.current);
     setScrollDateLabel(label);
     setScrollDatePhase("visible");
     // 종료 직전에 투명도를 낮춘 뒤 DOM을 제거해 자연스럽게 사라지게 함.
-    scrollDateFadeTimerRef.current = setTimeout(
-      () => setScrollDatePhase("leaving"),
-      2600,
-    );
+    scrollDateFadeTimerRef.current = setTimeout(() => setScrollDatePhase("leaving"), 2600);
     scrollDateTimerRef.current = setTimeout(() => {
       setScrollDateLabel(null);
       activeDateKeyRef.current = null;
@@ -493,9 +528,7 @@ function MessageContent() {
       lastRoomStorageKey && typeof window !== "undefined"
         ? Number(window.sessionStorage.getItem(lastRoomStorageKey))
         : null;
-    const requestedRoomExists = result.some(
-      (room) => room.id === requestedRoomId,
-    );
+    const requestedRoomExists = result.some((room) => room.id === requestedRoomId);
     const savedRoomExists = result.some((room) => room.id === savedRoomId);
     if (lastRoomStorageKey && savedRoomId && !savedRoomExists) {
       window.sessionStorage.removeItem(lastRoomStorageKey);
@@ -503,40 +536,87 @@ function MessageContent() {
     // URL로 직접 지정한 방을 우선하고, 없으면 탭 안에 저장한 마지막 방을 복원.
     setSelectedRoomId(
       (current) =>
-        current ??
-        (requestedRoomExists
-          ? requestedRoomId
-          : savedRoomExists
-            ? savedRoomId
-            : null),
+        current ?? (requestedRoomExists ? requestedRoomId : savedRoomExists ? savedRoomId : null),
     );
   }, [accessToken, lastRoomStorageKey, requestedRoomId, refreshChatRooms]);
 
-  const applyChangedMessage = useCallback((roomId: number, incoming: ChatMessage) => {
-    setRooms((current) => current.map((room) => room.id === roomId
-      ? applyRoomMessageChange(room, incoming, member?.membershipId ?? -1) : room));
-    if (selectedRoomIdRef.current === roomId) {
-      const list = messageListRef.current;
-      if (list && !isMessageListAtBottomRef.current && !mutationScrollRef.current) {
-        const target = list.querySelector<HTMLElement>(`[data-message-id="${incoming.id}"]`);
-        mutationScrollRef.current = { top: list.scrollTop, height: list.scrollHeight,
-          adjustHeight: Boolean(target && target.getBoundingClientRect().bottom <= list.getBoundingClientRect().top) };
+  // 목록에 메시지를 붙이거나 바꿀 때 읽음 수를 현재 읽은 위치 기준으로 맞춤.
+  const withReadCounts = useCallback((list: ChatMessage[]) => {
+    const read = readStateRef.current;
+    return read.loaded && read.roomId === selectedRoomIdRef.current
+      ? applyReadCursors(list, read.state)
+      : list;
+  }, []);
+  // 방 상세(구성원·읽은 위치)를 받아 자동완성 목록과 읽음 계산 기준을 갱신.
+  const loadReadState = useStableCallback(async (roomId: number) => {
+    if (!accessToken) return;
+    const detail = await chatApi.detail(accessToken, roomId);
+    if (selectedRoomIdRef.current !== roomId) return;
+    setRoomMentionMembers(detail.members);
+    const read = readStateRef.current;
+    const cursors = read.roomId === roomId ? { ...read.state.cursors } : {};
+    // 상세 응답보다 먼저 도착한 실시간 읽음 이벤트가 있으면 더 앞선 위치를 유지.
+    detail.readCursors.forEach((cursor) => {
+      cursors[cursor.membershipId] = Math.max(
+        cursor.lastReadMessageId ?? 0,
+        cursors[cursor.membershipId] ?? 0,
+      );
+    });
+    const state: ReadState = { cursors, memberIds: detail.memberIds };
+    readStateRef.current = { roomId, loaded: true, state };
+    setMessages((current) => applyReadCursors(current, state));
+  });
+
+  const applyChangedMessage = useCallback(
+    (roomId: number, incoming: ChatMessage) => {
+      setRooms((current) =>
+        current.map((room) =>
+          room.id === roomId
+            ? applyRoomMessageChange(room, incoming, member?.membershipId ?? -1)
+            : room,
+        ),
+      );
+      if (selectedRoomIdRef.current === roomId) {
+        const list = messageListRef.current;
+        if (list && !isMessageListAtBottomRef.current && !mutationScrollRef.current) {
+          const target = list.querySelector<HTMLElement>(`[data-message-id="${incoming.id}"]`);
+          mutationScrollRef.current = {
+            top: list.scrollTop,
+            height: list.scrollHeight,
+            adjustHeight: Boolean(
+              target && target.getBoundingClientRect().bottom <= list.getBoundingClientRect().top,
+            ),
+          };
+        }
+        if (isMessageListAtBottomRef.current && newerCursorRef.current === null)
+          shouldScrollToLatestRef.current = true;
+        setMessages((current) => current.map((message) => applyMessageChange(message, incoming)));
+        setLatestUnseenMessage((current) =>
+          current?.messageId === incoming.id ? { ...current, content: incoming.content } : current,
+        );
+        setReadModal((current) =>
+          current?.message.id === incoming.id
+            ? incoming.deletedAt
+              ? null
+              : { ...current, message: incoming }
+            : current,
+        );
       }
-      if (isMessageListAtBottomRef.current && newerCursorRef.current === null) shouldScrollToLatestRef.current = true;
-      setMessages((current) => current.map((message) => applyMessageChange(message, incoming)));
-      setLatestUnseenMessage((current) => current?.messageId === incoming.id ? { ...current, content: incoming.content } : current);
-      setReadModal((current) => current?.message.id === incoming.id
-        ? (incoming.deletedAt ? null : { ...current, message: incoming }) : current);
-    }
-    // 삭제된 원문을 새 답장 대상으로 보내지 않도록 입력창 미리보기도 갱신.
-    setReplyByRoomId((current) => Object.fromEntries(Object.entries(current)
-      .filter(([, target]) => target.id !== incoming.id || !incoming.deletedAt)
-      .map(([id, target]) => [id, target.id === incoming.id ? incoming : target])));
-    if (incoming.deletedAt) {
-      setEditingMessage((current) => current?.message.id === incoming.id ? null : current);
-      setDeletingMessage((current) => current?.message.id === incoming.id ? null : current);
-    }
-  }, [member?.membershipId]);
+      // 삭제된 원문을 새 답장 대상으로 보내지 않도록 입력창 미리보기도 갱신.
+      setReplyByRoomId((current) =>
+        Object.fromEntries(
+          Object.entries(current)
+            .filter(([, target]) => target.id !== incoming.id || !incoming.deletedAt)
+            .map(([id, target]) => [id, target.id === incoming.id ? incoming : target]),
+        ),
+      );
+      if (incoming.deletedAt) {
+        setEditingMessage((current) => (current?.message.id === incoming.id ? null : current));
+        setDeletingMessage((current) => (current?.message.id === incoming.id ? null : current));
+      }
+    },
+    [member?.membershipId],
+  );
 
   useEffect(() => {
     if (!lastRoomStorageKey || !selectedRoomId) return;
@@ -550,12 +630,13 @@ function MessageContent() {
       const windowVersion = messageWindowVersionRef.current;
 
       // 이전 페이지 요청 전 높이를 기억해, 추가된 메시지 때문에 화면이 튀지 않게 함.
-      const previousScroll = cursor && messageListRef.current
-        ? {
-            top: messageListRef.current.scrollTop,
-            height: messageListRef.current.scrollHeight,
-          }
-        : null;
+      const previousScroll =
+        cursor && messageListRef.current
+          ? {
+              top: messageListRef.current.scrollTop,
+              height: messageListRef.current.scrollHeight,
+            }
+          : null;
 
       if (cursor) {
         isLoadingPreviousMessagesRef.current = true;
@@ -565,16 +646,26 @@ function MessageContent() {
       }
       try {
         const result = await chatApi.messages(accessToken, roomId, cursor);
-        if (selectedRoomIdRef.current !== roomId || messageWindowVersionRef.current !== windowVersion) return;
+        if (
+          selectedRoomIdRef.current !== roomId ||
+          messageWindowVersionRef.current !== windowVersion
+        )
+          return;
         if (previousScroll) preservedScrollRef.current = previousScroll;
         // API 반환 순서와 무관하게 오래된 메시지부터 보여 최신 메시지가 항상 하단에 오게 함.
         const sortedMessages = [...result.messages].sort(
-          (left, right) =>
-            new Date(left.createdAt).getTime() -
-            new Date(right.createdAt).getTime(),
+          (left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime(),
         );
         setMessages((current) =>
-          cursor ? [...new Map([...sortedMessages, ...current].map((item) => [item.id, item])).values()].sort((left, right) => left.id - right.id) : sortedMessages,
+          withReadCounts(
+            cursor
+              ? [
+                  ...new Map(
+                    [...sortedMessages, ...current].map((item) => [item.id, item]),
+                  ).values(),
+                ].sort((left, right) => left.id - right.id)
+              : sortedMessages,
+          ),
         );
         setNextCursor(result.nextCursor);
         if (!cursor) {
@@ -584,9 +675,7 @@ function MessageContent() {
         // 방에 들어오면 서버가 읽음 처리하므로 목록 배지도 즉시 함께 지움.
         if (!cursor)
           setRooms((current) =>
-            current.map((room) =>
-              room.id === roomId ? { ...room, unreadCount: 0 } : room,
-            ),
+            current.map((room) => (room.id === roomId ? { ...room, unreadCount: 0 } : room)),
           );
       } finally {
         if (cursor) {
@@ -598,7 +687,7 @@ function MessageContent() {
         }
       }
     },
-    [accessToken],
+    [accessToken, withReadCounts],
   );
 
   useEffect(() => {
@@ -638,7 +727,8 @@ function MessageContent() {
           // 수정 중에 방을 옮기면 수정은 접고, 그 방의 입력칸은 수정 전 내용으로 되돌림.
           const backups = editDraftBackupRef.current;
           editDraftBackupRef.current = {};
-          if (Object.keys(backups).length > 0) setDraftByRoomId((current) => ({ ...current, ...backups }));
+          if (Object.keys(backups).length > 0)
+            setDraftByRoomId((current) => ({ ...current, ...backups }));
           setEditingMessage(null);
           setDeletingMessage(null);
           setUnseenMessageCount(0);
@@ -680,12 +770,18 @@ function MessageContent() {
           // 현재 보고 있는 방의 새 수신 메시지는 목록 배지와 서버 읽음 위치를 함께 정리.
           void chatApi.markRead(accessToken, event.chatRoomId).catch(() => undefined);
         }
+        // 초대·퇴장 같은 시스템 안내는 구성원이 바뀐 신호이므로 읽음 계산 기준을 다시 받음.
+        if (incoming.type !== "TEXT") void loadReadState(event.chatRoomId).catch(() => undefined);
         setMessages((current) => {
           if (current.some((message) => message.id === incoming.id)) return current;
           // 과거 원문 구간에서는 새 메시지를 바로 붙이면 중간 대화가 빠지므로 안내만 표시.
           if (newerCursorRef.current !== null) {
             setUnseenMessageCount((count) => count + 1);
-            setLatestUnseenMessage({ messageId: incoming.id, senderName: incoming.senderName, content: incoming.content });
+            setLatestUnseenMessage({
+              messageId: incoming.id,
+              senderName: incoming.senderName,
+              content: incoming.content,
+            });
             return current;
           }
           if (
@@ -702,7 +798,8 @@ function MessageContent() {
               content: incoming.content,
             });
           }
-          return [...current, incoming];
+          // 메시지보다 먼저 도착한 읽음 이벤트가 있어도 붙이는 시점에 읽은 위치로 계산해 빠뜨리지 않음.
+          return withReadCounts([...current, incoming]);
         });
       },
       onRoomMessageCreated: (event) => {
@@ -722,7 +819,9 @@ function MessageContent() {
               lastMessageVersion: incoming.version,
               lastMessageAt: incoming.createdAt,
               lastSenderMembershipId: incoming.senderMembershipId,
-              lastMessageMentioned: incoming.mentionedMembershipIds.includes(member?.membershipId ?? -1),
+              lastMessageMentioned: incoming.mentionedMembershipIds.includes(
+                member?.membershipId ?? -1,
+              ),
               unreadCount: isOpenRoom
                 ? 0
                 : shouldIncreaseUnread
@@ -731,7 +830,7 @@ function MessageContent() {
               oldestUnreadMessageAt: isOpenRoom
                 ? null
                 : shouldIncreaseUnread
-                  ? room.oldestUnreadMessageAt ?? incoming.createdAt
+                  ? (room.oldestUnreadMessageAt ?? incoming.createdAt)
                   : room.oldestUnreadMessageAt,
             };
           }),
@@ -739,35 +838,55 @@ function MessageContent() {
       },
       onMessageChanged: (event) => {
         applyChangedMessage(event.chatRoomId, event.message);
-        if (event.message.deletedAt) void loadRooms().catch(() => showToast("메시지는 삭제됐으나 목록을 새로 불러오지 못했습니다."));
+        if (event.message.deletedAt)
+          void loadRooms().catch(() =>
+            showToast("메시지는 삭제됐으나 목록을 새로 불러오지 못했습니다."),
+          );
       },
       // 리액션은 변화분만 받아 해당 메시지의 집계에 더하거나 뺌.
       onReactionChanged: (event) => {
         const myMembershipId = member?.membershipId;
         if (myMembershipId === undefined) return;
-        setMessages((current) => current.map((item) => item.id === event.messageId
-          ? { ...item, reactions: applyReactionChange(item.reactions ?? [], event, myMembershipId) }
-          : item));
+        setMessages((current) =>
+          current.map((item) =>
+            item.id === event.messageId
+              ? {
+                  ...item,
+                  reactions: applyReactionChange(item.reactions ?? [], event, myMembershipId),
+                }
+              : item,
+          ),
+        );
+        // 리액션 사용자 모달이 이 메시지로 열려 있으면 누가 어떤 이모지를 눌렀는지도 바로 갱신.
+        if (reactionModalMessageIdRef.current === event.messageId && accessToken) {
+          void chatApi
+            .reactionMembers(accessToken, selectedRoomId, event.messageId)
+            .then((members) =>
+              setReactionModal((current) =>
+                current?.message.id === event.messageId ? { ...current, members } : current,
+              ),
+            )
+            .catch(() => undefined);
+        }
       },
       onReadUpdated: (event) => {
         if (event.chatRoomId !== selectedRoomId) return;
-        // 읽음 위치가 전진한 구성원만 아직 읽지 않은 말풍선에 한 번 반영.
-        setMessages((current) =>
-          current.map((message) => {
-            const canUpdateReadCount =
-              message.type === "TEXT" && !message.deletedAt &&
-              message.id <= event.lastReadMessageId &&
-              message.senderMembershipId !== event.readerMembershipId &&
-              message.unreadCount > 0;
-            return canUpdateReadCount
-              ? {
-                ...message,
-                readCount: message.readCount + 1,
-                unreadCount: message.unreadCount - 1,
-              }
-              : message;
-          }),
-        );
+        const read = readStateRef.current;
+        if (read.roomId !== selectedRoomId) return;
+        // 읽은 위치는 앞으로만 가므로 같은 사람의 이벤트가 몇 번 와도 결과가 같음.
+        read.state = {
+          ...read.state,
+          cursors: {
+            ...read.state.cursors,
+            [event.readerMembershipId]: Math.max(
+              read.state.cursors[event.readerMembershipId] ?? 0,
+              event.lastReadMessageId,
+            ),
+          },
+        };
+        // 구성원 목록을 아직 못 받았으면 위치만 기억해 두고, 받은 뒤 한꺼번에 계산.
+        if (!read.loaded) return;
+        setMessages((current) => applyReadCursors(current, read.state));
       },
       onTypingChanged: (event) => {
         if (event.membershipId === member?.membershipId) return;
@@ -781,13 +900,14 @@ function MessageContent() {
           return;
         }
         setTypingMembers((current) => {
-          const withoutSender = current.filter(
-            (item) => item.membershipId !== event.membershipId,
-          );
-          const nextMembers = [...withoutSender, {
-            membershipId: event.membershipId,
-            displayName: event.displayName,
-          }];
+          const withoutSender = current.filter((item) => item.membershipId !== event.membershipId);
+          const nextMembers = [
+            ...withoutSender,
+            {
+              membershipId: event.membershipId,
+              displayName: event.displayName,
+            },
+          ];
           typingMembersRef.current = nextMembers;
           return nextMembers;
         });
@@ -829,18 +949,13 @@ function MessageContent() {
         setTypingPreviewByRoomId((current) => {
           const currentMembers = current[event.chatRoomId] ?? [];
           const nextMembers = [
-            ...currentMembers.filter(
-              (item) => item.membershipId !== event.membershipId,
-            ),
+            ...currentMembers.filter((item) => item.membershipId !== event.membershipId),
             { membershipId: event.membershipId, displayName: event.displayName },
           ];
           return { ...current, [event.chatRoomId]: nextMembers };
         });
         // 입력 종료 이벤트를 놓쳐도 목록 미리보기는 자동으로 복구.
-        typingPreviewTimerRef.current.set(
-          timerKey,
-          setTimeout(removePreview, 3_000),
-        );
+        typingPreviewTimerRef.current.set(timerKey, setTimeout(removePreview, 3_000));
       },
       onConnected: (sendTyping) => {
         sendTypingRef.current = sendTyping;
@@ -849,10 +964,7 @@ function MessageContent() {
         sendTyping(true);
         typingActiveRef.current = true;
         if (!typingHeartbeatRef.current) {
-          typingHeartbeatRef.current = setInterval(
-            () => sendTyping(true),
-            2_000,
-          );
+          typingHeartbeatRef.current = setInterval(() => sendTyping(true), 2_000);
         }
       },
       // 연결 실패는 REST 메시지 기능을 막지 않으므로 조용히 복구를 시도.
@@ -872,7 +984,18 @@ function MessageContent() {
       typingMembersRef.current = [];
       setTypingMembers([]);
     };
-  }, [accessToken, member?.membershipId, selectedRoomId, status, subscribedChatRoomIds, applyChangedMessage, loadRooms, showToast]);
+  }, [
+    accessToken,
+    member?.membershipId,
+    selectedRoomId,
+    status,
+    subscribedChatRoomIds,
+    applyChangedMessage,
+    loadReadState,
+    loadRooms,
+    showToast,
+    withReadCounts,
+  ]);
 
   useEffect(
     () => () => {
@@ -901,17 +1024,11 @@ function MessageContent() {
       .then((detail) => {
         const profile =
           selectedRoom?.type === "SELF"
-            ? detail.members.find(
-              (item) => item.membershipId === member.membershipId,
-            )
-            : detail.members.find(
-              (item) => item.membershipId !== member.membershipId,
-            );
+            ? detail.members.find((item) => item.membershipId === member.membershipId)
+            : detail.members.find((item) => item.membershipId !== member.membershipId);
         setSelectedRoomProfile(profile ?? null);
         setRooms((current) =>
-          current.map((room) =>
-            room.id === detail.room.id ? detail.room : room,
-          ),
+          current.map((room) => (room.id === detail.room.id ? detail.room : room)),
         );
       })
       .catch((error: Error) => showToast(error.message));
@@ -922,11 +1039,9 @@ function MessageContent() {
       void Promise.resolve().then(() => setRoomMentionMembers([]));
       return;
     }
-    // 방 전환 중 이전 방 참여자가 자동완성에 잠깐 남지 않게 새 상세 정보로 교체.
-    void chatApi.detail(accessToken, selectedRoomId)
-      .then((detail) => setRoomMentionMembers(detail.members))
-      .catch(() => setRoomMentionMembers([]));
-  }, [accessToken, selectedRoomId]);
+    // 방 전환 중 이전 방 참여자가 자동완성에 잠깐 남지 않게 새 상세 정보(구성원·읽은 위치)로 교체.
+    void loadReadState(selectedRoomId).catch(() => setRoomMentionMembers([]));
+  }, [accessToken, selectedRoomId, loadReadState]);
 
   // 새 메시지·방 진입 결과가 렌더링되면 항상 가장 최근 대화가 보이도록 이동.
   useEffect(() => {
@@ -941,11 +1056,14 @@ function MessageContent() {
         const bubbleBounds = bubble.getBoundingClientRect();
         const listBounds = messageList.getBoundingClientRect();
         // 이미 화면 안에 보이는 원문은 제자리에서 강조. 화면 밖일 때만 스크롤 이동.
-        const isVisible = bubbleBounds.top >= listBounds.top + 8
-          && bubbleBounds.bottom <= listBounds.bottom - 8;
+        const isVisible =
+          bubbleBounds.top >= listBounds.top + 8 && bubbleBounds.bottom <= listBounds.bottom - 8;
         if (!isVisible) {
-          const top = bubbleBounds.top - listBounds.top + messageList.scrollTop
-            - Math.max(8, (messageList.clientHeight - bubbleBounds.height) / 2);
+          const top =
+            bubbleBounds.top -
+            listBounds.top +
+            messageList.scrollTop -
+            Math.max(8, (messageList.clientHeight - bubbleBounds.height) / 2);
           messageList.scrollTo({ top: Math.max(0, top), behavior: "instant" });
         }
         pendingMessageScrollRef.current = null;
@@ -958,7 +1076,9 @@ function MessageContent() {
     const mutationScroll = mutationScrollRef.current;
     if (mutationScroll) {
       const frameId = requestAnimationFrame(() => {
-        messageList.scrollTop = mutationScroll.top + (mutationScroll.adjustHeight ? messageList.scrollHeight - mutationScroll.height : 0);
+        messageList.scrollTop =
+          mutationScroll.top +
+          (mutationScroll.adjustHeight ? messageList.scrollHeight - mutationScroll.height : 0);
         mutationScrollRef.current = null;
       });
       return () => cancelAnimationFrame(frameId);
@@ -967,9 +1087,7 @@ function MessageContent() {
     if (preservedScroll) {
       const frameId = requestAnimationFrame(() => {
         messageList.scrollTop =
-          preservedScroll.top +
-          messageList.scrollHeight -
-          preservedScroll.height;
+          preservedScroll.top + messageList.scrollHeight - preservedScroll.height;
         preservedScrollRef.current = null;
       });
       return () => cancelAnimationFrame(frameId);
@@ -988,7 +1106,9 @@ function MessageContent() {
 
   useEffect(() => {
     if (highlightedMessageId === null) return;
-    const row = messageListRef.current?.querySelector<HTMLElement>(`[data-message-id="${highlightedMessageId}"]`);
+    const row = messageListRef.current?.querySelector<HTMLElement>(
+      `[data-message-id="${highlightedMessageId}"]`,
+    );
     const bubble = row?.querySelector<HTMLElement>("[data-message-bubble]");
     if (!bubble) return;
 
@@ -1010,11 +1130,7 @@ function MessageContent() {
   }, [messages, showDateChip]);
 
   useEffect(() => {
-    if (
-      typingMembers.length === 0 ||
-      !messageListRef.current ||
-      !isMessageListAtBottomRef.current
-    )
+    if (typingMembers.length === 0 || !messageListRef.current || !isMessageListAtBottomRef.current)
       return;
     const messageList = messageListRef.current;
     // 입력 중 말풍선도 최신 대화 흐름이므로 표시 즉시 하단으로 포커스.
@@ -1040,8 +1156,7 @@ function MessageContent() {
         );
         setContactMembers(
           result.content.filter(
-            (target) =>
-              target.membershipId !== member?.membershipId && target.enabled,
+            (target) => target.membershipId !== member?.membershipId && target.enabled,
           ),
         );
       })
@@ -1060,16 +1175,45 @@ function MessageContent() {
   const generalRooms = filteredRooms.filter((room) => room.type !== "GROUP");
   // 방 항목(memo)에 넘기는 콜백은 방마다 새로 만들지 않고 고정 함수 하나를 공유(방 ID를 인자로 받음).
   const selectRoom = useCallback((roomId: number) => setSelectedRoomId(roomId), []);
-  const toggleRoomMenu = useCallback((roomId: number) => setRoomMenuId((current) => current === roomId ? null : roomId), []);
-  const toggleHiddenRoom = useCallback((roomId: number) => setHiddenRoomIds((current) => { const next = new Set(current); if (next.has(roomId)) next.delete(roomId); else next.add(roomId); return next; }), []);
-  const handleRoomAction = useStableCallback(async (room: ChatRoom, action: "notification" | "pin" | "hide" | "leave") => {
-    if (!accessToken) return;
-    setRoomMenuId(null);
-    if (action === "hide") { setHideSelectionMode(true); setHiddenRoomIds(new Set([room.id])); return; }
-    if (action === "leave") { await chatApi.leave(accessToken, room.id); setRooms((current) => current.filter((target) => target.id !== room.id)); if (selectedRoomId === room.id) setSelectedRoomId(null); showToast("채팅방에서 나갔습니다."); return; }
-    if (action === "pin") { await chatApi.togglePin(accessToken, room.id); await loadRooms(); showToast(room.pinned ? "고정을 해제했습니다." : "채팅방을 고정했습니다."); return; }
-    setNotificationRoom(room);
-  });
+  const toggleRoomMenu = useCallback(
+    (roomId: number) => setRoomMenuId((current) => (current === roomId ? null : roomId)),
+    [],
+  );
+  const toggleHiddenRoom = useCallback(
+    (roomId: number) =>
+      setHiddenRoomIds((current) => {
+        const next = new Set(current);
+        if (next.has(roomId)) next.delete(roomId);
+        else next.add(roomId);
+        return next;
+      }),
+    [],
+  );
+  const handleRoomAction = useStableCallback(
+    async (room: ChatRoom, action: "notification" | "pin" | "hide" | "leave") => {
+      if (!accessToken) return;
+      setRoomMenuId(null);
+      if (action === "hide") {
+        setHideSelectionMode(true);
+        setHiddenRoomIds(new Set([room.id]));
+        return;
+      }
+      if (action === "leave") {
+        await chatApi.leave(accessToken, room.id);
+        setRooms((current) => current.filter((target) => target.id !== room.id));
+        if (selectedRoomId === room.id) setSelectedRoomId(null);
+        showToast("채팅방에서 나갔습니다.");
+        return;
+      }
+      if (action === "pin") {
+        await chatApi.togglePin(accessToken, room.id);
+        await loadRooms();
+        showToast(room.pinned ? "고정을 해제했습니다." : "채팅방을 고정했습니다.");
+        return;
+      }
+      setNotificationRoom(room);
+    },
+  );
   const renderRoomItem = (room: ChatRoom) => (
     <MessageRoomItem
       key={room.id}
@@ -1112,40 +1256,37 @@ function MessageContent() {
   const headerProfile =
     selectedRoom?.type === "SELF"
       ? {
-        displayName:
-          selectedRoomProfile?.displayName ?? member?.displayName ?? "나",
-        jobGradeName: selectedRoomProfile?.jobGradeName ?? "",
-        departmentName: selectedRoomProfile?.departmentName ?? "",
-        companyName: selectedRoomProfile?.companyName ?? "",
-      }
+          displayName: selectedRoomProfile?.displayName ?? member?.displayName ?? "나",
+          jobGradeName: selectedRoomProfile?.jobGradeName ?? "",
+          departmentName: selectedRoomProfile?.departmentName ?? "",
+          companyName: selectedRoomProfile?.companyName ?? "",
+        }
       : selectedRoom?.type === "DIRECT"
         ? {
-          displayName:
-            selectedRoomProfile?.displayName ??
-            addressBookProfile?.displayName ??
-            selectedRoom.directDisplayName ??
-            "상대 사용자",
-          jobGradeName:
-            selectedRoomProfile?.jobGradeName ??
-            addressBookProfile?.jobGradeName ??
-            selectedRoom.directJobGradeName ??
-            "",
-          departmentName:
-            selectedRoomProfile?.departmentName ??
-            addressBookProfile?.departmentName ??
-            selectedRoom.directDepartmentName ??
-            "",
-          companyName:
-            selectedRoomProfile?.companyName ??
-            addressBookProfile?.companyName ??
-            selectedRoom.directCompanyName ??
-            "",
-        }
+            displayName:
+              selectedRoomProfile?.displayName ??
+              addressBookProfile?.displayName ??
+              selectedRoom.directDisplayName ??
+              "상대 사용자",
+            jobGradeName:
+              selectedRoomProfile?.jobGradeName ??
+              addressBookProfile?.jobGradeName ??
+              selectedRoom.directJobGradeName ??
+              "",
+            departmentName:
+              selectedRoomProfile?.departmentName ??
+              addressBookProfile?.departmentName ??
+              selectedRoom.directDepartmentName ??
+              "",
+            companyName:
+              selectedRoomProfile?.companyName ??
+              addressBookProfile?.companyName ??
+              selectedRoom.directCompanyName ??
+              "",
+          }
         : null;
   const headerMembershipId =
-    selectedRoom?.type === "SELF"
-      ? member?.membershipId
-      : selectedRoom?.directMembershipId;
+    selectedRoom?.type === "SELF" ? member?.membershipId : selectedRoom?.directMembershipId;
 
   const copyMessage = async (message: ChatMessage) => {
     try {
@@ -1178,11 +1319,16 @@ function MessageContent() {
 
   // 답장하기와 같은 흐름: 입력칸 위에 원문을 띄우고, 입력칸에는 기존 본문을 채워 바로 고치게 함.
   const startEdit = (message: ChatMessage) => {
-    if (!selectedRoomId || message.deletedAt || message.senderMembershipId !== member?.membershipId) return;
+    if (!selectedRoomId || message.deletedAt || message.senderMembershipId !== member?.membershipId)
+      return;
     // 메뉴가 열려 있는 사이에 24시간이 지났을 수도 있으므로 시작 시점에 한 번 더 확인.
-    if (!isMessageEditable(message)) { showToast(EDIT_EXPIRED_MESSAGE); return; }
+    if (!isMessageEditable(message)) {
+      showToast(EDIT_EXPIRED_MESSAGE);
+      return;
+    }
     const roomId = selectedRoomId;
-    if (!(roomId in editDraftBackupRef.current)) editDraftBackupRef.current[roomId] = draftByRoomId[roomId] ?? "";
+    if (!(roomId in editDraftBackupRef.current))
+      editDraftBackupRef.current[roomId] = draftByRoomId[roomId] ?? "";
     setReplyByRoomId((current) => {
       if (!current[roomId]) return current;
       const next = { ...current };
@@ -1208,32 +1354,57 @@ function MessageContent() {
     delete editDraftBackupRef.current[roomId];
     setDraftByRoomId((current) => {
       const next = { ...current };
-      if (backup) next[roomId] = backup; else delete next[roomId];
+      if (backup) next[roomId] = backup;
+      else delete next[roomId];
       return next;
     });
     setEditingMessage(null);
     inputRef.current?.focus({ preventScroll: true });
   };
   const startDelete = (message: ChatMessage) => {
-    if (!selectedRoomId || message.deletedAt || message.senderMembershipId !== member?.membershipId) return;
+    if (!selectedRoomId || message.deletedAt || message.senderMembershipId !== member?.membershipId)
+      return;
+    if (!isMessageEditable(message)) {
+      showToast(DELETE_EXPIRED_MESSAGE);
+      return;
+    }
     setDeletingMessage({ roomId: selectedRoomId, message });
   };
   const deletingMessageId = deletingMessage?.message.id;
-  const closeDelete = useCallback(() => setDeletingMessage((current) => current?.message.id === deletingMessageId ? null : current), [deletingMessageId]);
+  const closeDelete = useCallback(
+    () =>
+      setDeletingMessage((current) => (current?.message.id === deletingMessageId ? null : current)),
+    [deletingMessageId],
+  );
 
   const saveEditedMessage = async (content: string) => {
     if (!accessToken || !editingMessage) throw new Error("로그인 상태를 확인해 주세요.");
     const { roomId, message } = editingMessage;
-    const mentionedIds = content.includes("@All") ? mentionCandidates.map((candidate) => candidate.membershipId)
-      : mentionCandidates.filter((candidate) => content.includes(`@${candidate.displayName}`)).map((candidate) => candidate.membershipId);
-    const result = await chatApi.updateMessage(accessToken, roomId, message.id, content, mentionedIds, message.version ?? 0);
+    const mentionedIds = content.includes("@All")
+      ? mentionCandidates.map((candidate) => candidate.membershipId)
+      : mentionCandidates
+          .filter((candidate) => content.includes(`@${candidate.displayName}`))
+          .map((candidate) => candidate.membershipId);
+    const result = await chatApi.updateMessage(
+      accessToken,
+      roomId,
+      message.id,
+      content,
+      mentionedIds,
+      message.version ?? 0,
+    );
     applyChangedMessage(roomId, result);
     showToast("메시지를 수정했습니다.");
   };
   const deleteSelectedMessage = async () => {
     if (!accessToken || !deletingMessage) throw new Error("로그인 상태를 확인해 주세요.");
     const { roomId, message } = deletingMessage;
-    const result = await chatApi.deleteMessage(accessToken, roomId, message.id, message.version ?? 0);
+    const result = await chatApi.deleteMessage(
+      accessToken,
+      roomId,
+      message.id,
+      message.version ?? 0,
+    );
     applyChangedMessage(roomId, result);
     showToast("메시지를 삭제했습니다.");
     await loadRooms().catch(() => showToast("삭제는 완료했으나 목록을 새로 불러오지 못했습니다."));
@@ -1257,7 +1428,8 @@ function MessageContent() {
       }
       setIsLocatingOriginal(true);
       const page = await chatApi.messageAnchor(accessToken, roomId, messageId);
-      if (selectedRoomIdRef.current !== roomId || messageWindowVersionRef.current !== windowVersion) return;
+      if (selectedRoomIdRef.current !== roomId || messageWindowVersionRef.current !== windowVersion)
+        return;
       newerCursorRef.current = page.newerCursor;
       setNewerCursor(page.newerCursor);
       setNextCursor(page.nextCursor);
@@ -1301,7 +1473,10 @@ function MessageContent() {
 
   const submitMessage = async (event?: FormEvent) => {
     event?.preventDefault();
-    if (editingTarget) { await submitEdit(); return; }
+    if (editingTarget) {
+      await submitEdit();
+      return;
+    }
     if (!accessToken || !selectedRoomId || !input.trim() || sendingRef.current) return;
     // 전송 중 방을 바꿔도 응답·초기화는 전송을 시작한 방에만 적용.
     const roomId = selectedRoomId;
@@ -1313,8 +1488,8 @@ function MessageContent() {
       const mentionedMembershipIds = input.includes("@All")
         ? mentionCandidates.map((candidate) => candidate.membershipId)
         : mentionCandidates
-          .filter((candidate) => input.includes(`@${candidate.displayName}`))
-          .map((candidate) => candidate.membershipId);
+            .filter((candidate) => input.includes(`@${candidate.displayName}`))
+            .map((candidate) => candidate.membershipId);
       const message = await chatApi.send(
         accessToken,
         roomId,
@@ -1333,10 +1508,16 @@ function MessageContent() {
           pendingMessageScrollRef.current = null;
           preservedScrollRef.current = null;
           setIsLocatingOriginal(false);
-          void loadMessages(roomId).catch(() => showToast("전송은 완료했으나 최신 대화를 불러오지 못했습니다."));
+          void loadMessages(roomId).catch(() =>
+            showToast("전송은 완료했으나 최신 대화를 불러오지 못했습니다."),
+          );
         } else {
           // REST 응답과 STOMP 수신이 겹쳐도 같은 ID의 말풍선은 한 번만 추가.
-          setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, message]);
+          setMessages((current) =>
+            current.some((item) => item.id === message.id)
+              ? current
+              : withReadCounts([...current, message]),
+          );
         }
       }
       setRooms((current) =>
@@ -1344,14 +1525,14 @@ function MessageContent() {
           current.map((room) =>
             room.id === roomId
               ? {
-                ...room,
-                lastMessage: message.content,
-                lastMessageId: message.id,
-                lastMessageVersion: message.version,
-                lastMessageAt: message.createdAt,
-                lastSenderMembershipId: member?.membershipId ?? null,
-                unreadCount: 0,
-              }
+                  ...room,
+                  lastMessage: message.content,
+                  lastMessageId: message.id,
+                  lastMessageVersion: message.version,
+                  lastMessageAt: message.createdAt,
+                  lastSenderMembershipId: member?.membershipId ?? null,
+                  unreadCount: 0,
+                }
               : room,
           ),
         ),
@@ -1370,9 +1551,7 @@ function MessageContent() {
       });
       if (selectedRoomIdRef.current === roomId) inputRef.current?.focus({ preventScroll: true });
     } catch (error) {
-      showToast(
-        error instanceof Error ? error.message : "메시지를 보내지 못했습니다.",
-      );
+      showToast(error instanceof Error ? error.message : "메시지를 보내지 못했습니다.");
     } finally {
       sendingRef.current = false;
     }
@@ -1393,7 +1572,10 @@ function MessageContent() {
     const beforeCursor = value.slice(0, cursorPosition);
     const atIndex = beforeCursor.lastIndexOf("@");
     const mentionText = atIndex >= 0 ? beforeCursor.slice(atIndex + 1) : "";
-    const canOpenMention = atIndex >= 0 && !/[\s@]/.test(mentionText) && (atIndex === 0 || /\s/.test(beforeCursor[atIndex - 1]));
+    const canOpenMention =
+      atIndex >= 0 &&
+      !/[\s@]/.test(mentionText) &&
+      (atIndex === 0 || /\s/.test(beforeCursor[atIndex - 1]));
     setMentionStartIndex(canOpenMention ? atIndex : null);
     setMentionQuery(canOpenMention ? mentionText : "");
     setMentionHighlightIndex(0);
@@ -1416,10 +1598,7 @@ function MessageContent() {
       if (!inputRef.current?.value.trim()) return;
       sendTypingRef.current?.(true);
       typingActiveRef.current = true;
-      typingHeartbeatRef.current = setInterval(
-        () => sendTypingRef.current?.(true),
-        2_000,
-      );
+      typingHeartbeatRef.current = setInterval(() => sendTypingRef.current?.(true), 2_000);
     }, 500);
   };
 
@@ -1431,7 +1610,10 @@ function MessageContent() {
     setMentionStartIndex(null);
     requestAnimationFrame(() => {
       inputRef.current?.focus();
-      inputRef.current?.setSelectionRange(mentionStartIndex + mentionText.length + 1, mentionStartIndex + mentionText.length + 1);
+      inputRef.current?.setSelectionRange(
+        mentionStartIndex + mentionText.length + 1,
+        mentionStartIndex + mentionText.length + 1,
+      );
     });
   };
 
@@ -1445,42 +1627,73 @@ function MessageContent() {
       ]);
       setReadModal({ message, readMembers, unreadMembers, read: true });
     } catch (error) {
-      showToast(
-        error instanceof Error
-          ? error.message
-          : "읽음 멤버를 조회하지 못했습니다.",
-      );
+      showToast(error instanceof Error ? error.message : "읽음 멤버를 조회하지 못했습니다.");
     }
   };
 
   // 리액션 추가/취소: 화면에 먼저 반영(낙관적)하고, 서버 응답으로 확정. 실패하면 서버 집계로 되돌림.
   const toggleReaction = async (message: ChatMessage, emoji: string) => {
-    if (!accessToken || !selectedRoomId || !member || message.deletedAt || message.type !== "TEXT") return;
+    if (!accessToken || !selectedRoomId || !member || message.deletedAt || message.type !== "TEXT")
+      return;
+    if (!isMessageEditable(message)) {
+      showToast(REACTION_EXPIRED_MESSAGE);
+      return;
+    }
     const roomId = selectedRoomId;
-    const reacted = (message.reactions ?? []).some((reaction) => reaction.emoji === emoji && reaction.reactedByMe);
-    const action = reacted ? "removed" : "added";
-    setMessages((current) => current.map((item) => item.id === message.id
-      ? { ...item, reactions: applyReactionChange(item.reactions ?? [], { emoji, membershipId: member.membershipId, action }, member.membershipId) }
-      : item));
+    const myMembershipId = member.membershipId;
+    const mine = (message.reactions ?? []).find((reaction) => reaction.reactedByMe);
+    const reacted = mine?.emoji === emoji;
+    // 1인 1개 규칙: 같은 이모지면 취소, 다른 이모지를 눌렀는데 이미 누른 게 있으면 그걸 빼고 새 것을 넣음.
+    const changes: { emoji: string; action: "added" | "removed" }[] = reacted
+      ? [{ emoji, action: "removed" }]
+      : [
+          ...(mine ? [{ emoji: mine.emoji, action: "removed" as const }] : []),
+          { emoji, action: "added" as const },
+        ];
+    const applyChanges = (list: typeof changes) =>
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === message.id
+            ? {
+                ...item,
+                reactions: list.reduce(
+                  (reactions, change) =>
+                    applyReactionChange(
+                      reactions,
+                      { ...change, membershipId: myMembershipId },
+                      myMembershipId,
+                    ),
+                  item.reactions ?? [],
+                ),
+              }
+            : item,
+        ),
+      );
+    applyChanges(changes);
     try {
       const reactions = reacted
         ? await chatApi.removeReaction(accessToken, roomId, message.id, emoji)
         : await chatApi.addReaction(accessToken, roomId, message.id, emoji);
-      setMessages((current) => current.map((item) => item.id === message.id ? { ...item, reactions } : item));
+      setMessages((current) =>
+        current.map((item) => (item.id === message.id ? { ...item, reactions } : item)),
+      );
     } catch (error) {
-      // 되돌리기: 방금 낙관적으로 적용한 변화를 반대로 적용.
-      setMessages((current) => current.map((item) => item.id === message.id
-        ? { ...item, reactions: applyReactionChange(item.reactions ?? [], { emoji, membershipId: member.membershipId, action: reacted ? "added" : "removed" }, member.membershipId) }
-        : item));
+      // 되돌리기: 낙관적으로 적용한 변화를 역순으로 반대 동작으로 적용.
+      applyChanges(
+        [...changes].reverse().map((change) => ({
+          ...change,
+          action: change.action === "added" ? "removed" : "added",
+        })),
+      );
       showToast(error instanceof Error ? error.message : "리액션을 반영하지 못했습니다.");
     }
   };
 
-  const openReactionMembers = async (message: ChatMessage, emoji: string) => {
+  const openReactionMembers = async (message: ChatMessage) => {
     if (!accessToken || !selectedRoomId) return;
     try {
-      const members = await chatApi.reactionMembers(accessToken, selectedRoomId, message.id, emoji);
-      setReactionModal({ message, emoji, members });
+      const members = await chatApi.reactionMembers(accessToken, selectedRoomId, message.id);
+      setReactionModal({ message, members });
     } catch (error) {
       showToast(error instanceof Error ? error.message : "리액션 멤버를 조회하지 못했습니다.");
     }
@@ -1488,46 +1701,79 @@ function MessageContent() {
 
   const closeRoomManageModal = useCallback(() => setRoomManageOpen(false), []);
 
-  const loadNewerMessages = useCallback(async (roomId: number, cursor: number) => {
-    if (!accessToken || loadingNewerRef.current) return;
-    const windowVersion = messageWindowVersionRef.current;
-    loadingNewerRef.current = true;
-    setIsLoadingNewerMessages(true);
-    try {
-      const page = await chatApi.newerMessages(accessToken, roomId, cursor);
-      if (selectedRoomIdRef.current !== roomId || messageWindowVersionRef.current !== windowVersion) return;
-      newerCursorRef.current = page.newerCursor;
-      setNewerCursor(page.newerCursor);
-      // 실시간 도착과 다음 페이지 조회가 겹칠 수 있어 ID로 합치고 정렬.
-      setMessages((current) => [...new Map([...current, ...page.messages].map((item) => [item.id, item])).values()].sort((left, right) => left.id - right.id));
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : "다음 메시지를 불러오지 못했습니다.");
-    } finally {
-      loadingNewerRef.current = false;
-      setIsLoadingNewerMessages(false);
-    }
-  }, [accessToken, showToast]);
+  const loadNewerMessages = useCallback(
+    async (roomId: number, cursor: number) => {
+      if (!accessToken || loadingNewerRef.current) return;
+      const windowVersion = messageWindowVersionRef.current;
+      loadingNewerRef.current = true;
+      setIsLoadingNewerMessages(true);
+      try {
+        const page = await chatApi.newerMessages(accessToken, roomId, cursor);
+        if (
+          selectedRoomIdRef.current !== roomId ||
+          messageWindowVersionRef.current !== windowVersion
+        )
+          return;
+        newerCursorRef.current = page.newerCursor;
+        setNewerCursor(page.newerCursor);
+        // 실시간 도착과 다음 페이지 조회가 겹칠 수 있어 ID로 합치고 정렬.
+        setMessages((current) =>
+          withReadCounts(
+            [
+              ...new Map([...current, ...page.messages].map((item) => [item.id, item])).values(),
+            ].sort((left, right) => left.id - right.id),
+          ),
+        );
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "다음 메시지를 불러오지 못했습니다.");
+      } finally {
+        loadingNewerRef.current = false;
+        setIsLoadingNewerMessages(false);
+      }
+    },
+    [accessToken, showToast, withReadCounts],
+  );
 
   useEffect(() => {
     const messageList = messageListRef.current;
-    if (!messageList || !selectedRoomId || newerCursor === null || isLoadingNewerMessages || isLocatingOriginal) return;
+    if (
+      !messageList ||
+      !selectedRoomId ||
+      newerCursor === null ||
+      isLoadingNewerMessages ||
+      isLocatingOriginal
+    )
+      return;
     // 원문 주변 대화가 화면보다 짧으면 사용자가 스크롤할 수 없으므로 다음 페이지를 자동 보충.
     if (messageList.scrollHeight <= messageList.clientHeight + 24) {
       void loadNewerMessages(selectedRoomId, newerCursor);
     }
-  }, [messages, selectedRoomId, newerCursor, isLoadingNewerMessages, isLocatingOriginal, loadNewerMessages]);
+  }, [
+    messages,
+    selectedRoomId,
+    newerCursor,
+    isLoadingNewerMessages,
+    isLocatingOriginal,
+    loadNewerMessages,
+  ]);
 
   const showScrollDate = (event: React.UIEvent<HTMLDivElement>) => {
     const messageList = event.currentTarget;
     // 원문으로 부드럽게 이동하는 도중에는 스크롤 페이지 요청을 잠시 중지.
-    if (pendingMessageScrollRef.current !== null || Date.now() < originalNavigationUntilRef.current || isLocatingOriginal) return;
+    if (
+      pendingMessageScrollRef.current !== null ||
+      Date.now() < originalNavigationUntilRef.current ||
+      isLocatingOriginal
+    )
+      return;
     // 최상단 도달 시 이전 페이지를 자동으로 이어 붙임.
     if (messageList.scrollTop <= 24 && nextCursor && selectedRoomId) {
-      void loadMessages(selectedRoomId, nextCursor).catch((error: Error) => showToast(error.message));
+      void loadMessages(selectedRoomId, nextCursor).catch((error: Error) =>
+        showToast(error.message),
+      );
     }
     const reachedWindowBottom =
-      messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight <=
-      24;
+      messageList.scrollHeight - messageList.scrollTop - messageList.clientHeight <= 24;
     if (reachedWindowBottom && newerCursorRef.current !== null && selectedRoomId) {
       void loadNewerMessages(selectedRoomId, newerCursorRef.current);
     }
@@ -1542,9 +1788,7 @@ function MessageContent() {
       messageList.querySelectorAll<HTMLElement>("[data-message-date]"),
     );
     const visibleMessage = messageElements.find(
-      (element) =>
-        element.offsetTop + element.offsetHeight >
-        messageList.scrollTop + 8,
+      (element) => element.offsetTop + element.offsetHeight > messageList.scrollTop + 8,
     );
     const nextDateKey = visibleMessage?.dataset.messageDate;
     if (!nextDateKey) return;
@@ -1577,8 +1821,7 @@ function MessageContent() {
 
   useEffect(
     () => () => {
-      if (scrollDateFadeTimerRef.current)
-        clearTimeout(scrollDateFadeTimerRef.current);
+      if (scrollDateFadeTimerRef.current) clearTimeout(scrollDateFadeTimerRef.current);
       if (scrollDateTimerRef.current) clearTimeout(scrollDateTimerRef.current);
     },
     [],
@@ -1586,10 +1829,7 @@ function MessageContent() {
 
   useEffect(() => {
     const closeSortMenu = (event: MouseEvent) => {
-      if (
-        sortMenuRef.current &&
-        !sortMenuRef.current.contains(event.target as Node)
-      )
+      if (sortMenuRef.current && !sortMenuRef.current.contains(event.target as Node))
         setSortMenuOpen(false);
     };
     const closeByEscape = (event: KeyboardEvent) => {
@@ -1610,9 +1850,15 @@ function MessageContent() {
   const stableStartReply = useStableCallback(startReply);
   const stableStartEdit = useStableCallback(startEdit);
   const stableStartDelete = useStableCallback(startDelete);
-  const stableJumpToOriginal = useStableCallback((messageId: number) => void jumpToOriginal(messageId));
-  const stableToggleReaction = useStableCallback((message: ChatMessage, emoji: string) => void toggleReaction(message, emoji));
-  const stableOpenReactionMembers = useStableCallback((message: ChatMessage, emoji: string) => void openReactionMembers(message, emoji));
+  const stableJumpToOriginal = useStableCallback(
+    (messageId: number) => void jumpToOriginal(messageId),
+  );
+  const stableToggleReaction = useStableCallback(
+    (message: ChatMessage, emoji: string) => void toggleReaction(message, emoji),
+  );
+  const stableOpenReactionMembers = useStableCallback(
+    (message: ChatMessage) => void openReactionMembers(message),
+  );
 
   return (
     <div className="min-h-screen bg-white text-slate-900">
@@ -1635,13 +1881,10 @@ function MessageContent() {
           onProfileAction={() => setIsProfileOpen((open) => !open)}
           onCloseProfileMenu={() => setIsProfileOpen(false)}
           onLogout={() => {
-            if (lastRoomStorageKey)
-              window.sessionStorage.removeItem(lastRoomStorageKey);
+            if (lastRoomStorageKey) window.sessionStorage.removeItem(lastRoomStorageKey);
             void logout().then(() => router.replace("/"));
           }}
-          onSidebarToggle={() =>
-            setIsSidebarCollapsed((collapsed) => !collapsed)
-          }
+          onSidebarToggle={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
           isSidebarCollapsed={isSidebarCollapsed}
           headerContent={
             <label className="flex h-10 w-full max-w-[500px] items-center gap-2 rounded-full bg-slate-100 px-4 text-slate-500">
@@ -1702,9 +1945,7 @@ function MessageContent() {
                         className={`flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm transition hover:bg-blue-50 ${roomSort === option.value ? "font-bold text-blue-600" : "text-slate-700"}`}
                       >
                         <span className="flex w-4 justify-center">
-                          {roomSort === option.value && (
-                            <Check size={16} strokeWidth={3} />
-                          )}
+                          {roomSort === option.value && <Check size={16} strokeWidth={3} />}
                         </span>
                         {option.label}
                       </button>
@@ -1754,23 +1995,33 @@ function MessageContent() {
               filteredRooms.map(renderRoomItem)
             )}
             {!isSidebarCollapsed && filteredRooms.length === 0 && (
-              <p className="p-8 text-center text-sm text-slate-500">
-                표시할 메시지방이 없습니다.
-              </p>
+              <p className="p-8 text-center text-sm text-slate-500">표시할 메시지방이 없습니다.</p>
             )}
           </div>
           {hideSelectionMode && !isSidebarCollapsed && (
             <div className="flex items-center gap-2 border-t border-slate-200 bg-white p-3">
-              <button type="button" disabled={hiddenRoomIds.size === 0} onClick={() => setHideConfirmOpen(true)} className="cursor-pointer rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300">
+              <button
+                type="button"
+                disabled={hiddenRoomIds.size === 0}
+                onClick={() => setHideConfirmOpen(true)}
+                className="cursor-pointer rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
                 숨김 ({hiddenRoomIds.size})
               </button>
-              <button type="button" onClick={() => { setHideSelectionMode(false); setHiddenRoomIds(new Set()); }} className="cursor-pointer rounded-lg border border-slate-200 px-3 py-2 text-sm transition hover:bg-slate-50">취소</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setHideSelectionMode(false);
+                  setHiddenRoomIds(new Set());
+                }}
+                className="cursor-pointer rounded-lg border border-slate-200 px-3 py-2 text-sm transition hover:bg-slate-50"
+              >
+                취소
+              </button>
             </div>
           )}
         </aside>
-        <section
-          className={`min-w-0 flex-1 flex-col ${selectedRoom ? "flex" : "hidden"}`}
-        >
+        <section className={`min-w-0 flex-1 flex-col ${selectedRoom ? "flex" : "hidden"}`}>
           <header className="border-b border-slate-200 px-6">
             <div className="flex h-20 items-center justify-between">
               {selectedRoom?.type === "GROUP" ? (
@@ -1783,9 +2034,7 @@ function MessageContent() {
                 >
                   <GroupAvatar name={displayRoomName(selectedRoom)} size="lg" />
                   <div>
-                    <h1 className="font-bold">
-                      {displayRoomName(selectedRoom)}
-                    </h1>
+                    <h1 className="font-bold">{displayRoomName(selectedRoom)}</h1>
                     <p className="mt-1 text-sm text-slate-500">
                       멤버{" "}
                       <span className="text-base font-extrabold text-blue-600">
@@ -1805,9 +2054,7 @@ function MessageContent() {
                     }
                     size="lg"
                     onClick={
-                      headerMembershipId
-                        ? () => openUserProfile(headerMembershipId)
-                        : undefined
+                      headerMembershipId ? () => openUserProfile(headerMembershipId) : undefined
                     }
                   />
                   <div>
@@ -1820,14 +2067,10 @@ function MessageContent() {
                       {headerProfile?.displayName ?? "메시지"}
                     </h1>
                     <p className="mt-1 text-xs">
-                      <span className="text-blue-600">
-                        {headerProfile?.jobGradeName}
-                      </span>
+                      <span className="text-blue-600">{headerProfile?.jobGradeName}</span>
                       <span className="text-slate-500">
-                        {headerProfile?.departmentName &&
-                          ` · ${headerProfile.departmentName}`}
-                        {headerProfile?.companyName &&
-                          ` · ${headerProfile.companyName}`}
+                        {headerProfile?.departmentName && ` · ${headerProfile.departmentName}`}
+                        {headerProfile?.companyName && ` · ${headerProfile.companyName}`}
                       </span>
                     </p>
                   </div>
@@ -1845,10 +2088,16 @@ function MessageContent() {
                 </div>
               )}
               {(isLoadingPreviousMessages || isLoadingNewerMessages || isLocatingOriginal) && (
-                <div className="pointer-events-none absolute left-1/2 top-14 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500 shadow-sm animate-in fade-in slide-in-from-top-1">
-                  <LoaderCircle size={14} className="animate-spin text-blue-500" />
-                  <span>{isLocatingOriginal ? "원문 메시지로 이동 중입니다." : isLoadingNewerMessages ? "다음 메시지를 불러오는 중입니다." : "이전 메시지를 불러오는 중입니다."}</span>
-                </div>
+                <LoadingInline
+                  message={
+                    isLocatingOriginal
+                      ? "원문 메시지로 이동 중입니다."
+                      : isLoadingNewerMessages
+                        ? "다음 메시지를 불러오는 중입니다."
+                        : "이전 메시지를 불러오는 중입니다."
+                  }
+                  className="pointer-events-none absolute left-1/2 top-14 z-20 -translate-x-1/2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500 shadow-sm animate-in fade-in slide-in-from-top-1"
+                />
               )}
               <div
                 ref={messageListRef}
@@ -1859,15 +2108,14 @@ function MessageContent() {
                 {messages.length === 0 && (
                   <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-slate-500">
                     {isLoadingMessages ? (
-                      <>
-                        <LoaderCircle size={22} className="animate-spin text-blue-500" aria-hidden="true" />
-                        <p>메시지를 불러오는 중입니다...</p>
-                      </>
+                      <LoadingState message="메시지를 불러오는 중입니다..." />
                     ) : (
                       <>
                         <MessageCircle size={28} className="text-slate-300" aria-hidden="true" />
                         <p>아직 주고받은 메시지가 없습니다.</p>
-                        <p className="text-xs text-slate-400">아래 입력칸에서 첫 메시지를 보내 보세요.</p>
+                        <p className="text-xs text-slate-400">
+                          아래 입력칸에서 첫 메시지를 보내 보세요.
+                        </p>
                       </>
                     )}
                   </div>
@@ -1908,10 +2156,14 @@ function MessageContent() {
                   style={{ bottom: composerHeight - 8 }}
                   className="absolute left-4 right-4 z-30 flex h-11 cursor-pointer items-center gap-1.5 rounded-lg bg-black/85 px-5 text-left text-sm text-white shadow-md backdrop-blur-sm transition duration-200 hover:bg-black/90 active:scale-[0.995]"
                 >
-                  <strong className="shrink-0 font-semibold">{latestUnseenMessage.senderName}</strong>
+                  <strong className="shrink-0 font-semibold">
+                    {latestUnseenMessage.senderName}
+                  </strong>
                   <span className="shrink-0 text-slate-300">:</span>
                   {/* 한 줄만 표시하고 줄바꿈·긴 내용은 말줄임으로 정리. */}
-                  <span className="min-w-0 truncate text-slate-100">{latestUnseenMessage.content.replace(/\s+/g, " ")}</span>
+                  <span className="min-w-0 truncate text-slate-100">
+                    {latestUnseenMessage.content.replace(/\s+/g, " ")}
+                  </span>
                   <ChevronDown size={17} className="ml-auto shrink-0" aria-hidden="true" />
                 </button>
               )}
@@ -1959,11 +2211,16 @@ function MessageContent() {
                     inputResizeRef.current = null;
                     saveInputHeight(inputHeight);
                   }}
-                  onDoubleClick={() => { resizeInput(DEFAULT_INPUT_HEIGHT); saveInputHeight(DEFAULT_INPUT_HEIGHT); }}
+                  onDoubleClick={() => {
+                    resizeInput(DEFAULT_INPUT_HEIGHT);
+                    saveInputHeight(DEFAULT_INPUT_HEIGHT);
+                  }}
                   onKeyDown={(event) => {
                     if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
                     event.preventDefault();
-                    const next = clampInputHeight(inputHeight + (event.key === "ArrowUp" ? 16 : -16));
+                    const next = clampInputHeight(
+                      inputHeight + (event.key === "ArrowUp" ? 16 : -16),
+                    );
                     resizeInput(next);
                     saveInputHeight(next);
                   }}
@@ -1975,18 +2232,38 @@ function MessageContent() {
                   <div className="message-action-menu flex items-center gap-3 rounded-t-2xl border border-slate-200 bg-white px-4 py-3">
                     <div className="min-w-0 flex-1">
                       {/* 수정 바와 같은 자리에 같은 모양의 제목 딱지. */}
-                      <p className="mb-1 flex items-center gap-1 text-xs font-semibold text-blue-600"><Reply size={12} aria-hidden="true" />메시지 답장</p>
+                      <p className="mb-1 flex items-center gap-1 text-xs font-semibold text-blue-600">
+                        <Reply size={12} aria-hidden="true" />
+                        메시지 답장
+                      </p>
                       <MessageQuote
-                        reply={{ messageId: replyTarget.id, senderName: replyTarget.senderName, content: replyTarget.content }}
-                        avatar={<MessageMemberAvatar
-                          name={replyTarget.senderName}
-                          presenceStatus={contactMemberById.get(replyTarget.senderMembershipId)?.presenceStatus ?? (replyTarget.senderMembershipId === member?.membershipId ? "ONLINE" : "OFFLINE")}
-                          onClick={() => openUserProfile(replyTarget.senderMembershipId)}
-                        />}
+                        reply={{
+                          messageId: replyTarget.id,
+                          senderName: replyTarget.senderName,
+                          content: replyTarget.content,
+                        }}
+                        avatar={
+                          <MessageMemberAvatar
+                            name={replyTarget.senderName}
+                            presenceStatus={
+                              contactMemberById.get(replyTarget.senderMembershipId)
+                                ?.presenceStatus ??
+                              (replyTarget.senderMembershipId === member?.membershipId
+                                ? "ONLINE"
+                                : "OFFLINE")
+                            }
+                            onClick={() => openUserProfile(replyTarget.senderMembershipId)}
+                          />
+                        }
                       />
                     </div>
                     <Tooltip label="답장 취소" placement="top">
-                      <button type="button" aria-label="답장 취소" onClick={cancelReply} className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 active:scale-90">
+                      <button
+                        type="button"
+                        aria-label="답장 취소"
+                        onClick={cancelReply}
+                        className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 active:scale-90"
+                      >
                         <X size={17} aria-hidden="true" />
                       </button>
                     </Tooltip>
@@ -1996,60 +2273,112 @@ function MessageContent() {
                 {editingTarget && (
                   <div className="message-action-menu flex items-center gap-3 rounded-t-2xl border border-slate-200 bg-white px-4 py-3">
                     <div className="min-w-0 flex-1">
-                      <p className="mb-1 flex items-center gap-1 text-xs font-semibold text-blue-600"><Pencil size={12} aria-hidden="true" />메시지 수정</p>
+                      <p className="mb-1 flex items-center gap-1 text-xs font-semibold text-blue-600">
+                        <Pencil size={12} aria-hidden="true" />
+                        메시지 수정
+                      </p>
                       <MessageQuote
-                        reply={{ messageId: editingTarget.id, senderName: editingTarget.senderName, content: editingTarget.content }}
-                        avatar={<MessageMemberAvatar
-                          name={editingTarget.senderName}
-                          presenceStatus="ONLINE"
-                        />}
+                        reply={{
+                          messageId: editingTarget.id,
+                          senderName: editingTarget.senderName,
+                          content: editingTarget.content,
+                        }}
+                        avatar={
+                          <MessageMemberAvatar
+                            name={editingTarget.senderName}
+                            presenceStatus="ONLINE"
+                          />
+                        }
                       />
                     </div>
                     <Tooltip label="수정 취소" placement="top">
-                      <button type="button" aria-label="수정 취소" onClick={cancelEdit} className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 active:scale-90">
+                      <button
+                        type="button"
+                        aria-label="수정 취소"
+                        onClick={cancelEdit}
+                        className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 active:scale-90"
+                      >
                         <X size={17} aria-hidden="true" />
                       </button>
                     </Tooltip>
                   </div>
                 )}
                 <div className="relative">
-                  {replyTarget && <Reply size={16} strokeWidth={1.8} aria-hidden="true" className="pointer-events-none absolute left-4 top-3.5 text-slate-400" />}
-                  {editingTarget && <Pencil size={16} strokeWidth={1.8} aria-hidden="true" className="pointer-events-none absolute left-4 top-3.5 text-slate-400" />}
+                  {replyTarget && (
+                    <Reply
+                      size={16}
+                      strokeWidth={1.8}
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-4 top-3.5 text-slate-400"
+                    />
+                  )}
+                  {editingTarget && (
+                    <Pencil
+                      size={16}
+                      strokeWidth={1.8}
+                      aria-hidden="true"
+                      className="pointer-events-none absolute left-4 top-3.5 text-slate-400"
+                    />
+                  )}
                   <textarea
-                  ref={inputRef}
-                  value={input}
-                  maxLength={2000}
-                  onChange={(event) => handleMessageInput(event.target.value, event.target.selectionStart ?? event.target.value.length)}
-                  onKeyDown={(event) => {
-                    // 한글 조합 확정 Enter를 전송으로 오인하지 않음.
-                    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-                    if (mentionStartIndex !== null && visibleMentionCandidates.length > 0) {
-                      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                        event.preventDefault();
-                        setMentionHighlightIndex((current) => (event.key === "ArrowDown" ? current + 1 : current - 1 + visibleMentionCandidates.length) % visibleMentionCandidates.length);
-                        return;
-                      }
-                      if (event.key === "Enter" || event.key === "Tab") {
-                        event.preventDefault();
-                        selectMention(visibleMentionCandidates[mentionHighlightIndex] ?? visibleMentionCandidates[0]);
-                        return;
-                      }
-                      if (event.key === "Escape") {
-                        setMentionStartIndex(null);
-                        return;
-                      }
+                    ref={inputRef}
+                    value={input}
+                    maxLength={2000}
+                    onChange={(event) =>
+                      handleMessageInput(
+                        event.target.value,
+                        event.target.selectionStart ?? event.target.value.length,
+                      )
                     }
-                    if (event.key === "Escape" && editingTarget) { cancelEdit(); return; }
-                    if (event.key === "Escape" && replyTarget) { cancelReply(); return; }
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      void submitMessage();
+                    onKeyDown={(event) => {
+                      // 한글 조합 확정 Enter를 전송으로 오인하지 않음.
+                      if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+                      if (mentionStartIndex !== null && visibleMentionCandidates.length > 0) {
+                        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                          event.preventDefault();
+                          setMentionHighlightIndex(
+                            (current) =>
+                              (event.key === "ArrowDown"
+                                ? current + 1
+                                : current - 1 + visibleMentionCandidates.length) %
+                              visibleMentionCandidates.length,
+                          );
+                          return;
+                        }
+                        if (event.key === "Enter" || event.key === "Tab") {
+                          event.preventDefault();
+                          selectMention(
+                            visibleMentionCandidates[mentionHighlightIndex] ??
+                              visibleMentionCandidates[0],
+                          );
+                          return;
+                        }
+                        if (event.key === "Escape") {
+                          setMentionStartIndex(null);
+                          return;
+                        }
+                      }
+                      if (event.key === "Escape" && editingTarget) {
+                        cancelEdit();
+                        return;
+                      }
+                      if (event.key === "Escape" && replyTarget) {
+                        cancelReply();
+                        return;
+                      }
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        void submitMessage();
+                      }
+                    }}
+                    placeholder={
+                      editingTarget
+                        ? "수정할 내용을 입력해주세요. (Enter: 저장 / Esc: 취소)"
+                        : "메시지를 입력해주세요. (Enter: 전송 / Shift + Enter: 줄바꿈)"
                     }
-                  }}
-                  placeholder={editingTarget ? "수정할 내용을 입력해주세요. (Enter: 저장 / Esc: 취소)" : "메시지를 입력해주세요. (Enter: 전송 / Shift + Enter: 줄바꿈)"}
-                  style={{ height: inputHeight }}
-                  className={`w-full resize-none bg-transparent pr-4 pt-3 text-sm outline-none ${replyTarget || editingTarget ? "pl-10" : "pl-4"}`}
-                />
+                    style={{ height: inputHeight }}
+                    className={`w-full resize-none bg-transparent pr-4 pt-3 text-sm outline-none ${replyTarget || editingTarget ? "pl-10" : "pl-4"}`}
+                  />
                 </div>
                 {mentionStartIndex !== null && visibleMentionCandidates.length > 0 && (
                   <div className="absolute bottom-[calc(100%+8px)] left-5 z-30 max-h-72 w-[420px] overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
@@ -2062,13 +2391,25 @@ function MessageContent() {
                         className={`flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left transition ${index === mentionHighlightIndex ? "bg-blue-50" : "hover:bg-slate-50"}`}
                       >
                         {candidate.membershipId === -1 ? (
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm text-blue-600"><AtSign size={18} /></span>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm text-blue-600">
+                            <AtSign size={18} />
+                          </span>
                         ) : (
-                          <MessageMemberAvatar name={candidate.displayName} presenceStatus="OFFLINE" />
+                          <MessageMemberAvatar
+                            name={candidate.displayName}
+                            presenceStatus="OFFLINE"
+                          />
                         )}
                         <span className="min-w-0">
-                          <span className="block text-sm font-medium text-slate-900">@{candidate.displayName}</span>
-                          <span className="block truncate text-xs text-slate-500">{candidate.jobGradeName || candidate.departmentName || "구성원"}{candidate.membershipId === -1 ? "" : ` · ${candidate.departmentName ?? ""}`}</span>
+                          <span className="block text-sm font-medium text-slate-900">
+                            @{candidate.displayName}
+                          </span>
+                          <span className="block truncate text-xs text-slate-500">
+                            {candidate.jobGradeName || candidate.departmentName || "구성원"}
+                            {candidate.membershipId === -1
+                              ? ""
+                              : ` · ${candidate.departmentName ?? ""}`}
+                          </span>
                         </span>
                       </button>
                     ))}
@@ -2086,9 +2427,7 @@ function MessageContent() {
                   <button
                     type="button"
                     aria-label="이미지"
-                    onClick={() =>
-                      showToast("이미지 전송 기능은 준비 중입니다.")
-                    }
+                    onClick={() => showToast("이미지 전송 기능은 준비 중입니다.")}
                     className="cursor-pointer transition hover:text-blue-600"
                   >
                     <ImagePlus size={19} />
@@ -2104,78 +2443,56 @@ function MessageContent() {
                 </div>
               </form>
             </div>
-            {roomManageOpen &&
-              selectedRoom?.type === "GROUP" &&
-              accessToken &&
-              member && (
-                <GroupRoomDetail
-                  room={selectedRoom}
-                  accessToken={accessToken}
-                  currentMemberId={member.membershipId}
-                  members={contactMembers}
-                  onClose={closeRoomManageModal}
-                  onProfileClick={openUserProfile}
-                  onReloadMessages={() => loadMessages(selectedRoom.id)}
-                  onAction={async (action, targetId, name) => {
-                    if (action === "leave") {
-                      await chatApi.leave(accessToken, selectedRoom.id);
-                      if (lastRoomStorageKey)
-                        window.sessionStorage.removeItem(lastRoomStorageKey);
-                      setRoomManageOpen(false);
-                      setSelectedRoomId(null);
-                      setMessages([]);
-                      setNextCursor(null);
-                      setDraftByRoomId((current) => {
-                        const remainingDrafts = { ...current };
-                        delete remainingDrafts[selectedRoom.id];
-                        return remainingDrafts;
-                      });
-                      setRooms((current) =>
-                        current.filter((room) => room.id !== selectedRoom.id),
-                      );
-                      router.replace("/message");
-                      await loadRooms();
-                      return;
-                    }
-                    if (action === "invite") {
-                      await chatApi.invite(
-                        accessToken,
-                        selectedRoom.id,
-                        targetId!,
-                      );
-                      await loadRooms();
-                      return;
-                    }
-                    if (action === "remove")
-                      await chatApi.remove(
-                        accessToken,
-                        selectedRoom.id,
-                        targetId!,
-                      );
-                    else if (action === "owner")
-                      await chatApi.transferOwner(
-                        accessToken,
-                        selectedRoom.id,
-                        targetId!,
-                      );
-                    else
-                      await chatApi.rename(accessToken, selectedRoom.id, name!);
+            {roomManageOpen && selectedRoom?.type === "GROUP" && accessToken && member && (
+              <GroupRoomDetail
+                room={selectedRoom}
+                accessToken={accessToken}
+                currentMemberId={member.membershipId}
+                members={contactMembers}
+                onClose={closeRoomManageModal}
+                onProfileClick={openUserProfile}
+                onReloadMessages={() => loadMessages(selectedRoom.id)}
+                onAction={async (action, targetId, name) => {
+                  if (action === "leave") {
+                    await chatApi.leave(accessToken, selectedRoom.id);
+                    if (lastRoomStorageKey) window.sessionStorage.removeItem(lastRoomStorageKey);
                     setRoomManageOpen(false);
+                    setSelectedRoomId(null);
+                    setMessages([]);
+                    setNextCursor(null);
+                    setDraftByRoomId((current) => {
+                      const remainingDrafts = { ...current };
+                      delete remainingDrafts[selectedRoom.id];
+                      return remainingDrafts;
+                    });
+                    setRooms((current) => current.filter((room) => room.id !== selectedRoom.id));
+                    router.replace("/message");
                     await loadRooms();
-                  }}
-                  showToast={showToast}
-                />
-              )}
+                    return;
+                  }
+                  if (action === "invite") {
+                    await chatApi.invite(accessToken, selectedRoom.id, targetId!);
+                    await loadRooms();
+                    return;
+                  }
+                  if (action === "remove")
+                    await chatApi.remove(accessToken, selectedRoom.id, targetId!);
+                  else if (action === "owner")
+                    await chatApi.transferOwner(accessToken, selectedRoom.id, targetId!);
+                  else await chatApi.rename(accessToken, selectedRoom.id, name!);
+                  setRoomManageOpen(false);
+                  await loadRooms();
+                }}
+                showToast={showToast}
+              />
+            )}
           </div>
         </section>
         {/* 아직 방을 고르지 않았을 때 오른쪽 영역 안내: 목록 로딩 중 → 방 없음 → 방 선택 순으로 구분. */}
         {!selectedRoom && (
           <section className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3 text-center text-slate-500">
             {!hasLoadedRooms ? (
-              <>
-                <LoaderCircle size={24} className="animate-spin text-blue-500" aria-hidden="true" />
-                <p className="text-sm">메시지방을 불러오는 중입니다...</p>
-              </>
+              <LoadingState size="md" message="메시지방을 불러오는 중입니다..." />
             ) : rooms.length === 0 ? (
               <>
                 <MessageCircle size={36} className="text-slate-300" aria-hidden="true" />
@@ -2199,24 +2516,109 @@ function MessageContent() {
           </section>
         )}
       </main>
-      {deletingMessage && <MessageDeleteDialog key={deletingMessage.message.id} onClose={closeDelete} onDelete={deleteSelectedMessage} onNotice={showToast} />}
+      {deletingMessage && (
+        <MessageDeleteDialog
+          key={deletingMessage.message.id}
+          onClose={closeDelete}
+          onDelete={deleteSelectedMessage}
+          onNotice={showToast}
+        />
+      )}
       {hideConfirmOpen && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/25 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setHideConfirmOpen(false); }}>
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/25 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setHideConfirmOpen(false);
+          }}
+        >
           <section className="w-full max-w-md animate-in fade-in zoom-in-95 rounded-2xl bg-white p-8 shadow-2xl">
-            <div className="mb-5 flex h-10 w-10 items-center justify-center rounded-full bg-red-100 text-red-500">!</div>
+            <div className="mb-5 flex h-10 w-10 items-center justify-center rounded-full bg-red-100 text-red-500">
+              !
+            </div>
             <h2 className="text-lg font-bold">메시지 내용은 삭제하지 않습니다.</h2>
-            <div className="mt-7 flex justify-end gap-2"><button type="button" onClick={() => setHideConfirmOpen(false)} className="cursor-pointer rounded-lg border border-slate-200 px-5 py-2.5 text-sm transition hover:bg-slate-50">취소</button><button type="button" onClick={() => { if (!accessToken) return; void Promise.all([...hiddenRoomIds].map((roomId) => chatApi.hide(accessToken, roomId))).then(async () => { setRooms((current) => current.filter((room) => !hiddenRoomIds.has(room.id))); if (selectedRoomId && hiddenRoomIds.has(selectedRoomId)) setSelectedRoomId(null); setHideConfirmOpen(false); setHideSelectionMode(false); setHiddenRoomIds(new Set()); showToast("메시지방을 숨겼습니다."); await loadRooms(); }).catch((error: Error) => showToast(error.message)); }} className="cursor-pointer rounded-lg border border-red-500 px-5 py-2.5 text-sm font-bold text-red-500 transition hover:bg-red-50">숨김</button></div>
+            <div className="mt-7 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setHideConfirmOpen(false)}
+                className="cursor-pointer rounded-lg border border-slate-200 px-5 py-2.5 text-sm transition hover:bg-slate-50"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!accessToken) return;
+                  void Promise.all(
+                    [...hiddenRoomIds].map((roomId) => chatApi.hide(accessToken, roomId)),
+                  )
+                    .then(async () => {
+                      setRooms((current) => current.filter((room) => !hiddenRoomIds.has(room.id)));
+                      if (selectedRoomId && hiddenRoomIds.has(selectedRoomId))
+                        setSelectedRoomId(null);
+                      setHideConfirmOpen(false);
+                      setHideSelectionMode(false);
+                      setHiddenRoomIds(new Set());
+                      showToast("메시지방을 숨겼습니다.");
+                      await loadRooms();
+                    })
+                    .catch((error: Error) => showToast(error.message));
+                }}
+                className="cursor-pointer rounded-lg border border-red-500 px-5 py-2.5 text-sm font-bold text-red-500 transition hover:bg-red-50"
+              >
+                숨김
+              </button>
+            </div>
           </section>
         </div>
       )}
       {notificationRoom && accessToken && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/15 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setNotificationRoom(null); }}>
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/15 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setNotificationRoom(null);
+          }}
+        >
           <section className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl animate-in fade-in zoom-in-95">
-            <div className="flex items-center justify-between"><h2 className="text-base font-bold">알림 설정</h2><button type="button" aria-label="알림 설정 닫기" onClick={() => setNotificationRoom(null)} className="cursor-pointer rounded-md p-1 text-slate-500 transition hover:bg-slate-100"><X size={18} /></button></div>
-            <p className="mt-2 text-sm text-slate-500">{displayRoomName(notificationRoom)}의 알림 수신 기준을 선택하세요.</p>
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold">알림 설정</h2>
+              <button
+                type="button"
+                aria-label="알림 설정 닫기"
+                onClick={() => setNotificationRoom(null)}
+                className="cursor-pointer rounded-md p-1 text-slate-500 transition hover:bg-slate-100"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <p className="mt-2 text-sm text-slate-500">
+              {displayRoomName(notificationRoom)}의 알림 수신 기준을 선택하세요.
+            </p>
             <div className="mt-5 space-y-2">
-              {([ ["ALL", "모든 메시지 알림", "방의 모든 새 메시지를 알립니다."], ["MENTION", "내가 멘션된 메시지만 알림", "@멘션된 메시지만 알립니다."], ["NONE", "알림 받지 않기", "토스트와 상단 알림에서 제외합니다."] ] as const).map(([mode, title, description]) => (
-                <button key={mode} type="button" onClick={() => { void chatApi.updateNotification(accessToken, notificationRoom.id, mode).then(async () => { setNotificationRoom(null); await loadRooms(); showToast(`${title}으로 설정했습니다.`); }).catch((error: Error) => showToast(error.message)); }} className={`w-full cursor-pointer rounded-lg border p-4 text-left transition hover:border-blue-300 hover:bg-blue-50 ${notificationRoom.notificationMode === mode ? "border-blue-500 bg-blue-50" : "border-slate-200"}`}><strong className="block text-sm">{title}</strong><span className="mt-1 block text-xs text-slate-500">{description}</span></button>
+              {(
+                [
+                  ["ALL", "모든 메시지 알림", "방의 모든 새 메시지를 알립니다."],
+                  ["MENTION", "내가 멘션된 메시지만 알림", "@멘션된 메시지만 알립니다."],
+                  ["NONE", "알림 받지 않기", "토스트와 상단 알림에서 제외합니다."],
+                ] as const
+              ).map(([mode, title, description]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => {
+                    void chatApi
+                      .updateNotification(accessToken, notificationRoom.id, mode)
+                      .then(async () => {
+                        setNotificationRoom(null);
+                        await loadRooms();
+                        showToast(`${title}으로 설정했습니다.`);
+                      })
+                      .catch((error: Error) => showToast(error.message));
+                  }}
+                  className={`w-full cursor-pointer rounded-lg border p-4 text-left transition hover:border-blue-300 hover:bg-blue-50 ${notificationRoom.notificationMode === mode ? "border-blue-500 bg-blue-50" : "border-slate-200"}`}
+                >
+                  <strong className="block text-sm">{title}</strong>
+                  <span className="mt-1 block text-xs text-slate-500">{description}</span>
+                </button>
               ))}
             </div>
           </section>
@@ -2226,9 +2628,7 @@ function MessageContent() {
         <NewRoomModal
           members={contactMembers}
           initialMemberIds={requestedMemberIds}
-          initialType={
-            searchParams.get("create") === "group" ? "GROUP" : "DIRECT"
-          }
+          initialType={searchParams.get("create") === "group" ? "GROUP" : "DIRECT"}
           onClose={() => setNewRoomModalOpen(false)}
           onProfileClick={openUserProfile}
           onCreate={async (type, name, memberIds) => {
@@ -2263,7 +2663,7 @@ function MessageContent() {
       {reactionModal && (
         <ReactionMemberModal
           modal={reactionModal}
-          presenceByMemberId={presenceByMembershipId}
+          contactMemberById={contactMemberById}
           onClose={() => setReactionModal(null)}
           onProfileClick={openUserProfile}
         />
@@ -2275,15 +2675,8 @@ function MessageContent() {
           onToggleFavorite={async () => {
             const nextFavorite = !profileMember.favorite;
             if (nextFavorite)
-              await addressBookApi.createFavorite(
-                accessToken,
-                profileMember.membershipId,
-              );
-            else
-              await addressBookApi.deleteFavorite(
-                accessToken,
-                profileMember.membershipId,
-              );
+              await addressBookApi.createFavorite(accessToken, profileMember.membershipId);
+            else await addressBookApi.deleteFavorite(accessToken, profileMember.membershipId);
             setProfileMember((current) =>
               current ? { ...current, favorite: nextFavorite } : current,
             );
@@ -2294,20 +2687,13 @@ function MessageContent() {
                   : contact,
               ),
             );
-            showToast(
-              nextFavorite
-                ? "즐겨찾기에 추가했습니다."
-                : "즐겨찾기에서 해제했습니다.",
-            );
+            showToast(nextFavorite ? "즐겨찾기에 추가했습니다." : "즐겨찾기에서 해제했습니다.");
           }}
           onMessage={async () => {
             const room =
               profileMember.membershipId === member?.membershipId
                 ? await chatApi.createSelf(accessToken)
-                : await chatApi.createDirect(
-                  accessToken,
-                  profileMember.membershipId,
-                );
+                : await chatApi.createDirect(accessToken, profileMember.membershipId);
             setProfileMemberId(null);
             setSelectedRoomId(room.id);
             await loadRooms();
@@ -2317,12 +2703,7 @@ function MessageContent() {
         />
       )}
       {toast && (
-        <Toast
-          key={toast.id}
-          message={toast.message}
-          phase={toast.phase}
-          onClose={dismissToast}
-        />
+        <Toast key={toast.id} message={toast.message} phase={toast.phase} onClose={dismissToast} />
       )}
     </div>
   );
@@ -2381,18 +2762,28 @@ const MessageRoomItem = memo(function MessageRoomItem({
   // 실제 Enter 줄바꿈만 두 줄 미리보기로 취급. 단순히 긴 한 줄은 다음 줄로 넘기지 않음.
   const previewLines = lastMessage.split(/\r?\n/);
   const hasLineBreak = previewLines.length > 1;
-  const secondPreview =
-    previewLines.length > 2 ? `${previewLines[1]} …` : previewLines[1];
-  const sentByMe =
-    !isTypingPreview && room.lastSenderMembershipId === currentMember?.membershipId;
+  const secondPreview = previewLines.length > 2 ? `${previewLines[1]} …` : previewLines[1];
+  const sentByMe = !isTypingPreview && room.lastSenderMembershipId === currentMember?.membershipId;
   const presenceStatus = isSelf
     ? "ONLINE"
-    : (contactMemberById.get(room.directMembershipId ?? -1)?.presenceStatus ??
-      "OFFLINE");
+    : (contactMemberById.get(room.directMembershipId ?? -1)?.presenceStatus ?? "OFFLINE");
 
   return (
-    <div data-room-menu className={`group relative flex w-[calc(100%-1rem)] gap-3 rounded-lg ${isCollapsed ? "mx-2 my-1 justify-center px-2 py-3" : "mx-2 my-1 px-3 py-3"} text-left transition-colors duration-200 hover:bg-blue-50 ${isSelected ? "bg-blue-100" : ""}`}>
-      {hideSelectionMode && !isCollapsed && <button type="button" role="checkbox" aria-checked={hiddenSelected} onClick={() => onToggleHidden(room.id)} className={`custom-checkbox-button mt-1 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-md border transition ${hiddenSelected ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white"}`}>{hiddenSelected && <Check size={14} strokeWidth={3} />}</button>}
+    <div
+      data-room-menu
+      className={`group relative flex w-[calc(100%-1rem)] gap-3 rounded-lg ${isCollapsed ? "mx-2 my-1 justify-center px-2 py-3" : "mx-2 my-1 px-3 py-3"} text-left transition-colors duration-200 hover:bg-blue-50 ${isSelected ? "bg-blue-100" : ""}`}
+    >
+      {hideSelectionMode && !isCollapsed && (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={hiddenSelected}
+          onClick={() => onToggleHidden(room.id)}
+          className={`custom-checkbox-button mt-1 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-md border transition ${hiddenSelected ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white"}`}
+        >
+          {hiddenSelected && <Check size={14} strokeWidth={3} />}
+        </button>
+      )}
       <div
         role="button"
         tabIndex={0}
@@ -2414,9 +2805,7 @@ const MessageRoomItem = memo(function MessageRoomItem({
               name={avatarName}
               presenceStatus={presenceStatus}
               onClick={() =>
-                onProfileClick(
-                  isSelf ? currentMember!.membershipId : room.directMembershipId!,
-                )
+                onProfileClick(isSelf ? currentMember!.membershipId : room.directMembershipId!)
               }
             />
           )}
@@ -2444,26 +2833,41 @@ const MessageRoomItem = memo(function MessageRoomItem({
               </b>
               {/* 시간과 메뉴를 동일한 고정 영역에 겹쳐 행 너비가 흔들리지 않게 함. */}
               <span className="static h-5 w-16 shrink-0">
-                <small className={`absolute right-3 top-3 whitespace-nowrap text-right leading-5 text-slate-500 transition-opacity duration-150 group-hover:opacity-0 ${menuOpen ? "opacity-0" : ""}`}>
+                <small
+                  className={`absolute right-3 top-3 whitespace-nowrap text-right leading-5 text-slate-500 transition-opacity duration-150 group-hover:opacity-0 ${menuOpen ? "opacity-0" : ""}`}
+                >
                   {formatRoomTime(room.lastMessageAt)}
                 </small>
-                <button ref={menuButtonRef} type="button" aria-label="메시지방 메뉴" onClick={(event) => { event.preventDefault(); event.stopPropagation(); const rect = event.currentTarget.getBoundingClientRect(); setMenuPosition({ left: rect.left, top: rect.bottom + 6 }); onToggleMenu(room.id); }} className={`absolute right-3 top-1/2 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded text-slate-600 opacity-0 transition-opacity duration-150 hover:bg-slate-200 group-hover:pointer-events-auto group-hover:opacity-100 ${menuOpen ? "pointer-events-auto opacity-100" : "pointer-events-none"}`}><MoreVertical size={17} /></button>
+                <button
+                  ref={menuButtonRef}
+                  type="button"
+                  aria-label="메시지방 메뉴"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    setMenuPosition({ left: rect.left, top: rect.bottom + 6 });
+                    onToggleMenu(room.id);
+                  }}
+                  className={`absolute right-3 top-1/2 flex h-6 w-6 -translate-y-1/2 cursor-pointer items-center justify-center rounded text-slate-600 opacity-0 transition-opacity duration-150 hover:bg-slate-200 group-hover:pointer-events-auto group-hover:opacity-100 ${menuOpen ? "pointer-events-auto opacity-100" : "pointer-events-none"}`}
+                >
+                  <MoreVertical size={17} />
+                </button>
               </span>
             </span>
             <span className="mt-0.5 flex items-start gap-2">
               <span className="flex min-w-0 flex-1 items-start gap-1 text-slate-600">
                 {sentByMe && (
-                  <Forward
-                    className="mt-0.5 shrink-0 text-slate-600"
-                    size={15}
-                    strokeWidth={3}
-                  />
+                  <Forward className="mt-0.5 shrink-0 text-slate-600" size={15} strokeWidth={3} />
                 )}
                 <span className="min-w-0 flex-1 text-[16px]">
                   {isTypingPreview ? (
                     <small className="flex items-center gap-1 truncate text-slate-500">
                       <span className="truncate">{typingPreviewLabel}</span>
-                      <span className="inline-flex shrink-0 items-center gap-0.5" aria-label="입력 중">
+                      <span
+                        className="inline-flex shrink-0 items-center gap-0.5"
+                        aria-label="입력 중"
+                      >
                         <i className="typing-dot inline-block h-1 w-1 rounded-full bg-slate-400" />
                         <i className="typing-dot typing-dot-delay-1 inline-block h-1 w-1 rounded-full bg-slate-400" />
                         <i className="typing-dot typing-dot-delay-2 inline-block h-1 w-1 rounded-full bg-slate-400" />
@@ -2471,39 +2875,77 @@ const MessageRoomItem = memo(function MessageRoomItem({
                     </small>
                   ) : (
                     <>
-                      <small className="block truncate">
-                        {previewLines[0] || " "}
-                      </small>
+                      <small className="block truncate">{previewLines[0] || " "}</small>
                       {hasLineBreak && (
-                        <small className="block truncate">
-                          {secondPreview || " "}
-                        </small>
+                        <small className="block truncate">{secondPreview || " "}</small>
                       )}
                     </>
                   )}
                 </span>
               </span>
               {room.unreadCount > 0 && (
-                <em className={`mt-0.5 inline-flex h-5 min-w-5 shrink-0 items-center justify-center gap-0.5 rounded-full bg-red-500 px-1.5 text-[12px] font-bold leading-none not-italic text-white transition-opacity duration-150 group-hover:opacity-0 ${menuOpen ? "opacity-0" : ""}`}>
-                  {room.lastMessageMentioned && <AtSign size={11} strokeWidth={3} aria-label="나를 멘션한 메시지" />}
+                <em
+                  className={`mt-0.5 inline-flex h-5 min-w-5 shrink-0 items-center justify-center gap-0.5 rounded-full bg-red-500 px-1.5 text-[12px] font-bold leading-none not-italic text-white transition-opacity duration-150 group-hover:opacity-0 ${menuOpen ? "opacity-0" : ""}`}
+                >
+                  {room.lastMessageMentioned && (
+                    <AtSign size={11} strokeWidth={3} aria-label="나를 멘션한 메시지" />
+                  )}
                   {room.unreadCount > 999 ? "999+" : room.unreadCount}
                 </em>
               )}
             </span>
-      </span>
-        )}</div>
-      {menuOpen && !isCollapsed && menuPosition && createPortal(<div data-room-menu className="fixed z-[200] w-36 rounded-xl border border-slate-200 bg-white py-1 shadow-lg animate-in fade-in zoom-in-95" style={menuPosition}><button type="button" onClick={() => onAction(room, "notification")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><Bell size={15} />알림 설정</button><button type="button" onClick={() => onAction(room, "pin")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><Pin size={15} />{room.pinned ? "핀 고정 해제" : "핀 고정"}</button><button type="button" onClick={() => onAction(room, "hide")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"><EyeOff size={15} />숨김</button><button type="button" onClick={() => onAction(room, "leave")} className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50"><LogOut size={15} />나가기</button></div>, document.body)}
+          </span>
+        )}
+      </div>
+      {menuOpen &&
+        !isCollapsed &&
+        menuPosition &&
+        createPortal(
+          <div
+            data-room-menu
+            className="fixed z-[200] w-36 rounded-xl border border-slate-200 bg-white py-1 shadow-lg animate-in fade-in zoom-in-95"
+            style={menuPosition}
+          >
+            <button
+              type="button"
+              onClick={() => onAction(room, "notification")}
+              className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"
+            >
+              <Bell size={15} />
+              알림 설정
+            </button>
+            <button
+              type="button"
+              onClick={() => onAction(room, "pin")}
+              className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"
+            >
+              <Pin size={15} />
+              {room.pinned ? "핀 고정 해제" : "핀 고정"}
+            </button>
+            <button
+              type="button"
+              onClick={() => onAction(room, "hide")}
+              className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"
+            >
+              <EyeOff size={15} />
+              숨김
+            </button>
+            <button
+              type="button"
+              onClick={() => onAction(room, "leave")}
+              className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50"
+            >
+              <LogOut size={15} />
+              나가기
+            </button>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 });
 
-function GroupAvatar({
-  name,
-  size = "md",
-}: {
-  name: string;
-  size?: "md" | "lg";
-}) {
+function GroupAvatar({ name, size = "md" }: { name: string; size?: "md" | "lg" }) {
   const sizeClass = size === "lg" ? "h-10 w-10 text-xs" : "h-10 w-10 text-xs";
   // 그룹방은 프로필 원형과 별개로 우하단 배지를 항상 표시.
   return (
@@ -2572,7 +3014,19 @@ function MessageMemberAvatar({
 
 function MentionText({ content }: { content: string }) {
   // 저장된 본문은 그대로 두고 화면에서만 @표현을 강조해 복사/검색 동작을 유지.
-  return <>{content.split(/(@(?:All|[\p{L}\p{N}_-]+))/gu).map((part, index) => part.startsWith("@") ? <span key={`${part}-${index}`} className="text-blue-600">{part}</span> : part)}</>;
+  return (
+    <>
+      {content.split(/(@(?:All|[\p{L}\p{N}_-]+))/gu).map((part, index) =>
+        part.startsWith("@") ? (
+          <span key={`${part}-${index}`} className="text-blue-600">
+            {part}
+          </span>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
 }
 
 // 메시지 목록만 따로 memo로 묶어, 입력칸 타이핑·상대 입력 표시·접속 상태 같은 다른 state가 바뀔 때
@@ -2606,16 +3060,14 @@ const MessageList = memo(function MessageList({
   onDelete: (message: ChatMessage) => void;
   onOpenOriginal: (messageId: number) => void;
   onToggleReaction: (message: ChatMessage, emoji: string) => void;
-  onOpenReactionMembers: (message: ChatMessage, emoji: string) => void;
+  onOpenReactionMembers: (message: ChatMessage) => void;
 }) {
   return (
     <>
       {messages.map((message, index) => {
         const label = formatChatDate(message.createdAt);
         const showDate =
-          index === 0 ||
-          dateKey(messages[index - 1].createdAt) !==
-          dateKey(message.createdAt);
+          index === 0 || dateKey(messages[index - 1].createdAt) !== dateKey(message.createdAt);
         const sender = contactMemberById.get(message.senderMembershipId);
         const previousMessage = messages[index - 1];
         const nextMessage = messages[index + 1];
@@ -2645,9 +3097,7 @@ const MessageList = memo(function MessageList({
               data-message-label={label}
             >
               {message.type === "SYSTEM" ? (
-                <p className="my-5 text-center text-xs text-slate-400">
-                  {message.content}
-                </p>
+                <p className="my-5 text-center text-xs text-slate-400">{message.content}</p>
               ) : (
                 <MessageBubble
                   message={message}
@@ -2716,7 +3166,7 @@ const MessageBubble = memo(function MessageBubble({
   onDelete: (message: ChatMessage) => void;
   onOpenOriginal: (messageId: number) => void;
   onToggleReaction: (message: ChatMessage, emoji: string) => void;
-  onOpenReactionMembers: (message: ChatMessage, emoji: string) => void;
+  onOpenReactionMembers: (message: ChatMessage) => void;
 }) {
   // ⋮ 클릭과 말풍선 우클릭이 같은 메뉴·닫기 동작을 공유.
   const [menuPosition, setMenuPosition] = useState<MessageMenuPosition | null>(null);
@@ -2726,15 +3176,18 @@ const MessageBubble = memo(function MessageBubble({
     if (!isOriginalHighlighted || !bubble) return;
     // 두 번 통통 튄 뒤 원래 자리로 복귀. 테두리 상태는 별도로 유지.
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const animation = bubble.animate(reducedMotion ? [
-      { opacity: 0.6 }, { opacity: 1 },
-    ] : [
-      { transform: "translateY(0)", offset: 0 },
-      { transform: "translateY(-10px)", offset: 0.25 },
-      { transform: "translateY(0)", offset: 0.5 },
-      { transform: "translateY(-5px)", offset: 0.75 },
-      { transform: "translateY(0)", offset: 1 },
-    ], { duration: reducedMotion ? 250 : 1150, easing: "ease-in-out" });
+    const animation = bubble.animate(
+      reducedMotion
+        ? [{ opacity: 0.6 }, { opacity: 1 }]
+        : [
+            { transform: "translateY(0)", offset: 0 },
+            { transform: "translateY(-10px)", offset: 0.25 },
+            { transform: "translateY(0)", offset: 0.5 },
+            { transform: "translateY(-5px)", offset: 0.75 },
+            { transform: "translateY(0)", offset: 1 },
+          ],
+      { duration: reducedMotion ? 250 : 1150, easing: "ease-in-out" },
+    );
     return () => animation.cancel();
   }, [isOriginalHighlighted]);
   const time = new Date(message.createdAt).toLocaleTimeString("ko-KR", {
@@ -2742,62 +3195,101 @@ const MessageBubble = memo(function MessageBubble({
     minute: "2-digit",
   });
   // 그룹방은 발신자와 관계없이 모든 일반 메시지의 실제 읽음 상태를 표시.
-  const readLabel = message.deletedAt ? null :
-    isMine && isDirect && message.unreadCount === 0 ? (
-      <span className="mb-0.5 text-[12px] font-medium text-blue-600">읽음</span>
-    ) : isGroup && message.readCount > 0 ? (
-      <button
-        className="mb-0.5 inline-flex cursor-pointer items-center gap-0.5 text-[12px] font-medium text-blue-600 transition hover:underline"
-        onClick={() => void onOpenReadMembers(message)}
-      >
-        {isMine ? <ChevronLeft size={12} strokeWidth={2} /> : null}읽음{" "}
-        {message.readCount}
-        {!isMine ? <ChevronRight size={12} strokeWidth={2} /> : null}
-      </button>
-    ) : null;
-  // 읽음은 메시지별 상태라 매 말풍선에 표시하고, 시간만 같은 분 묶음의 마지막에 표시.
-  const meta = readLabel || showMeta ? (
-    <div
-      className={`flex shrink-0 flex-col text-[12px] text-slate-400 ${isMine ? "items-end text-right" : "items-start text-left"}`}
+  const readLabel = message.deletedAt ? null : isMine && isDirect && message.unreadCount === 0 ? (
+    <span className="mb-0.5 text-[12px] font-medium text-blue-600">읽음</span>
+  ) : isGroup && message.readCount > 0 ? (
+    <button
+      className="mb-0.5 inline-flex cursor-pointer items-center gap-0.5 text-[12px] font-medium text-blue-600 transition hover:underline"
+      onClick={() => void onOpenReadMembers(message)}
     >
-      {readLabel}
-      {showMeta ? <span>{time}</span> : null}
-    </div>
+      {isMine ? <ChevronLeft size={12} strokeWidth={2} /> : null}읽음 {message.readCount}
+      {!isMine ? <ChevronRight size={12} strokeWidth={2} /> : null}
+    </button>
   ) : null;
+  // 읽음은 메시지별 상태라 매 말풍선에 표시하고, 시간만 같은 분 묶음의 마지막에 표시.
+  const meta =
+    readLabel || showMeta ? (
+      <div
+        className={`flex shrink-0 flex-col text-[12px] text-slate-400 ${isMine ? "items-end text-right" : "items-start text-left"}`}
+      >
+        {readLabel}
+        {showMeta ? <span>{time}</span> : null}
+      </div>
+    ) : null;
   const reactions = message.deletedAt ? [] : (message.reactions ?? []);
-  const messageMenu = message.deletedAt ? <span aria-hidden="true" className="h-5 w-6 shrink-0" /> : <MessageActionMenu isMine={isMine} canEdit={isMessageEditable(message)} position={menuPosition} onPositionChange={setMenuPosition} reactedEmojis={reactions.filter((reaction) => reaction.reactedByMe).map((reaction) => reaction.emoji)} onReact={(emoji) => onToggleReaction(message, emoji)} onCopy={() => onCopy(message)} onReply={() => onReply(message)} onEdit={() => onEdit(message)} onDelete={() => onDelete(message)} />;
-  // 말풍선 아래 리액션 묶음. 클릭하면 추가/취소, 우클릭하면 누른 사람 목록.
-  const reactionRow = reactions.length > 0 ? (
-    <div className={`flex flex-wrap gap-1 ${message.editedAt ? "mt-5" : "mt-1"} ${isMine ? "justify-end" : "justify-start"}`}>
-      {reactions.map((reaction) => (
-        <Tooltip key={reaction.emoji} label={`${reactionLabel(reaction.emoji)} ${reaction.count} · 우클릭: 누른 사람 보기`}>
-          <button
-            type="button"
-            aria-pressed={reaction.reactedByMe}
-            aria-label={`${reactionLabel(reaction.emoji)} ${reaction.count}명${reaction.reactedByMe ? ", 내가 누름" : ""}`}
-            onClick={() => onToggleReaction(message, reaction.emoji)}
-            onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); onOpenReactionMembers(message, reaction.emoji); }}
-            className={`flex h-6 cursor-pointer items-center gap-1 rounded-full border px-2 text-xs transition active:scale-95 ${reaction.reactedByMe ? "border-blue-400 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"}`}
+  const messageMenu = message.deletedAt ? (
+    <span aria-hidden="true" className="h-5 w-6 shrink-0" />
+  ) : (
+    <MessageActionMenu
+      isMine={isMine}
+      canEdit={isMessageEditable(message)}
+      position={menuPosition}
+      onPositionChange={setMenuPosition}
+      onCopy={() => onCopy(message)}
+      onReply={() => onReply(message)}
+      onEdit={() => onEdit(message)}
+      onDelete={() => onDelete(message)}
+    />
+  );
+  // 시간과 ⋮ 사이의 스마일 버튼. 누르면 이모지 선택창이 뜨고, 이미 누른 게 있으면 색칠됨.
+  const reactionButton = message.deletedAt ? null : (
+    <ReactionPicker
+      isMine={isMine}
+      reactedEmojis={reactions
+        .filter((reaction) => reaction.reactedByMe)
+        .map((reaction) => reaction.emoji)}
+      expiredMessage={isMessageEditable(message) ? null : REACTION_EXPIRED_MESSAGE}
+      onReact={(emoji) => onToggleReaction(message, emoji)}
+    />
+  );
+  // 말풍선 바로 아래 한 줄: 리액션 묶음 + "수정됨". 추가·취소는 스마일 버튼에서, 칩을 클릭하면 누른 사람 목록.
+  const underBubble =
+    reactions.length > 0 || message.editedAt ? (
+      <div
+        className={`pointer-events-none absolute top-full mt-1 flex items-center gap-1 whitespace-nowrap ${isMine ? "right-1 flex-row-reverse" : "left-1"}`}
+      >
+        {message.editedAt && <span className="text-xs leading-4 text-slate-500">수정됨</span>}
+        {reactions.map((reaction) => (
+          <Tooltip
+            key={reaction.emoji}
+            label={`${reactionLabel(reaction.emoji)} ${reaction.count}명 · 클릭: 누른 사람 보기`}
           >
-            <span className="text-sm leading-none">{reactionChar(reaction.emoji)}</span>
-            <span className="font-medium tabular-nums">{reaction.count}</span>
-          </button>
-        </Tooltip>
-      ))}
-    </div>
-  ) : null;
+            <button
+              type="button"
+              aria-label={`${reactionLabel(reaction.emoji)} ${reaction.count}명${reaction.reactedByMe ? ", 내가 누름" : ""}. 누른 사람 보기`}
+              onClick={() => onOpenReactionMembers(message)}
+              className={`pointer-events-auto flex h-7 cursor-pointer items-center gap-0.5 rounded px-1 text-[15px] transition hover:bg-slate-100 active:scale-95 ${reaction.reactedByMe ? "font-bold" : "font-medium"}`}
+            >
+              <ReactionEmoji code={reaction.emoji} size={20} />
+              <span className="tabular-nums text-blue-600">{reaction.count}</span>
+            </button>
+          </Tooltip>
+        ))}
+      </div>
+    ) : null;
   // 시간과 메뉴의 밑선을 맞추고, 메뉴가 숨겨져도 공간을 유지해 말풍선 흔들림 방지.
   const messageActions = (
     <div className="flex shrink-0 items-end gap-1 pb-1">
-      {isMine ? <>{messageMenu}{meta}</> : <>{meta}{messageMenu}</>}
+      {isMine ? (
+        <>
+          {messageMenu}
+          {reactionButton}
+          {meta}
+        </>
+      ) : (
+        <>
+          {meta}
+          {reactionButton}
+          {messageMenu}
+        </>
+      )}
     </div>
   );
   // 꼬리는 프로필 쪽을 향하는 위쪽 대각선의 직각삼각형으로 표현.
   const reply = message.deletedAt ? null : message.reply;
-  // "수정됨"은 말풍선 바로 아래 오른쪽에 띄우고, 그 높이만큼 메시지 아래 여백을 늘려 다음 메시지와 겹치지 않게 처리.
-  const editedLabel = message.editedAt ? <span className="pointer-events-none absolute right-1 top-full mt-1 whitespace-nowrap text-xs leading-4 text-slate-500">수정됨</span> : null;
-  // 리액션 줄이 있으면 "수정됨" 라벨 공간을 리액션 줄의 위 여백(mt-5)으로 대신함.
-  const rowSpacing = reactions.length > 0 ? (showMeta ? "mb-2" : "mb-1") : message.editedAt ? "mb-7" : showMeta ? "mb-2" : "mb-1";
+  // 말풍선 아래 줄(리액션·수정됨)이 있으면 그 높이만큼 아래 여백을 늘려 다음 메시지와 겹치지 않게 처리.
+  const rowSpacing =
+    reactions.length > 0 ? "mb-10" : message.editedAt ? "mb-7" : showMeta ? "mb-2" : "mb-1";
   const bubble = (
     <div
       ref={bubbleRef}
@@ -2815,11 +3307,34 @@ const MessageBubble = memo(function MessageBubble({
       className={`relative min-w-0 ${isGroup && !isMine ? "max-w-full" : "max-w-[70%]"} whitespace-pre-wrap break-words ${reply ? "w-[380px]" : "px-4 py-3"} text-sm leading-6 ${isMine ? "rounded-2xl bg-blue-100" : "rounded-2xl bg-slate-100"} ${showTail ? (isMine ? "after:absolute after:-right-2 after:top-3 after:h-3 after:w-3 after:bg-blue-100 after:[clip-path:polygon(0_0,0_100%,100%_0)]" : "after:absolute after:-left-2 after:top-3 after:h-3 after:w-3 after:bg-slate-100 after:[clip-path:polygon(100%_0,100%_100%,0_0)]") : ""}`}
     >
       {/* 꼬리 가상 요소보다 앞에 테두리를 그려 접점에서도 파란 선이 가려지지 않게 처리. */}
-      {isOriginalHighlighted && <span aria-hidden="true" style={{ position: "absolute", inset: 0, zIndex: 2, pointerEvents: "none", borderRadius: "inherit", outline: "2px solid #3b82f6", outlineOffset: "0px" }} />}
+      {isOriginalHighlighted && (
+        <span
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 2,
+            pointerEvents: "none",
+            borderRadius: "inherit",
+            outline: "2px solid #3b82f6",
+            outlineOffset: "0px",
+          }}
+        />
+      )}
       {reply && <MessageQuote reply={reply} onOpen={() => onOpenOriginal(reply.messageId)} />}
-      {reply ? <div className="px-3 py-2"><MentionText content={message.content} />{editedLabel}</div>
-        : message.deletedAt ? <span className="text-slate-400 italic">{message.content}</span>
-          : <><MentionText content={message.content} />{editedLabel}</>}
+      {reply ? (
+        <div className="px-3 py-2">
+          <MentionText content={message.content} />
+          {underBubble}
+        </div>
+      ) : message.deletedAt ? (
+        <span className="text-slate-400 italic">{message.content}</span>
+      ) : (
+        <>
+          <MentionText content={message.content} />
+          {underBubble}
+        </>
+      )}
     </div>
   );
   if (!isMine && isGroup) {
@@ -2851,7 +3366,6 @@ const MessageBubble = memo(function MessageBubble({
             {bubble}
             {messageActions}
           </div>
-          {reactionRow}
         </div>
       </div>
     );
@@ -2859,9 +3373,7 @@ const MessageBubble = memo(function MessageBubble({
   // 내 말풍선은 시간→말풍선, 상대 말풍선은 말풍선→시간 순서.
   return (
     <div className={`${rowSpacing} ${isMine ? "ml-auto" : "mr-auto"} max-w-[85%]`}>
-      <div
-        className={`flex items-end gap-2 ${isMine ? "justify-end" : "justify-start"}`}
-      >
+      <div className={`flex items-end gap-2 ${isMine ? "justify-end" : "justify-start"}`}>
         {isMine ? (
           <>
             {messageActions}
@@ -2874,53 +3386,116 @@ const MessageBubble = memo(function MessageBubble({
           </>
         )}
       </div>
-      {reactionRow}
     </div>
   );
 });
 
-// 특정 이모지를 누른 사람 목록. 읽은 멤버 모달과 같은 틀로 보여 줌.
+// 메시지에 리액션한 사람 목록(네이버웍스식). 위에 이모지별 집계 칩, 아래 테두리 박스 안에 사람 목록.
+// 접속 상태는 주소록 초기값에 실시간 프레즌스를 합친 contactMemberById를 읽어 읽은 멤버 모달과 같은 기준을 씀.
 function ReactionMemberModal({
   modal,
-  presenceByMemberId,
+  contactMemberById,
   onClose,
   onProfileClick,
 }: {
   modal: ReactionModalState;
-  presenceByMemberId: Record<number, boolean>;
+  contactMemberById: Map<number, AddressBookMember>;
   onClose: () => void;
   onProfileClick: (membershipId: number) => void;
 }) {
+  // 칩을 누르면 그 이모지를 고른 사람만 보여 주고, 다시 누르면 전체로 돌아감.
+  const [filterEmoji, setFilterEmoji] = useState<string | null>(null);
+  const summary = useMemo(() => {
+    const counts = new Map<string, number>();
+    modal.members.forEach(({ emoji }) => counts.set(emoji, (counts.get(emoji) ?? 0) + 1));
+    return [...counts.entries()].map(([emoji, count]) => ({ emoji, count }));
+  }, [modal.members]);
+  const visibleMembers = filterEmoji
+    ? modal.members.filter(({ emoji }) => emoji === filterEmoji)
+    : modal.members;
   useEffect(() => {
-    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/20 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section role="dialog" aria-modal="true" aria-label={`${reactionLabel(modal.emoji)} 리액션 멤버`} className="message-action-menu flex h-[420px] w-full max-w-sm flex-col rounded-xl border border-slate-200 bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-          <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900">
-            <span className="text-2xl leading-none">{reactionChar(modal.emoji)}</span>
-            {reactionLabel(modal.emoji)}
-            <span className="text-sm font-medium text-slate-400">{modal.members.length}명</span>
-          </h2>
-          <button type="button" aria-label="닫기" onClick={onClose} className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 active:scale-90"><X size={18} /></button>
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/20 p-4"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label="리액션 멤버"
+        className="message-action-menu flex h-[min(680px,calc(100vh-2rem))] w-full max-w-md flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+      >
+        <div className="flex shrink-0 items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-900">리액션 ({modal.members.length})</h2>
+          <button
+            type="button"
+            aria-label="리액션 닫기"
+            onClick={onClose}
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 active:scale-90"
+          >
+            <X size={20} />
+          </button>
         </div>
-        <ul className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-          {modal.members.length === 0 && <li className="py-10 text-center text-sm text-slate-400">아직 아무도 누르지 않았습니다.</li>}
-          {modal.members.map((item) => (
-            <li key={item.membershipId}>
-              <button type="button" onClick={() => onProfileClick(item.membershipId)} className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-left transition hover:bg-slate-50">
-                <MessageMemberAvatar name={item.displayName} presenceStatus={presenceByMemberId[item.membershipId] ? "ONLINE" : "OFFLINE"} />
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-slate-800">{item.displayName}</span>
-                  <span className="block truncate text-xs text-slate-500">{[item.jobGradeName, item.departmentName, item.companyName].filter(Boolean).join(" · ")}</span>
-                </span>
+        <div className="mt-4 flex shrink-0 flex-wrap gap-1">
+          {summary.map(({ emoji, count }) => {
+            const selected = filterEmoji === emoji;
+            return (
+              <button
+                key={emoji}
+                type="button"
+                aria-pressed={selected}
+                aria-label={`${reactionLabel(emoji)} ${count}명${selected ? ", 선택됨" : ""}`}
+                onClick={() => setFilterEmoji(selected ? null : emoji)}
+                className={`flex h-8 cursor-pointer items-center gap-1 rounded-md px-1.5 text-sm transition hover:bg-slate-100 active:scale-95 ${selected ? "bg-slate-100 font-semibold text-slate-900" : "text-slate-600"}`}
+              >
+                <ReactionEmoji code={emoji} size={20} />
+                <span className="tabular-nums">{count}</span>
               </button>
-            </li>
-          ))}
-        </ul>
+            );
+          })}
+        </div>
+        <div className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-lg border border-slate-200 p-2">
+          {visibleMembers.length === 0 ? (
+            <p className="flex h-full items-center justify-center text-sm text-slate-500">
+              아직 아무도 누르지 않았습니다.
+            </p>
+          ) : (
+            visibleMembers.map(({ emoji, member }) => (
+              <button
+                type="button"
+                key={member.membershipId}
+                onClick={() => onProfileClick(member.membershipId)}
+                className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-3 text-left transition hover:bg-slate-50 active:bg-slate-100"
+              >
+                <MessageMemberAvatar
+                  name={member.displayName}
+                  presenceStatus={
+                    contactMemberById.get(member.membershipId)?.presenceStatus ?? "OFFLINE"
+                  }
+                />
+                <span className="min-w-0 flex-1">
+                  <b className="block truncate text-sm text-slate-900">{member.displayName}</b>
+                  <span className="mt-0.5 block truncate text-xs text-slate-500">
+                    {member.jobGradeName && (
+                      <span className="text-blue-600">{member.jobGradeName}</span>
+                    )}
+                    {member.jobGradeName && member.departmentName && "/"}
+                    {member.departmentName}
+                  </span>
+                </span>
+                <ReactionEmoji code={emoji} size={24} />
+              </button>
+            ))
+          )}
+        </div>
       </section>
     </div>
   );
@@ -2942,9 +3517,10 @@ function TypingBubble({
   leaving: boolean;
   onProfileClick: (membershipId: number) => void;
 }) {
-  const label = isGroup && additionalCount > 0
-    ? `${member.displayName} 외 ${additionalCount}명이 입력 중입니다`
-    : `${member.displayName}님이 입력 중입니다`;
+  const label =
+    isGroup && additionalCount > 0
+      ? `${member.displayName} 외 ${additionalCount}명이 입력 중입니다`
+      : `${member.displayName}님이 입력 중입니다`;
   const bubble = (
     <div className="relative inline-flex w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-2xl bg-slate-100 px-4 py-3 text-sm leading-6 text-slate-400 after:absolute after:-left-2 after:top-3 after:h-3 after:w-3 after:bg-slate-100 after:[clip-path:polygon(100%_0,100%_100%,0_0)]">
       <span>{label}</span>
@@ -2958,14 +3534,18 @@ function TypingBubble({
 
   if (!isGroup) {
     return (
-      <div className={`typing-bubble ${leaving ? "typing-bubble-exit" : "typing-bubble-enter"} mb-4 mr-auto max-w-[85%]`}>
+      <div
+        className={`typing-bubble ${leaving ? "typing-bubble-exit" : "typing-bubble-enter"} mb-4 mr-auto max-w-[85%]`}
+      >
         {bubble}
       </div>
     );
   }
 
   return (
-    <div className={`typing-bubble ${leaving ? "typing-bubble-exit" : "typing-bubble-enter"} mb-4 flex items-start gap-2`}>
+    <div
+      className={`typing-bubble ${leaving ? "typing-bubble-exit" : "typing-bubble-enter"} mb-4 flex items-start gap-2`}
+    >
       <MessageMemberAvatar
         name={senderProfile?.displayName ?? member.displayName}
         presenceStatus={senderProfile?.presenceStatus ?? "OFFLINE"}
@@ -2999,11 +3579,7 @@ function NewRoomModal({
   initialMemberIds: number[];
   initialType: "DIRECT" | "GROUP";
   onClose: () => void;
-  onCreate: (
-    type: "DIRECT" | "GROUP",
-    name: string,
-    memberIds: number[],
-  ) => Promise<void>;
+  onCreate: (type: "DIRECT" | "GROUP", name: string, memberIds: number[]) => Promise<void>;
   onSelf: () => Promise<void>;
   onProfileClick: (membershipId: number) => void;
   showToast: (message: string) => void;
@@ -3056,11 +3632,7 @@ function NewRoomModal({
     try {
       await onCreate(type, name.trim(), selectedIds);
     } catch (error) {
-      showToast(
-        error instanceof Error
-          ? error.message
-          : "메시지방을 만들지 못했습니다.",
-      );
+      showToast(error instanceof Error ? error.message : "메시지방을 만들지 못했습니다.");
     }
   };
   return (
@@ -3159,22 +3731,14 @@ function NewRoomModal({
                 <span
                   className={`custom-checkbox-control flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-white transition-all duration-200 ${selected ? "border-blue-600 bg-blue-600 shadow-[0_0_0_3px_rgb(219_234_254)]" : "border-slate-300 bg-white"}`}
                 >
-                  {selected && (
-                    <Check
-                      className="checkbox-check-mark"
-                      size={14}
-                      strokeWidth={3}
-                    />
-                  )}
+                  {selected && <Check className="checkbox-check-mark" size={14} strokeWidth={3} />}
                 </span>
               </button>
             );
           })}
         </div>
         <p className="mt-2 text-xs text-slate-500">
-          {type === "GROUP"
-            ? `선택 ${selectedIds.length}명 + 나`
-            : `선택 ${selectedIds.length}명`}
+          {type === "GROUP" ? `선택 ${selectedIds.length}명 + 나` : `선택 ${selectedIds.length}명`}
         </p>
         <button
           onClick={() => void submit()}
@@ -3221,9 +3785,7 @@ function GroupRoomDetail({
   // 전체 회사 구성원 중 현재 방에 없는 사람만 초대 후보로 제공.
   const inviteCandidates = members.filter(
     (member) =>
-      !participants.some(
-        (participant) => participant.membershipId === member.membershipId,
-      ),
+      !participants.some((participant) => participant.membershipId === member.membershipId),
   );
   const selectedInvite =
     inviteCandidates.find((member) => member.membershipId === inviteId) ?? null;
@@ -3241,10 +3803,7 @@ function GroupRoomDetail({
 
   useEffect(() => {
     const closeOutside = (event: MouseEvent) => {
-      if (
-        inviteRef.current &&
-        !inviteRef.current.contains(event.target as Node)
-      )
+      if (inviteRef.current && !inviteRef.current.contains(event.target as Node))
         setInviteOpen(false);
     };
     const closeByEscape = (event: KeyboardEvent) => {
@@ -3281,9 +3840,7 @@ function GroupRoomDetail({
         showToast("구성원을 초대했습니다.");
       }
     } catch (error) {
-      showToast(
-        error instanceof Error ? error.message : "요청을 처리하지 못했습니다.",
-      );
+      showToast(error instanceof Error ? error.message : "요청을 처리하지 못했습니다.");
     }
   };
 
@@ -3341,9 +3898,7 @@ function GroupRoomDetail({
                     presenceStatus={selectedInvite.presenceStatus}
                   />
                   <span className="min-w-0 flex-1">
-                    <b className="block truncate">
-                      {selectedInvite.displayName}
-                    </b>
+                    <b className="block truncate">{selectedInvite.displayName}</b>
                     <small className="block truncate text-slate-500">
                       {[
                         selectedInvite.companyName,
@@ -3356,9 +3911,7 @@ function GroupRoomDetail({
                   </span>
                 </>
               ) : (
-                <span className="flex-1 text-slate-500">
-                  구성원을 선택하세요
-                </span>
+                <span className="flex-1 text-slate-500">구성원을 선택하세요</span>
               )}
               <ChevronDown
                 className={`shrink-0 transition-transform ${inviteOpen ? "rotate-180" : ""}`}
@@ -3382,15 +3935,9 @@ function GroupRoomDetail({
                       presenceStatus={candidate.presenceStatus}
                     />
                     <span className="min-w-0">
-                      <b className="block truncate text-sm">
-                        {candidate.displayName}
-                      </b>
+                      <b className="block truncate text-sm">{candidate.displayName}</b>
                       <small className="block truncate text-slate-500">
-                        {[
-                          candidate.companyName,
-                          candidate.jobGradeName,
-                          candidate.departmentName,
-                        ]
+                        {[candidate.companyName, candidate.jobGradeName, candidate.departmentName]
                           .filter(Boolean)
                           .join(" · ")}
                       </small>
@@ -3416,21 +3963,16 @@ function GroupRoomDetail({
       )}
       <section className="mt-4 border-t border-slate-100 pt-4">
         <h3 className="text-sm font-bold">
-          멤버{" "}
-          <span className="text-blue-600">
-            ({participants.length || room.memberCount})
-          </span>
+          멤버 <span className="text-blue-600">({participants.length || room.memberCount})</span>
         </h3>
         <div className="mt-2 max-h-[calc(100vh-25rem)] overflow-y-auto overflow-x-hidden">
           {participants.map((participant) => {
-            const isRoomOwner =
-              participant.membershipId === room.ownerMembershipId;
+            const isRoomOwner = participant.membershipId === room.ownerMembershipId;
             const isMe = participant.membershipId === currentMemberId;
             const presenceStatus = isMe
               ? "ONLINE"
-              : (members.find(
-                (member) => member.membershipId === participant.membershipId,
-              )?.presenceStatus ?? "OFFLINE");
+              : (members.find((member) => member.membershipId === participant.membershipId)
+                  ?.presenceStatus ?? "OFFLINE");
             return (
               <div
                 key={participant.membershipId}
@@ -3467,17 +4009,13 @@ function GroupRoomDetail({
                 {owner && !isMe && (
                   <span className="flex shrink-0 gap-1">
                     <button
-                      onClick={() =>
-                        void run("owner", participant.membershipId)
-                      }
+                      onClick={() => void run("owner", participant.membershipId)}
                       className="cursor-pointer rounded border border-slate-200 px-2 py-1 text-[11px] transition hover:border-blue-300 hover:bg-blue-50"
                     >
                       위임
                     </button>
                     <button
-                      onClick={() =>
-                        void run("remove", participant.membershipId)
-                      }
+                      onClick={() => void run("remove", participant.membershipId)}
                       className="cursor-pointer rounded border border-red-100 px-2 py-1 text-[11px] text-red-600 transition hover:bg-red-50"
                     >
                       내보내기
@@ -3488,9 +4026,7 @@ function GroupRoomDetail({
             );
           })}
           {participants.length === 0 && (
-            <p className="p-3 text-center text-sm text-slate-500">
-              참여자를 불러오는 중입니다.
-            </p>
+            <LoadingState message="참여자를 불러오는 중입니다." className="py-6" />
           )}
         </div>
       </section>
@@ -3548,12 +4084,22 @@ function ReadMemberModal({
       className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/20 p-4"
     >
       {/* 인원수와 관계없이 모달 높이를 고정하고, 목록 영역만 스크롤되게 구성. */}
-      <section role="dialog" aria-modal="true" aria-label="읽은 멤버" className="message-action-menu flex h-[min(680px,calc(100vh-2rem))] w-full max-w-md flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label="읽은 멤버"
+        className="message-action-menu flex h-[min(680px,calc(100vh-2rem))] w-full max-w-md flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl"
+      >
         <div className="flex shrink-0 items-center justify-between">
           <h2 className="text-lg font-bold text-slate-900">
             읽은 멤버 ({modal.readMembers.length})
           </h2>
-          <button type="button" aria-label="읽은 멤버 닫기" className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 active:scale-90" onClick={onClose}>
+          <button
+            type="button"
+            aria-label="읽은 멤버 닫기"
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 active:scale-90"
+            onClick={onClose}
+          >
             <X size={20} />
           </button>
         </div>
@@ -3575,36 +4121,43 @@ function ReadMemberModal({
             );
           })}
         </div>
-        <div role="tabpanel" className="min-h-0 flex-1 overflow-y-auto rounded-b-lg rounded-tr-lg border border-slate-200 p-2">
+        <div
+          role="tabpanel"
+          className="min-h-0 flex-1 overflow-y-auto rounded-b-lg rounded-tr-lg border border-slate-200 p-2"
+        >
           {members.length === 0 ? (
             <p className="flex h-full items-center justify-center text-sm text-slate-500">
               {modal.read ? "읽은 멤버가 없습니다." : "안 읽은 멤버가 없습니다."}
             </p>
-          ) : members.map((member) => (
-            <button
-              type="button"
-              key={member.membershipId}
-              className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-3 text-left transition hover:bg-slate-50 active:bg-slate-100"
-              onClick={() => onProfileClick(member.membershipId)}
-            >
-              <MessageMemberAvatar
-                name={member.displayName}
-                presenceStatus={presenceByMemberId.get(member.membershipId) ?? "OFFLINE"}
-              />
-              <span className="min-w-0 flex-1">
-                <b className="block truncate text-sm text-slate-900">{member.displayName}</b>
-                <span className="mt-0.5 block truncate text-xs text-slate-500">
-                  {member.jobGrade && <span className="text-blue-600">{member.jobGrade}</span>}
-                  {member.jobGrade && member.departmentName && "/"}
-                  {member.departmentName}
-                  {member.companyName && <span className="ml-2">{member.companyName}</span>}
+          ) : (
+            members.map((member) => (
+              <button
+                type="button"
+                key={member.membershipId}
+                className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-3 text-left transition hover:bg-slate-50 active:bg-slate-100"
+                onClick={() => onProfileClick(member.membershipId)}
+              >
+                <MessageMemberAvatar
+                  name={member.displayName}
+                  presenceStatus={presenceByMemberId.get(member.membershipId) ?? "OFFLINE"}
+                />
+                <span className="min-w-0 flex-1">
+                  <b className="block truncate text-sm text-slate-900">{member.displayName}</b>
+                  <span className="mt-0.5 block truncate text-xs text-slate-500">
+                    {member.jobGrade && <span className="text-blue-600">{member.jobGrade}</span>}
+                    {member.jobGrade && member.departmentName && "/"}
+                    {member.departmentName}
+                    {member.companyName && <span className="ml-2">{member.companyName}</span>}
+                  </span>
                 </span>
-              </span>
-              <span className={`shrink-0 text-xs ${modal.read ? "text-blue-600" : "text-slate-400"}`}>
-                {modal.read ? "읽음" : "안 읽음"}
-              </span>
-            </button>
-          ))}
+                <span
+                  className={`shrink-0 text-xs ${modal.read ? "text-blue-600" : "text-slate-400"}`}
+                >
+                  {modal.read ? "읽음" : "안 읽음"}
+                </span>
+              </button>
+            ))
+          )}
         </div>
       </section>
     </div>
@@ -3641,19 +4194,16 @@ function UserProfileModal({
   }, [onClose]);
   const hiredAt = member.hiredAt
     ? new Date(member.hiredAt)
-      .toLocaleDateString("ko-KR", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      })
-      .replace(/\. /g, ".")
-      .replace(/\.$/, "")
+        .toLocaleDateString("ko-KR", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        })
+        .replace(/\. /g, ".")
+        .replace(/\.$/, "")
     : "-";
   return (
-    <div
-      ref={ref}
-      className="fixed inset-0 z-[110] flex items-center justify-center p-4"
-    >
+    <div ref={ref} className="fixed inset-0 z-[110] flex items-center justify-center p-4">
       <section className="relative min-h-[620px] w-full max-w-[440px] animate-in fade-in zoom-in-95 rounded-2xl bg-white p-6 shadow-2xl">
         <div className="absolute right-5 top-5 flex flex-col items-center gap-2">
           <button
@@ -3668,32 +4218,23 @@ function UserProfileModal({
             onClick={() => void onToggleFavorite()}
             className={`flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border transition active:scale-90 ${member.favorite ? "border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600" : "border-slate-500 bg-transparent text-slate-500 hover:bg-slate-100"}`}
           >
-            <Star
-              size={14}
-              fill={member.favorite ? "currentColor" : "none"}
-              strokeWidth={2.5}
-            />
+            <Star size={14} fill={member.favorite ? "currentColor" : "none"} strokeWidth={2.5} />
           </button>
         </div>
         <div className="mt-7 flex items-center gap-5">
           <span className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-2xl font-bold text-slate-800">
-            <span className="whitespace-nowrap">
-              {member.displayName.slice(0, 3)}
-            </span>
+            <span className="whitespace-nowrap">{member.displayName.slice(0, 3)}</span>
             <span
               className={`absolute -bottom-1 -right-1 inline-flex h-6 w-6 items-center justify-center rounded-full ring-2 ring-white ${member.presenceStatus === "ONLINE" ? "bg-emerald-500" : member.presenceStatus === "OFFLINE" ? "bg-slate-300" : member.presenceStatus === "AWAY" ? "bg-slate-500 text-white" : "bg-red-500 text-white"}`}
             >
-              {(member.presenceStatus === "AWAY" ||
-                member.presenceStatus === "INACTIVE") && (
-                  <X size={14} strokeWidth={3} />
-                )}
+              {(member.presenceStatus === "AWAY" || member.presenceStatus === "INACTIVE") && (
+                <X size={14} strokeWidth={3} />
+              )}
             </span>
           </span>
           <div>
             <h2 className="text-xl font-bold">{member.displayName}</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              {member.jobGradeName ?? "직급 미지정"}
-            </p>
+            <p className="mt-1 text-sm text-slate-500">{member.jobGradeName ?? "직급 미지정"}</p>
             <button
               type="button"
               onClick={() => showToast("일정 기능은 준비 중입니다.")}
