@@ -3,11 +3,18 @@
 import { Copy, MoreVertical, Pencil, Reply, Trash2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { Tooltip } from "@/components/common/tooltip";
 
 export type MessageMenuPosition = { left: number; top: number };
 
+// 수정 가능 시간이 지났을 때 보여 줄 안내 문구.
+export const EDIT_WINDOW_HOURS = 24;
+export const EDIT_EXPIRED_MESSAGE = `${EDIT_WINDOW_HOURS}시간 이내에 보낸 본인 메시지만 수정할 수 있습니다.`;
+
 type MessageActionMenuProps = {
   isMine: boolean;
+  // 본인 메시지라도 24시간이 지나면 false. 메뉴의 "수정"을 비활성화하고 안내 툴팁을 띄움.
+  canEdit: boolean;
   position: MessageMenuPosition | null;
   onPositionChange: (position: MessageMenuPosition | null) => void;
   onCopy: () => void;
@@ -17,7 +24,7 @@ type MessageActionMenuProps = {
 };
 
 // 목록의 overflow 영역 밖에 메뉴를 띄워 말풍선·스크롤 경계에 가려지는 현상 방지.
-export function MessageActionMenu({ isMine, position, onPositionChange, onCopy, onReply, onEdit, onDelete }: MessageActionMenuProps) {
+export function MessageActionMenu({ isMine, canEdit, position, onPositionChange, onCopy, onReply, onEdit, onDelete }: MessageActionMenuProps) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -84,9 +91,18 @@ export function MessageActionMenu({ isMine, position, onPositionChange, onCopy, 
           </button>
           {isMine && <>
             <div className="my-1 border-t border-slate-100" />
-            <button type="button" onClick={() => { onPositionChange(null); onEdit(); }} className="flex w-full cursor-pointer items-center gap-2 rounded px-3 py-2 text-left transition hover:bg-slate-100 focus-visible:bg-slate-100 active:scale-[0.98]">
-              <Pencil size={15} aria-hidden="true" />수정
-            </button>
+            {canEdit ? (
+              <button type="button" onClick={() => { onPositionChange(null); onEdit(); }} className="flex w-full cursor-pointer items-center gap-2 rounded px-3 py-2 text-left transition hover:bg-slate-100 focus-visible:bg-slate-100 active:scale-[0.98]">
+                <Pencil size={15} aria-hidden="true" />수정
+              </button>
+            ) : (
+              // disabled 속성은 브라우저가 hover 이벤트를 막아 툴팁이 안 뜨므로 aria-disabled로 처리.
+              <Tooltip label={EDIT_EXPIRED_MESSAGE} multiline className="w-full">
+                <button type="button" aria-disabled="true" onClick={(event) => event.preventDefault()} className="flex w-full cursor-not-allowed items-center gap-2 rounded px-3 py-2 text-left text-slate-300">
+                  <Pencil size={15} aria-hidden="true" />수정
+                </button>
+              </Tooltip>
+            )}
             <button type="button" onClick={() => { onPositionChange(null); onDelete(); }} className="flex w-full cursor-pointer items-center gap-2 rounded px-3 py-2 text-left text-red-500 transition hover:bg-red-50 focus-visible:bg-red-50 active:scale-[0.98]">
               <Trash2 size={15} aria-hidden="true" />삭제
             </button>

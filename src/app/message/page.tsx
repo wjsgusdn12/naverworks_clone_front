@@ -3,7 +3,8 @@
 import { GlobalHeader } from "@/components/common/global-header";
 import { Toast } from "@/components/common/toast";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
-import { MessageActionMenu, type MessageMenuPosition } from "@/components/chat/message-action-menu";
+import { EDIT_EXPIRED_MESSAGE, EDIT_WINDOW_HOURS, MessageActionMenu, type MessageMenuPosition } from "@/components/chat/message-action-menu";
+import { Tooltip } from "@/components/common/tooltip";
 import { MessageQuote } from "@/components/chat/message-quote";
 import { MessageDeleteDialog } from "@/components/chat/message-change-dialog";
 import { applyMessageChange, applyRoomMessageChange } from "@/lib/chat-message-state";
@@ -125,6 +126,10 @@ const sortRoomsByLatestActivity = (rooms: ChatRoom[]) =>
 
 type RoomSort = "LATEST" | "TYPE" | "UNREAD";
 // 메시지 입력창 높이는 사용자가 손잡이로 조절할 때만 바뀌고, 내용이 넘치면 입력창 안에서 스크롤.
+// 보낸 지 24시간이 지나지 않은 메시지만 수정 가능(서버도 같은 기준으로 거부).
+const isMessageEditable = (message: ChatMessage) =>
+  Date.now() - new Date(message.createdAt).getTime() < EDIT_WINDOW_HOURS * 60 * 60 * 1000;
+
 const DEFAULT_INPUT_HEIGHT = 144;
 const MIN_INPUT_HEIGHT = 96;
 const MAX_INPUT_HEIGHT = 400;
@@ -1145,6 +1150,8 @@ function MessageContent() {
   // 답장하기와 같은 흐름: 입력칸 위에 원문을 띄우고, 입력칸에는 기존 본문을 채워 바로 고치게 함.
   const startEdit = (message: ChatMessage) => {
     if (!selectedRoomId || message.deletedAt || message.senderMembershipId !== member?.membershipId) return;
+    // 메뉴가 열려 있는 사이에 24시간이 지났을 수도 있으므로 시작 시점에 한 번 더 확인.
+    if (!isMessageEditable(message)) { showToast(EDIT_EXPIRED_MESSAGE); return; }
     const roomId = selectedRoomId;
     if (!(roomId in editDraftBackupRef.current)) editDraftBackupRef.current[roomId] = draftByRoomId[roomId] ?? "";
     setReplyByRoomId((current) => {
@@ -1956,10 +1963,11 @@ function MessageContent() {
                         />}
                       />
                     </div>
-                    <button type="button" aria-label="답장 취소" onClick={cancelReply} className="group relative flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 active:scale-90">
-                      <X size={17} aria-hidden="true" />
-                      <span role="tooltip" className="pointer-events-none absolute bottom-8 right-0 hidden whitespace-nowrap rounded bg-slate-700 px-2 py-1 text-xs text-white group-hover:block group-focus-visible:block">답장 취소</span>
-                    </button>
+                    <Tooltip label="답장 취소" placement="top">
+                      <button type="button" aria-label="답장 취소" onClick={cancelReply} className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 active:scale-90">
+                        <X size={17} aria-hidden="true" />
+                      </button>
+                    </Tooltip>
                   </div>
                 )}
                 {/* 수정 중 표시: 답장 바와 같은 자리·같은 모양에 원문을 보여 주고, X로 취소. */}
@@ -1975,10 +1983,11 @@ function MessageContent() {
                         />}
                       />
                     </div>
-                    <button type="button" aria-label="수정 취소" onClick={cancelEdit} className="group relative flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 active:scale-90">
-                      <X size={17} aria-hidden="true" />
-                      <span role="tooltip" className="pointer-events-none absolute bottom-8 right-0 hidden whitespace-nowrap rounded bg-slate-700 px-2 py-1 text-xs text-white group-hover:block group-focus-visible:block">수정 취소</span>
-                    </button>
+                    <Tooltip label="수정 취소" placement="top">
+                      <button type="button" aria-label="수정 취소" onClick={cancelEdit} className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-slate-400 transition hover:bg-slate-200 hover:text-slate-700 active:scale-90">
+                        <X size={17} aria-hidden="true" />
+                      </button>
+                    </Tooltip>
                   </div>
                 )}
                 <div className="relative">
@@ -2615,7 +2624,7 @@ function MessageBubble({
       {showMeta ? <span>{time}</span> : null}
     </div>
   ) : null;
-  const messageMenu = message.deletedAt ? <span aria-hidden="true" className="h-5 w-6 shrink-0" /> : <MessageActionMenu isMine={isMine} position={menuPosition} onPositionChange={setMenuPosition} onCopy={() => onCopy(message)} onReply={() => onReply(message)} onEdit={() => onEdit(message)} onDelete={() => onDelete(message)} />;
+  const messageMenu = message.deletedAt ? <span aria-hidden="true" className="h-5 w-6 shrink-0" /> : <MessageActionMenu isMine={isMine} canEdit={isMessageEditable(message)} position={menuPosition} onPositionChange={setMenuPosition} onCopy={() => onCopy(message)} onReply={() => onReply(message)} onEdit={() => onEdit(message)} onDelete={() => onDelete(message)} />;
   // 시간과 메뉴의 밑선을 맞추고, 메뉴가 숨겨져도 공간을 유지해 말풍선 흔들림 방지.
   const messageActions = (
     <div className="flex shrink-0 items-end gap-1 pb-1">

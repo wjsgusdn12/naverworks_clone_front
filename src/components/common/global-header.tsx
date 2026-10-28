@@ -19,6 +19,7 @@ import type { AuthMember } from "@/lib/api/auth-api";
 import type { NotificationCategory, NotificationItem } from "@/lib/api/notification-api";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
+import { Tooltip } from "@/components/common/tooltip";
 import { useRouter } from "next/navigation";
 
 // 상단 헤더에서 반복 렌더링할 서비스 아이콘 정보.
@@ -229,8 +230,10 @@ export function GlobalHeader({
             <span
               key={label}
               ref={label === "내 프로필" ? profileMenuRef : label === "알림" ? notificationPanelRef : undefined}
-              className="group relative"
+              className="relative"
             >
+              {/* 메뉴·패널이 열려 있는 동안은 툴팁이 겹치지 않도록 끔. */}
+              <Tooltip label={label} disabled={(label === "내 프로필" && isProfileMenuOpen) || (label === "알림" && isNotificationPanelOpen)}>
               <button
                 type="button"
                 aria-label={label === "알림" && notificationCount > 0 ? `알림 ${notificationCount}개` : label}
@@ -258,14 +261,7 @@ export function GlobalHeader({
                   <Icon size={19} strokeWidth={1.9} aria-hidden="true" />
                 )}
               </button>
-              {!(label === "내 프로필" && isProfileMenuOpen) && !(label === "알림" && isNotificationPanelOpen) && (
-                <span
-                  role="tooltip"
-                  className="pointer-events-none absolute left-1/2 top-11 z-[70] hidden -translate-x-1/2 whitespace-nowrap rounded bg-zinc-700 px-2 py-1 text-[11px] font-medium text-white shadow-md sm:group-hover:block"
-                >
-                  {label}
-                </span>
-              )}
+              </Tooltip>
               {label === "내 프로필" && isProfileMenuOpen && onLogout && (
                 <div className="absolute right-0 top-11 z-[60] w-44 rounded-lg border border-slate-200 bg-white p-1.5 text-slate-800 shadow-lg">
                   {/* 로그인 API에서 받은 사용자 이름과 역할을 표시. */}

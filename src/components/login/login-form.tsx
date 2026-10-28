@@ -2,6 +2,7 @@
 
 import { Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { FormEvent, useState } from "react";
+import { Tooltip } from "@/components/common/tooltip";
 import { FcGoogle } from "react-icons/fc";
 import { RiKakaoTalkFill } from "react-icons/ri";
 import { SiNaver } from "react-icons/si";
@@ -125,7 +126,7 @@ export function LoginForm({ onToast, onLogin }: LoginFormProps) {
                   : "border-slate-300 focus:border-blue-600 focus:ring-blue-100"
               }`}
             />
-            <span className="group absolute inset-y-0 right-0 flex w-12 items-center justify-center">
+            <Tooltip label={isPasswordVisible ? "비밀번호 숨기기" : "비밀번호 보기"} className="absolute inset-y-0 right-0 w-12">
               <button
                 type="button"
                 aria-label={isPasswordVisible ? "비밀번호 숨기기" : "비밀번호 보기"}
@@ -135,13 +136,7 @@ export function LoginForm({ onToast, onLogin }: LoginFormProps) {
               >
                 {isPasswordVisible ? <EyeOff size={19} /> : <Eye size={19} />}
               </button>
-              <span
-                role="tooltip"
-                className="pointer-events-none absolute right-0 top-12 z-10 hidden whitespace-nowrap rounded bg-zinc-700 px-2 py-1 text-[11px] font-medium text-white shadow-md sm:group-hover:block"
-              >
-                {isPasswordVisible ? "비밀번호 숨기기" : "비밀번호 보기"}
-              </span>
-            </span>
+            </Tooltip>
           </span>
         </label>
 
@@ -189,7 +184,8 @@ export function LoginForm({ onToast, onLogin }: LoginFormProps) {
 
       <div className="grid grid-cols-3 gap-2">
         {socialProviders.map(({ name, tooltip, icon: Icon, iconSize, className }) => (
-          <span key={name} className="group relative block">
+          // 브라우저 기본 title 대신 프로젝트 공통 툴팁으로 안내.
+          <Tooltip key={name} label={tooltip} className="w-full">
             <button
               type="button"
               aria-label={tooltip}
@@ -200,14 +196,7 @@ export function LoginForm({ onToast, onLogin }: LoginFormProps) {
             >
               <Icon size={iconSize} aria-hidden="true" />
             </button>
-            {/* 브라우저 기본 title 대신 프로젝트 공통 스타일의 안내를 표시. */}
-            <span
-              role="tooltip"
-              className="pointer-events-none absolute left-1/2 top-12 z-10 hidden -translate-x-1/2 whitespace-nowrap rounded bg-zinc-700 px-2 py-1 text-[11px] font-medium text-white shadow-md sm:group-hover:block"
-            >
-              {tooltip}
-            </span>
-          </span>
+          </Tooltip>
         ))}
       </div>
 
