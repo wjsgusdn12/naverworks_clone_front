@@ -25,6 +25,7 @@ import {
   type ReadState,
 } from "@/lib/chat-message-state";
 import { reactionLabel } from "@/lib/chat-reactions";
+import { tokenizeMessage } from "@/lib/message-tokens";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
   chatApi,
@@ -2526,7 +2527,7 @@ function MessageContent() {
       )}
       {hideConfirmOpen && (
         <div
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/25 p-4"
+          className="fixed inset-0 z-[120] flex items-center justify-center p-4"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) setHideConfirmOpen(false);
           }}
@@ -2573,7 +2574,7 @@ function MessageContent() {
       )}
       {notificationRoom && accessToken && (
         <div
-          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/15 p-4"
+          className="fixed inset-0 z-[120] flex items-center justify-center p-4"
           onMouseDown={(event) => {
             if (event.target === event.currentTarget) setNotificationRoom(null);
           }}
@@ -3013,18 +3014,32 @@ function MessageMemberAvatar({
 }
 
 function MentionText({ content }: { content: string }) {
-  // 저장된 본문은 그대로 두고 화면에서만 @표현을 강조해 복사/검색 동작을 유지.
+  // 저장된 본문은 그대로 두고 화면에서만 @멘션 강조와 URL 링크를 입힘(복사/검색 동작 유지).
   return (
     <>
-      {content.split(/(@(?:All|[\p{L}\p{N}_-]+))/gu).map((part, index) =>
-        part.startsWith("@") ? (
-          <span key={`${part}-${index}`} className="text-blue-600">
-            {part}
-          </span>
-        ) : (
-          part
-        ),
-      )}
+      {tokenizeMessage(content).map((token, index) => {
+        if (token.type === "mention")
+          return (
+            <span key={index} className="text-blue-600">
+              {token.value}
+            </span>
+          );
+        if (token.type === "url")
+          return (
+            <a
+              key={index}
+              href={token.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              // 말풍선의 우클릭 메뉴·드래그와 겹치지 않게 링크 클릭은 여기서 끝냄.
+              onClick={(event) => event.stopPropagation()}
+              className="break-all text-blue-600 underline decoration-blue-300 underline-offset-2 hover:text-blue-700 hover:decoration-blue-500"
+            >
+              {token.value}
+            </a>
+          );
+        return token.value;
+      })}
     </>
   );
 }
@@ -3422,7 +3437,7 @@ function ReactionMemberModal({
   }, [onClose]);
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/20 p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -3636,10 +3651,7 @@ function NewRoomModal({
     }
   };
   return (
-    <div
-      ref={ref}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/20 p-4"
-    >
+    <div ref={ref} className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <section className="w-full max-w-lg animate-in fade-in zoom-in-95 rounded-2xl bg-white p-6 shadow-2xl">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold">새 메시지</h2>
@@ -4079,10 +4091,7 @@ function ReadMemberModal({
     };
   }, [onClose]);
   return (
-    <div
-      ref={ref}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/20 p-4"
-    >
+    <div ref={ref} className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* 인원수와 관계없이 모달 높이를 고정하고, 목록 영역만 스크롤되게 구성. */}
       <section
         role="dialog"
