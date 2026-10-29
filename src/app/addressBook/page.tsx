@@ -671,7 +671,8 @@ export default function AddressBookPage() {
                   메시지
                 </button>
               </div>
-              <div className="flex min-h-[calc(100vh-15rem)] border-y border-slate-200">
+              {/* 헤더·제목·툴바·아래 페이지 영역(4rem)·여백을 뺀 높이. 넘치면 세로 스크롤이 생김. */}
+              <div className="flex min-h-[calc(100vh-17rem)] border-y border-slate-200">
                 <div className="min-w-0 flex-1 overflow-auto">
                   <table className="w-full min-w-[900px] border-collapse text-left text-sm">
                     <thead className="border-b border-slate-200 bg-white text-slate-700">
