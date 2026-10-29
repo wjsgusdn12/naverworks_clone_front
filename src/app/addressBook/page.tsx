@@ -1,6 +1,7 @@
 "use client";
 
 import { GlobalHeader } from "@/components/common/global-header";
+import { GroupAvatar } from "@/components/chat/group-avatar";
 import { FavoriteButton } from "@/components/address-book/favorite-button";
 import { Toast } from "@/components/common/toast";
 import { LoadingInline } from "@/components/common/loading";
@@ -1386,9 +1387,7 @@ function GroupPanel({
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-                        <UsersRound size={16} aria-hidden="true" />
-                      </span>
+                      <GroupAvatar name={group.name || "그룹"} />
                       <b className={group.joined ? "text-slate-900" : ""}>
                         {group.name || "이름 없는 그룹"}
                       </b>
@@ -1600,9 +1599,7 @@ function GroupDetailPanel({
         </button>
       </div>
       <div className="mt-4 flex items-center gap-3">
-        <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-          <UsersRound size={28} aria-hidden="true" />
-        </span>
+        <GroupAvatar name={group.name || "그룹"} size="xl" />
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-xl font-bold">{group.name || "이름 없는 그룹"}</h2>
           <p className="text-sm text-slate-500">멤버 {group.memberCount}명</p>
@@ -1674,9 +1671,20 @@ function GroupDetailPanel({
                     {member.favorite && (
                       <span
                         aria-label="즐겨찾기"
-                        className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white"
+                        className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white"
                       >
-                        <Star size={9} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+                        {/* 아이콘 세트의 별은 위로 치우쳐 보여서, 원 중심에 맞춘 별 도형을 직접 그림. */}
+                        <svg viewBox="0 0 24 24" className="h-2.5 w-2.5" aria-hidden="true">
+                          <polygon
+                            fill="currentColor"
+                            points="12,3 14.47,9.6 21.51,9.91 15.99,14.3 17.88,21.09 12,17.2 6.12,21.09 8.01,14.3 2.49,9.91 9.53,9.6"
+                          />
+                        </svg>
+                      </span>
+                    )}
+                    {member.owner && (
+                      <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                        마스터
                       </span>
                     )}
                   </span>
