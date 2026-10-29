@@ -20,7 +20,7 @@ import { ReactionPicker } from "@/components/chat/reaction-picker";
 import { MessageQuote } from "@/components/chat/message-quote";
 import { MessageDeleteDialog } from "@/components/chat/message-change-dialog";
 import { ForwardMessageModal } from "@/components/chat/forward-message-modal";
-import { NoticeBanner } from "@/components/chat/notice-banner";
+import { NoticePanel } from "@/components/chat/notice-panel";
 import {
   applyMessageChange,
   applyReactionChange,
@@ -297,8 +297,8 @@ function MessageContent() {
   const [notificationRoom, setNotificationRoom] = useState<ChatRoom | null>(null);
   const [selectedRoomProfile, setSelectedRoomProfile] = useState<ChatMemberProfile | null>(null);
   const [roomMentionMembers, setRoomMentionMembers] = useState<ChatMemberProfile[]>([]);
-  // 현재 방의 공지(없으면 null)와 전달 모달에 올린 메시지.
-  const [notice, setNotice] = useState<ChatNotice | null>(null);
+  // 현재 방의 공지 목록(최근 등록이 앞)과 전달 모달에 올린 메시지.
+  const [notices, setNotices] = useState<ChatNotice[]>([]);
   const [forwardTarget, setForwardTarget] = useState<ChatMessage | null>(null);
   const [profileMemberId, setProfileMemberId] = useState<number | null>(null);
   const [profileMember, setProfileMember] = useState<AddressBookMemberDetail | null>(null);
@@ -417,6 +417,11 @@ function MessageContent() {
   }, [mentionCandidates, mentionQuery, mentionStartIndex]);
   // 탭 안에서 메시지 화면을 다시 열어도 마지막으로 보던 방을 복원.
   const lastRoomStorageKey = member ? `naverworks:message:lastRoom:${member.membershipId}` : null;
+  // 말풍선 메뉴가 "공지 내리기"로 바뀌어야 하는 메시지 ID 집합.
+  const noticeMessageIds = useMemo(
+    () => new Set(notices.map((notice) => notice.messageId)),
+    [notices],
+  );
   // 반복 find를 피하도록 구성원 프로필을 화면 단위 Map으로 캐싱.
   const contactMemberById = useMemo(
     () =>
@@ -562,7 +567,7 @@ function MessageContent() {
     const detail = await chatApi.detail(accessToken, roomId);
     if (selectedRoomIdRef.current !== roomId) return;
     setRoomMentionMembers(detail.members);
-    setNotice(detail.notice);
+    setNotices(detail.notices);
     const read = readStateRef.current;
     const cursors = read.roomId === roomId ? { ...read.state.cursors } : {};
     // 상세 응답보다 먼저 도착한 실시간 읽음 이벤트가 있으면 더 앞선 위치를 유지.
@@ -880,7 +885,7 @@ function MessageContent() {
         }
       },
       // 공지 등록·교체·해제는 모든 참여자 화면의 띠를 바로 갱신.
-      onNoticeChanged: (event) => setNotice(event.notice),
+      onNoticeChanged: (event) => setNotices(event.notices),
       onReadUpdated: (event) => {
         if (event.chatRoomId !== selectedRoomId) return;
         const read = readStateRef.current;
@@ -1050,7 +1055,7 @@ function MessageContent() {
     if (!accessToken || !selectedRoomId) {
       void Promise.resolve().then(() => {
         setRoomMentionMembers([]);
-        setNotice(null);
+        setNotices([]);
       });
       return;
     }
@@ -1342,31 +1347,29 @@ function MessageContent() {
     }
   };
 
-  // 메뉴의 "공지로 등록"/"공지 해제". 이미 공지인 메시지면 해제, 아니면 등록(기존 공지 교체).
+  // 메뉴의 "공지로 등록"/"공지 내리기". 이미 공지인 메시지면 내리고, 아니면 목록에 추가.
   const toggleNotice = async (message: ChatMessage) => {
     if (!accessToken || !selectedRoomId || message.deletedAt || message.type !== "TEXT") return;
+    if (notices.some((item) => item.messageId === message.id)) {
+      await removeNotice(message.id);
+      return;
+    }
     try {
-      if (notice?.messageId === message.id) {
-        await chatApi.removeNotice(accessToken, selectedRoomId);
-        setNotice(null);
-        showToast("공지를 해제했습니다.");
-      } else {
-        setNotice(await chatApi.updateNotice(accessToken, selectedRoomId, message.id));
-        showToast("공지로 등록했습니다.");
-      }
+      setNotices(await chatApi.updateNotice(accessToken, selectedRoomId, message.id));
+      showToast("공지로 등록했습니다.");
     } catch (error) {
-      showToast(error instanceof Error ? error.message : "공지를 변경하지 못했습니다.");
+      showToast(error instanceof Error ? error.message : "공지를 등록하지 못했습니다.");
     }
   };
 
-  const removeNotice = async () => {
+  // 공지 내리기: 모든 참여자의 공지 목록에서 사라짐("다시 보지 않기"는 내 화면에서만 숨김).
+  const removeNotice = async (messageId: number) => {
     if (!accessToken || !selectedRoomId) return;
     try {
-      await chatApi.removeNotice(accessToken, selectedRoomId);
-      setNotice(null);
-      showToast("공지를 해제했습니다.");
+      setNotices(await chatApi.removeNotice(accessToken, selectedRoomId, messageId));
+      showToast("공지를 내렸습니다.");
     } catch (error) {
-      showToast(error instanceof Error ? error.message : "공지를 해제하지 못했습니다.");
+      showToast(error instanceof Error ? error.message : "공지를 내리지 못했습니다.");
     }
   };
 
@@ -2155,17 +2158,17 @@ function MessageContent() {
               )}
             </div>
           </header>
-          {notice && selectedRoomId && (
-            <NoticeBanner
-              key={`${selectedRoomId}:${notice.messageId}`}
-              roomId={selectedRoomId}
-              notice={notice}
-              onOpen={stableJumpToOriginal}
-              onRemove={() => void removeNotice()}
-            />
-          )}
           <div className="flex min-h-0 flex-1">
             <div className="relative flex min-w-0 flex-1 flex-col">
+              {notices.length > 0 && selectedRoomId && (
+                <NoticePanel
+                  key={selectedRoomId}
+                  roomId={selectedRoomId}
+                  notices={notices}
+                  onOpen={stableJumpToOriginal}
+                  onRemove={(messageId) => void removeNotice(messageId)}
+                />
+              )}
               {scrollDateLabel && (
                 <div
                   className={`pointer-events-none absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 shadow-sm transition-all duration-300 ${scrollDatePhase === "visible" ? "animate-in fade-in zoom-in-95 opacity-100" : "scale-95 opacity-0"}`}
@@ -2223,7 +2226,7 @@ function MessageContent() {
                   onOpenReactionMembers={stableOpenReactionMembers}
                   onForward={stableStartForward}
                   onToggleNotice={stableToggleNotice}
-                  noticeMessageId={notice?.messageId ?? null}
+                  noticeMessageIds={noticeMessageIds}
                 />
                 {newerCursor === null && typingMembers.length > 0 && (
                   <TypingBubble
@@ -3160,7 +3163,7 @@ const MessageList = memo(function MessageList({
   onOpenReactionMembers,
   onForward,
   onToggleNotice,
-  noticeMessageId,
+  noticeMessageIds,
 }: {
   messages: ChatMessage[];
   highlightedMessageId: number | null;
@@ -3178,8 +3181,8 @@ const MessageList = memo(function MessageList({
   onOpenReactionMembers: (message: ChatMessage) => void;
   onForward: (message: ChatMessage) => void;
   onToggleNotice: (message: ChatMessage) => void;
-  // 현재 방 공지 메시지 ID. 해당 말풍선 메뉴가 "공지 해제"로 바뀜.
-  noticeMessageId: number | null;
+  // 현재 방 공지 메시지 ID 목록. 포함된 말풍선의 메뉴가 "공지 내리기"로 바뀜.
+  noticeMessageIds: Set<number>;
 }) {
   return (
     <>
@@ -3239,7 +3242,7 @@ const MessageList = memo(function MessageList({
                   onOpenReactionMembers={onOpenReactionMembers}
                   onForward={onForward}
                   onToggleNotice={onToggleNotice}
-                  isNotice={noticeMessageId === message.id}
+                  isNotice={noticeMessageIds.has(message.id)}
                 />
               )}
             </div>
@@ -3377,7 +3380,7 @@ const MessageBubble = memo(function MessageBubble({
   const underBubble =
     reactions.length > 0 || message.editedAt ? (
       <div
-        className={`pointer-events-none absolute top-full mt-1 flex items-center gap-1 whitespace-nowrap ${isMine ? "right-1 flex-row-reverse" : "left-1"}`}
+        className={`pointer-events-none absolute top-full flex items-center gap-1 whitespace-nowrap ${isMine ? "right-1 flex-row-reverse" : "left-1"}`}
       >
         {message.editedAt && <span className="text-xs leading-4 text-slate-500">수정됨</span>}
         {reactions.map((reaction) => (
@@ -3420,7 +3423,7 @@ const MessageBubble = memo(function MessageBubble({
   const reply = message.deletedAt ? null : message.reply;
   // 말풍선 아래 줄(리액션·수정됨)이 있으면 그 높이만큼 아래 여백을 늘려 다음 메시지와 겹치지 않게 처리.
   const rowSpacing =
-    reactions.length > 0 ? "mb-10" : message.editedAt ? "mb-7" : showMeta ? "mb-2" : "mb-1";
+    reactions.length > 0 ? "mb-9" : message.editedAt ? "mb-6" : showMeta ? "mb-2" : "mb-1";
   const bubble = (
     <div
       ref={bubbleRef}
