@@ -1,7 +1,7 @@
 "use client";
 
-import { Eye, EyeOff } from "lucide-react";
-import { FormEvent, KeyboardEvent, useState, type RefObject } from "react";
+import { ChevronDown, Eye, EyeOff } from "lucide-react";
+import { FormEvent, useState, type RefObject } from "react";
 import { Tooltip } from "@/components/common/tooltip";
 import { LoadingInline } from "@/components/common/loading";
 import { CustomCheckbox } from "@/components/common/custom-checkbox";
@@ -62,56 +62,33 @@ export function LoginForm({ onToast, onLogin, emailInputRef }: LoginFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   // 토스트와 함께 어느 입력값을 수정해야 하는지 칸 아래 문구로도 표시.
   const [fieldErrors, setFieldErrors] = useState<LoginFieldError>({});
-  // 도메인 추천 목록 표시 여부와 키보드로 고른 항목.
-  const [isDomainListOpen, setIsDomainListOpen] = useState(false);
-  const [domainHighlight, setDomainHighlight] = useState(0);
+  // 이메일은 아이디 · @ · 도메인으로 나눠 입력. 도메인은 드롭다운에서 고르거나 직접 침.
+  const [emailDomain, setEmailDomain] = useState("");
+  // 드롭다운에서 고른 값. "" 이면 직접 입력 상태.
+  const [selectedDomain, setSelectedDomain] = useState("");
   const [isCapsLockOn, setIsCapsLockOn] = useState(false);
 
-  // "@" 뒤 입력과 앞부분이 맞는 도메인만 추천. 이미 완성한 도메인은 제외.
-  const atIndex = email.indexOf("@");
-  const domainPart = atIndex === -1 ? null : email.slice(atIndex + 1);
-  const domainSuggestions =
-    domainPart === null
-      ? []
-      : emailDomains.filter((domain) => domain.startsWith(domainPart) && domain !== domainPart);
-  const showDomainList = isDomainListOpen && domainSuggestions.length > 0;
+  const clearEmailError = () => setFieldErrors((current) => ({ ...current, email: undefined }));
 
-  const applyDomain = (domain: string) => {
-    setEmail(`${email.slice(0, atIndex)}@${domain}`);
-    setIsDomainListOpen(false);
-    setFieldErrors((current) => ({ ...current, email: undefined }));
-  };
-
-  const handleEmailKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (!showDomainList) return;
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      setDomainHighlight((index) => (index + 1) % domainSuggestions.length);
-    } else if (event.key === "ArrowUp") {
-      event.preventDefault();
-      setDomainHighlight(
-        (index) => (index - 1 + domainSuggestions.length) % domainSuggestions.length,
-      );
-    } else if (event.key === "Enter" || event.key === "Tab") {
-      // 목록이 열려 있으면 Enter는 제출이 아니라 도메인 선택.
-      event.preventDefault();
-      applyDomain(domainSuggestions[Math.min(domainHighlight, domainSuggestions.length - 1)]);
-    } else if (event.key === "Escape") {
-      setIsDomainListOpen(false);
-    }
+  const selectDomain = (domain: string) => {
+    setSelectedDomain(domain);
+    setEmailDomain(domain);
+    clearEmailError();
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     // 폼 제출로 페이지가 새로고침되는 기본 동작을 막음.
     event.preventDefault();
 
-    const normalizedEmail = email.trim();
+    const normalizedEmail = `${email.trim()}@${emailDomain.trim()}`;
     const nextFieldErrors: LoginFieldError = {
-      email: !normalizedEmail
-        ? "이메일을 입력해 주세요."
-        : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
-          ? "올바른 이메일 주소 형식이 아닙니다."
-          : undefined,
+      email: !email.trim()
+        ? "이메일 아이디를 입력해 주세요."
+        : !emailDomain.trim()
+          ? "이메일 도메인을 입력하거나 선택해 주세요."
+          : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
+            ? "올바른 이메일 주소 형식이 아닙니다."
+            : undefined,
       password: !password ? "비밀번호를 입력해 주세요." : undefined,
     };
 
@@ -152,59 +129,70 @@ export function LoginForm({ onToast, onLogin, emailInputRef }: LoginFormProps) {
 
       {/* noValidate로 브라우저 기본 팝업을 끄고 프로젝트 토스트 UX만 사용. */}
       <form className="space-y-4" noValidate onSubmit={handleSubmit}>
-        <label className="block">
-          <span className="mb-2 block text-sm font-medium text-slate-700">이메일</span>
-          <span className="relative block">
+        <div>
+          <label htmlFor="login-email-id" className="mb-2 block text-sm font-medium text-slate-700">
+            이메일
+          </label>
+          {/* 아이디 · @ · 도메인. 도메인은 오른쪽 드롭다운에서 고르면 채워지고, "직접 입력"이면 자유롭게 침. */}
+          <div className="flex items-center gap-1.5">
             <input
+              id="login-email-id"
               ref={emailInputRef}
-              type="email"
+              type="text"
               value={email}
               autoFocus
               onChange={(event) => {
                 setEmail(event.target.value);
-                setIsDomainListOpen(true);
-                setDomainHighlight(0);
-                setFieldErrors((current) => ({ ...current, email: undefined }));
+                clearEmailError();
               }}
-              onKeyDown={handleEmailKeyDown}
-              onFocus={() => setIsDomainListOpen(true)}
-              // 목록 항목 클릭이 먼저 처리되도록 닫기는 한 박자 늦춤.
-              onBlur={() => setTimeout(() => setIsDomainListOpen(false), 120)}
-              placeholder="이메일을 입력해 주세요"
-              autoComplete="email"
+              placeholder="아이디"
+              autoComplete="username"
               disabled={isSubmitting}
               aria-invalid={Boolean(fieldErrors.email) || undefined}
-              aria-autocomplete="list"
-              className={inputClassName(Boolean(fieldErrors.email))}
+              className={`${inputClassName(Boolean(fieldErrors.email))} min-w-0 flex-[1.1]`}
             />
-            {showDomainList && (
-              <ul
-                role="listbox"
+            <span className="shrink-0 text-sm font-semibold text-slate-400">@</span>
+            <input
+              type="text"
+              value={emailDomain}
+              onChange={(event) => {
+                setEmailDomain(event.target.value);
+                // 손으로 고치면 드롭다운은 직접 입력 상태로 돌아감.
+                setSelectedDomain("");
+                clearEmailError();
+              }}
+              placeholder="도메인"
+              aria-label="이메일 도메인"
+              disabled={isSubmitting}
+              aria-invalid={Boolean(fieldErrors.email) || undefined}
+              className={`${inputClassName(Boolean(fieldErrors.email))} min-w-0 flex-1`}
+            />
+            <span className="relative shrink-0">
+              <select
+                value={selectedDomain}
+                onChange={(event) => selectDomain(event.target.value)}
                 aria-label="이메일 도메인 선택"
-                className="absolute left-0 right-0 top-full z-10 mt-1 overflow-hidden rounded-lg border border-slate-200 bg-white py-1 text-sm shadow-lg"
+                disabled={isSubmitting}
+                className="h-12 w-11 cursor-pointer appearance-none rounded-lg border border-slate-300 bg-white text-transparent outline-none transition hover:border-blue-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
               >
-                {domainSuggestions.map((domain, index) => (
-                  <li key={domain} role="option" aria-selected={index === domainHighlight}>
-                    <button
-                      type="button"
-                      tabIndex={-1}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onMouseEnter={() => setDomainHighlight(index)}
-                      onClick={() => applyDomain(domain)}
-                      className={`flex w-full cursor-pointer items-center px-3.5 py-2 text-left ${index === domainHighlight ? "bg-blue-50 text-blue-700" : "text-slate-700"}`}
-                    >
-                      <span className="text-slate-400">{email.slice(0, atIndex)}@</span>
-                      <span className="font-medium">{domain}</span>
-                    </button>
-                  </li>
+                <option value="">직접 입력</option>
+                {emailDomains.map((domain) => (
+                  <option key={domain} value={domain}>
+                    {domain}
+                  </option>
                 ))}
-              </ul>
-            )}
-          </span>
+              </select>
+              <ChevronDown
+                size={16}
+                aria-hidden="true"
+                className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-slate-500"
+              />
+            </span>
+          </div>
           {fieldErrors.email && fieldErrors.email.trim() && (
             <span className="mt-1.5 block text-xs text-red-600">{fieldErrors.email}</span>
           )}
-        </label>
+        </div>
 
         <label className="block">
           <span className="mb-2 block text-sm font-medium text-slate-700">비밀번호</span>
