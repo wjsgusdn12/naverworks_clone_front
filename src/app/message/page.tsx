@@ -54,7 +54,6 @@ import {
   addressBookApi,
   type AddressBookMember,
   type AddressBookMemberDetail,
-  type PresenceStatus,
 } from "@/lib/api/address-book-api";
 import { markAuthenticationRequired } from "@/lib/auth-required-notice";
 import { connectChatRoom } from "@/lib/realtime/chat-realtime";
@@ -296,14 +295,10 @@ function MessageContent() {
       new Map(
         contactMembers.map((contact) => [
           contact.membershipId,
-          presenceByMembershipId[contact.membershipId] === undefined
+          presenceByMembershipId[contact.membershipId] === undefined ||
+          contact.presenceStatus === "INACTIVE"
             ? contact
-            : {
-                ...contact,
-                presenceStatus: presenceByMembershipId[contact.membershipId]
-                  ? "ONLINE"
-                  : ("OFFLINE" as PresenceStatus),
-              },
+            : { ...contact, presenceStatus: presenceByMembershipId[contact.membershipId] },
         ]),
       ),
     [contactMembers, presenceByMembershipId],

@@ -4,6 +4,7 @@ import { MessageNotificationToast } from "@/components/common/message-notificati
 import { useAuth } from "@/components/auth/auth-provider";
 import { chatApi, type ChatRoom } from "@/lib/api/chat-api";
 import { connectChatNotification, type PresenceRealtimeEvent } from "@/lib/realtime/chat-realtime";
+import type { PresenceStatus } from "@/lib/api/address-book-api";
 import { notificationApi, type NotificationItem } from "@/lib/api/notification-api";
 import {
   createContext,
@@ -25,7 +26,8 @@ type ChatNotificationContextValue = {
   notificationsLoaded: boolean;
   notificationEnabled: boolean;
   notificationMode: "ALL" | "MENTION" | "NONE";
-  presenceByMembershipId: Record<number, boolean>;
+  // WebSocket으로 받은 구성원별 최신 접속 상태(ONLINE/OFFLINE/AWAY). REST 조회 결과 위에 덮어씀.
+  presenceByMembershipId: Record<number, PresenceStatus>;
   activeChatRoomId: number | null;
   acknowledgeNotifications: () => void;
   markNotificationRead: (notificationId: number) => void;
@@ -51,7 +53,9 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
   });
   const [activeChatRoomId, setActiveChatRoomId] = useState<number | null>(null);
   const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
-  const [presenceByMembershipId, setPresenceByMembershipId] = useState<Record<number, boolean>>({});
+  const [presenceByMembershipId, setPresenceByMembershipId] = useState<
+    Record<number, PresenceStatus>
+  >({});
   const roomRef = useRef<ChatRoom[]>([]);
   const refreshRequestRef = useRef<{ token: string; promise: Promise<ChatRoom[]> } | null>(null);
   const activeChatRoomIdRef = useRef<number | null>(null);
@@ -244,7 +248,7 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
       onPresenceChanged: (event: PresenceRealtimeEvent) => {
         setPresenceByMembershipId((current) => ({
           ...current,
-          [event.membershipId]: event.online,
+          [event.membershipId]: event.status,
         }));
       },
       // 재연결로 같은 알림이 두 번 와도 목록에는 한 번만 남김.
@@ -314,7 +318,7 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
         <MessageNotificationToast
           key={messageNotification.id}
           notification={messageNotification}
-          senderOnline={presenceByMembershipId[messageNotification.senderMembershipId] ?? false}
+          senderOnline={presenceByMembershipId[messageNotification.senderMembershipId] === "ONLINE"}
           onClose={dismissMessageNotification}
           onOpenChatRoom={(notificationId, chatRoomId) => {
             markNotificationRead(notificationId);

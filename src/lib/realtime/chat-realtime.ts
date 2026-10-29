@@ -56,6 +56,8 @@ export type PresenceRealtimeEvent = {
   type: "PRESENCE_CHANGED";
   membershipId: number;
   online: boolean;
+  // 부재중까지 반영한 화면 표시용 상태.
+  status: "ONLINE" | "OFFLINE" | "AWAY";
 };
 
 const websocketUrl = () => {

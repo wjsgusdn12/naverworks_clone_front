@@ -75,10 +75,11 @@ export default function AddressBookPage() {
   const displayMembers = useMemo(
     () =>
       members.map((target) => {
-        const online = presenceByMembershipId[target.membershipId];
-        return online === undefined
+        const live = presenceByMembershipId[target.membershipId];
+        // 비활성 계정은 실시간 이벤트와 무관하게 그대로 둠.
+        return live === undefined || target.presenceStatus === "INACTIVE"
           ? target
-          : { ...target, presenceStatus: online ? ("ONLINE" as const) : ("OFFLINE" as const) };
+          : { ...target, presenceStatus: live };
       }),
     [members, presenceByMembershipId],
   );
