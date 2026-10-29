@@ -20,6 +20,7 @@ import {
   CalendarDays,
   Check,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Clock3,
   ExternalLink,
@@ -44,6 +45,16 @@ import {
 
 type AddressBookView = "favorite" | "group" | "company" | "department";
 
+// 구성원 목록 한 페이지 크기.
+const MEMBER_PAGE_SIZE = 20;
+
+// 현재 페이지 주변으로 최대 5개의 번호만 보여 줌.
+const visiblePages = (page: number, totalPages: number) => {
+  const start = Math.max(0, Math.min(page - 2, totalPages - 5));
+  const end = Math.min(totalPages, start + 5);
+  return Array.from({ length: end - start }, (_, index) => start + index);
+};
+
 const statusClassName = {
   ONLINE: "bg-emerald-500",
   OFFLINE: "bg-slate-300",
@@ -67,6 +78,9 @@ export default function AddressBookPage() {
   const [members, setMembers] = useState<AddressBookMember[]>([]);
   // 제목 옆 인원수. 50명씩 끊어 받으므로 목록 길이 대신 서버의 전체 건수를 사용.
   const [memberTotal, setMemberTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  // 페이지 번호를 당시 필터 키와 함께 저장해, 보기·정렬·검색이 바뀌면 자동으로 1페이지로 돌아감.
+  const [pageState, setPageState] = useState({ key: "", page: 0 });
   const [selectedMember, setSelectedMember] = useState<AddressBookMemberDetail | null>(null);
   const [keyword, setKeyword] = useState("");
   const [executedKeyword, setExecutedKeyword] = useState("");
@@ -109,9 +123,18 @@ export default function AddressBookPage() {
     }
   };
 
+  const filterKey = [view, companyId, departmentId, sort, direction, executedKeyword].join("|");
+  const page = pageState.key === filterKey ? pageState.page : 0;
+  const changePage = (nextPage: number) => setPageState({ key: filterKey, page: nextPage });
+
   const loadMembers = useCallback(async () => {
     if (!accessToken) return;
-    const parameters = new URLSearchParams({ page: "0", size: "50", sort, direction });
+    const parameters = new URLSearchParams({
+      page: String(page),
+      size: String(MEMBER_PAGE_SIZE),
+      sort,
+      direction,
+    });
     if (executedKeyword.trim()) parameters.set("keyword", executedKeyword.trim());
     if (view !== "favorite" && companyId) parameters.set("companyId", String(companyId));
     if (view === "department" && departmentId) parameters.set("departmentId", String(departmentId));
@@ -119,7 +142,8 @@ export default function AddressBookPage() {
     const result = await addressBookApi.member(accessToken, parameters);
     setMembers(result.content);
     setMemberTotal(result.totalElements);
-  }, [accessToken, companyId, departmentId, direction, executedKeyword, sort, view]);
+    setTotalPages(Math.max(result.totalPages, 1));
+  }, [accessToken, companyId, departmentId, direction, executedKeyword, page, sort, view]);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -386,12 +410,18 @@ export default function AddressBookPage() {
   const selectedCompany = organizations.find(
     (organization) => organization.companyId === companyId,
   );
+  const selectedDepartment = selectedCompany?.departments.find(
+    (department) => department.id === departmentId,
+  );
+  // 부서를 고른 상태면 회사명 대신 부서명을 제목으로 사용.
   const sectionTitle =
     view === "favorite"
       ? "즐겨찾기"
       : view === "group"
         ? "그룹"
-        : selectedCompany?.companyName || "주소록";
+        : view === "department" && selectedDepartment
+          ? selectedDepartment.name
+          : selectedCompany?.companyName || "주소록";
 
   const selectCompany = (targetCompanyId: number) => {
     setCompanyId(targetCompanyId);
@@ -714,6 +744,39 @@ export default function AddressBookPage() {
                     <p className="p-12 text-center text-sm text-slate-500">
                       표시할 구성원이 없습니다.
                     </p>
+                  )}
+                  {memberTotal > 0 && (
+                    <nav
+                      aria-label="구성원 목록 페이지"
+                      className="flex items-center justify-center gap-1 py-5 text-sm"
+                    >
+                      <button
+                        disabled={page === 0}
+                        aria-label="이전 페이지"
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition enabled:cursor-pointer enabled:hover:bg-slate-100 enabled:hover:text-slate-900 disabled:opacity-30"
+                        onClick={() => changePage(page - 1)}
+                      >
+                        <ChevronLeft size={16} aria-hidden="true" />
+                      </button>
+                      {visiblePages(page, totalPages).map((target) => (
+                        <button
+                          key={target}
+                          aria-current={target === page ? "page" : undefined}
+                          className={`h-8 min-w-8 cursor-pointer rounded-md px-2 font-medium transition ${target === page ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"}`}
+                          onClick={() => changePage(target)}
+                        >
+                          {target + 1}
+                        </button>
+                      ))}
+                      <button
+                        disabled={page >= totalPages - 1}
+                        aria-label="다음 페이지"
+                        className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition enabled:cursor-pointer enabled:hover:bg-slate-100 enabled:hover:text-slate-900 disabled:opacity-30"
+                        onClick={() => changePage(page + 1)}
+                      >
+                        <ChevronRight size={16} aria-hidden="true" />
+                      </button>
+                    </nav>
                   )}
                 </div>
                 {selectedMember && (
