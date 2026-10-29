@@ -89,6 +89,8 @@ type GlobalHeaderProps = {
   onCloseProfileMenu?: () => void;
   isProfileMenuOpen?: boolean;
   onLogout?: () => void;
+  // 프로필 메뉴에서 로그아웃 위에 보여 줄 추가 항목(복구 코드, 초대 코드 등).
+  profileMenuItems?: { label: string; onClick: () => void }[];
   profileLabel?: string;
   profileName?: string;
   isAuthenticated?: boolean;
@@ -106,6 +108,7 @@ export function GlobalHeader({
   onCloseProfileMenu,
   isProfileMenuOpen = false,
   onLogout,
+  profileMenuItems = [],
   profileLabel = "내 프로필",
   profileName = "",
   isAuthenticated = false,
@@ -358,6 +361,16 @@ export function GlobalHeader({
                   <div className="absolute right-0 top-11 z-[60] w-44 rounded-lg border border-slate-200 bg-white p-1.5 text-slate-800 shadow-lg">
                     {/* 로그인 API에서 받은 사용자 이름과 역할을 표시. */}
                     <p className="px-3 py-2 text-xs text-slate-500">{profileLabel}</p>
+                    {profileMenuItems.map((item) => (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={item.onClick}
+                        className="w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm font-medium transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-blue-600"
+                      >
+                        {item.label}
+                      </button>
+                    ))}
                     <button
                       type="button"
                       onClick={onLogout}
