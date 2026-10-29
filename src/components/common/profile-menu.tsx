@@ -3,6 +3,7 @@
 import {
   ArrowLeftRight,
   Check,
+  ChevronDown,
   ChevronRight,
   Copy,
   KeyRound,
@@ -10,7 +11,7 @@ import {
   Ticket,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import { CompanyMoveDialog } from "@/components/common/company-move-dialog";
@@ -54,8 +55,55 @@ export function ProfileMenu({
   const [copiedLoginId, setCopiedLoginId] = useState(false);
   const [savedStatus, setSavedStatus] = useState<MemberStatus | null>(null);
   const [isStatusSaving, setIsStatusSaving] = useState(false);
-  // 상태 설정 목록 펼침 여부.
-  const [isStatusOpen, setIsStatusOpen] = useState(false);
+  // 상태 드롭다운을 띄울 화면 위치. null이면 닫힘.
+  const [statusAnchor, setStatusAnchor] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
+  const statusButtonRef = useRef<HTMLButtonElement>(null);
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
+
+  // 드롭다운 바깥을 누르거나 Esc를 누르면 드롭다운만 닫음(프로필 패널은 유지).
+  useEffect(() => {
+    if (!statusAnchor) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (statusDropdownRef.current?.contains(target) || statusButtonRef.current?.contains(target))
+        return;
+      setStatusAnchor(null);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      // 패널까지 닫히지 않도록 여기서 멈춤.
+      event.stopImmediatePropagation();
+      setStatusAnchor(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    // 상단바의 Esc 처리보다 먼저 받도록 캡처 단계에서 등록.
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [statusAnchor]);
+
+  // 패널이 닫히면 드롭다운 위치도 잊음. 렌더 중 이전 값과 비교해 맞춤.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (wasOpen !== open) {
+    setWasOpen(open);
+    if (!open) setStatusAnchor(null);
+  }
+
+  const toggleStatusDropdown = () => {
+    if (statusAnchor) {
+      setStatusAnchor(null);
+      return;
+    }
+    const rect = statusButtonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setStatusAnchor({ top: rect.bottom + 6, left: rect.left, width: rect.width });
+  };
 
   const membershipId = member?.membershipId;
   // 내 상태는 서버에서 한 번 읽고, 이후 WebSocket 이벤트(다른 탭에서 바꾼 경우 등)로 갱신.
@@ -98,7 +146,7 @@ export function ProfileMenu({
         until ? until.toISOString() : undefined,
       );
       setSavedStatus(next);
-      setIsStatusOpen(false);
+      setStatusAnchor(null);
       const text = formatMemberStatus(next.statusType, next.statusUntil);
       toast(text ? `상태를 '${text}'(으)로 설정했습니다.` : "상태 설정을 해제했습니다.");
     } catch (error) {
@@ -187,17 +235,20 @@ export function ProfileMenu({
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {/* 상태 설정. 줄을 누르면 목록이 펼쳐짐. */}
-            <div className="mx-5 border-t border-slate-100 py-2">
+          {/* 패널 안을 스크롤하면 떠 있는 상태 드롭다운 위치가 어긋나므로 닫음. */}
+          <div className="min-h-0 flex-1 overflow-y-auto" onScroll={() => setStatusAnchor(null)}>
+            {/* 상태 설정. 줄을 누르면 바로 아래에 드롭다운 창이 떠서 목록을 보여 줌. */}
+            <div className="mx-5 flex items-center gap-3 border-t border-slate-100 py-3">
+              <span className="w-12 shrink-0 text-xs text-slate-400">상태</span>
               <button
+                ref={statusButtonRef}
                 type="button"
-                aria-expanded={isStatusOpen}
+                aria-haspopup="dialog"
+                aria-expanded={statusAnchor !== null}
                 disabled={savedStatus === null && liveStatus === undefined}
-                onClick={() => setIsStatusOpen((open) => !open)}
-                className="-mx-2 flex w-[calc(100%+1rem)] cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-slate-50 disabled:cursor-default"
+                onClick={toggleStatusDropdown}
+                className={`flex h-9 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg border bg-white px-3 text-left text-sm transition disabled:cursor-default disabled:bg-slate-50 ${statusAnchor ? "border-blue-600 ring-4 ring-blue-100" : "border-slate-300 hover:border-blue-400"}`}
               >
-                <span className="w-12 shrink-0 text-xs text-slate-400">상태</span>
                 {currentOption && CurrentIcon ? (
                   <span
                     className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${currentOption.className}`}
@@ -210,14 +261,26 @@ export function ProfileMenu({
                 <span className="min-w-0 flex-1 truncate text-slate-800">
                   {formatMemberStatus(statusType, statusUntil) ?? "설정 안 함"}
                 </span>
-                <ChevronRight
+                <ChevronDown
                   size={16}
                   aria-hidden="true"
-                  className={`shrink-0 text-slate-300 transition ${isStatusOpen ? "rotate-90" : ""}`}
+                  className={`shrink-0 text-slate-500 transition ${statusAnchor ? "rotate-180" : ""}`}
                 />
               </button>
-              {isStatusOpen && (
-                <div className="pt-2">
+              {statusAnchor && (
+                // 패널 스크롤 영역에 잘리지 않도록 화면 기준(fixed)으로 버튼 바로 아래에 띄움.
+                <div
+                  ref={statusDropdownRef}
+                  role="dialog"
+                  aria-label="상태 설정"
+                  style={{
+                    top: statusAnchor.top,
+                    left: statusAnchor.left,
+                    width: statusAnchor.width,
+                    maxHeight: `calc(100vh - ${statusAnchor.top + 16}px)`,
+                  }}
+                  className="fixed z-[70] animate-in fade-in zoom-in-95 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-xl"
+                >
                   <StatusSetting
                     // 저장 후 바뀐 값으로 목록을 새로 그림.
                     key={`${statusType}-${statusUntil}`}
