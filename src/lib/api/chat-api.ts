@@ -49,7 +49,7 @@ export type ChatMessage = {
   forwarded: boolean;
 };
 
-// 방 상단에 고정하는 공지. 방당 하나.
+// 방 상단에 고정하는 공지. 방당 여러 개, 최근 등록이 앞.
 export type ChatNotice = {
   messageId: number;
   senderName: string;
@@ -98,7 +98,7 @@ export type ChatRoomDetail = {
   memberIds: number[];
   members: ChatMemberProfile[];
   readCursors: ChatReadCursor[];
-  notice: ChatNotice | null;
+  notices: ChatNotice[];
 };
 
 const apiBaseUrl = () => {
@@ -256,17 +256,19 @@ export const chatApi = {
       token,
       { method: "POST", body: JSON.stringify({ targetChatRoomIds }) },
     ),
-  // 공지 등록(기존 공지 교체)과 해제.
+  // 공지 등록과 내리기. 둘 다 바뀐 뒤의 공지 목록 전체를 돌려줌.
   updateNotice: (token: string, roomId: number, messageId: number) =>
-    request<ChatNotice>(
+    request<ChatNotice[]>(
       `/api/v1/chatRoom/notice/update?chatRoomId=${roomId}&messageId=${messageId}`,
       token,
       { method: "POST" },
     ),
-  removeNotice: (token: string, roomId: number) =>
-    request<void>(`/api/v1/chatRoom/notice/remove?chatRoomId=${roomId}`, token, {
-      method: "POST",
-    }),
+  removeNotice: (token: string, roomId: number, messageId: number) =>
+    request<ChatNotice[]>(
+      `/api/v1/chatRoom/notice/remove?chatRoomId=${roomId}&messageId=${messageId}`,
+      token,
+      { method: "POST" },
+    ),
   // 메시지에 리액션한 사람 전체(이모지 구분 없음, 누른 순서).
   reactionMembers: (token: string, roomId: number, messageId: number) =>
     request<ChatReactionMember[]>(

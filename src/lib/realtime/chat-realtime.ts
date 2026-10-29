@@ -38,11 +38,11 @@ export type ChatReactionEvent = {
   action: "added" | "removed";
 };
 
-// 공지 등록·교체·해제. notice가 null이면 공지 띠를 내림.
+// 공지 등록·내리기 뒤의 공지 목록 전체. 빈 배열이면 공지 없음.
 export type ChatNoticeEvent = {
   type: "NOTICE_UPDATED";
   chatRoomId: number;
-  notice: ChatNotice | null;
+  notices: ChatNotice[];
 };
 
 type ChatReadEvent = {
