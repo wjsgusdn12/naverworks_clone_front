@@ -7,6 +7,14 @@ import { LoadingInline } from "@/components/common/loading";
 import { loginInputClassName } from "@/components/login/login-form";
 import { formatPhoneNumber } from "@/lib/phone-format";
 import {
+  defaultDepartmentId,
+  defaultJobGradeId,
+  fallbackSignupOptions,
+  toJoinTypeOptions,
+  toSelectOptions,
+  type JoinTypeChoice,
+} from "@/lib/signup-options";
+import {
   authApi,
   type SignupInput,
   type SignupJoinType,
@@ -36,7 +44,7 @@ type SignupFormProps = {
 };
 
 // 소속 선택지. 기본은 체험 회사 참여.
-const joinTypes: { key: SignupJoinType; label: string; description: string }[] = [
+const joinTypes: JoinTypeChoice[] = [
   {
     key: "DEMO",
     label: "체험 회사 참여",
@@ -73,22 +81,26 @@ export function SignupForm({ onToast, onSignedUp, onBackToLogin }: SignupFormPro
   const [fieldErrors, setFieldErrors] = useState<SignupFieldError>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 체험 회사의 부서·직급 목록. 실패해도 가입 자체는 가능(미지정으로).
+  // 체험 회사의 부서·직급 목록. 불러오면 첫 부서·사원을 기본으로 골라 둠. 실패해도 가입 자체는 가능(서버가 기본값을 넣음).
   useEffect(() => {
     let cancelled = false;
     authApi
       .signupOptions()
       .then((result) => {
-        if (!cancelled) setOptions(result);
+        if (cancelled) return;
+        setOptions(result);
+        setDepartmentId(defaultDepartmentId(result));
+        setJobGradeId(defaultJobGradeId(result));
       })
       .catch(() => {
-        if (!cancelled)
-          setOptions({ demoCompanyName: "체험 회사", departments: [], jobGrades: [] });
+        if (!cancelled) setOptions(fallbackSignupOptions);
       });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  const selectedJoinType = joinTypes.find((type) => type.key === joinType) ?? joinTypes[0];
 
   const clearError = (key: keyof SignupFieldError) =>
     setFieldErrors((current) => ({ ...current, [key]: undefined }));
@@ -241,58 +253,40 @@ export function SignupForm({ onToast, onSignedUp, onBackToLogin }: SignupFormPro
           />
         </Field>
 
-        {/* 소속 선택 */}
-        <fieldset>
-          <legend className="mb-2 block text-sm font-medium text-slate-700">소속</legend>
-          <div className="grid gap-2">
-            {joinTypes.map((type) => (
-              <label
-                key={type.key}
-                className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3.5 py-3 transition ${joinType === type.key ? "border-blue-600 bg-blue-50/60 ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-300"}`}
-              >
-                <input
-                  type="radio"
-                  name="joinType"
-                  value={type.key}
-                  checked={joinType === type.key}
-                  onChange={() => setJoinType(type.key)}
-                  disabled={isSubmitting}
-                  className="mt-1 accent-blue-600"
-                />
-                <span>
-                  <span className="block text-sm font-semibold text-slate-900">
-                    {type.label}
-                    {type.key === "DEMO" && options && (
-                      <span className="ml-1.5 text-xs font-medium text-slate-500">
-                        · {options.demoCompanyName}
-                      </span>
-                    )}
-                  </span>
-                  <span className="mt-0.5 block text-xs text-slate-500">{type.description}</span>
-                </span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        {/* 소속 선택. 고른 방식의 설명을 아래에 보여 줌. */}
+        <div className="block">
+          <span className="mb-2 block text-sm font-medium text-slate-700">소속</span>
+          <CustomSelect
+            label="소속"
+            value={joinType}
+            onChange={(value) => setJoinType(value as SignupJoinType)}
+            options={toJoinTypeOptions(joinTypes)}
+            disabled={isSubmitting}
+          />
+          <span className="mt-1.5 block text-xs text-slate-500">
+            {selectedJoinType.description}
+            {joinType === "DEMO" && options && ` (${options.demoCompanyName})`}
+          </span>
+        </div>
 
         {joinType === "DEMO" && (
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="부서 (선택)">
+            <Field label="부서">
               <CustomSelect
                 label="부서"
                 value={departmentId}
                 onChange={setDepartmentId}
-                placeholder="미지정"
+                placeholder="불러오는 중..."
                 options={toSelectOptions(options?.departments ?? [])}
                 disabled={isSubmitting || options === null}
               />
             </Field>
-            <Field label="직급 (선택)">
+            <Field label="직급">
               <CustomSelect
                 label="직급"
                 value={jobGradeId}
                 onChange={setJobGradeId}
-                placeholder="미지정"
+                placeholder="불러오는 중..."
                 options={toSelectOptions(options?.jobGrades ?? [])}
                 disabled={isSubmitting || options === null}
               />
@@ -398,9 +392,3 @@ function Field({ label, error, children }: { label: string; error?: string; chil
     </label>
   );
 }
-
-// 서버의 {id, name} 목록을 공통 드롭다운 항목으로. 맨 앞은 "미지정".
-const toSelectOptions = (items: { id: number; name: string }[]) => [
-  { value: "", label: "미지정" },
-  ...items.map((item) => ({ value: String(item.id), label: item.name })),
-];

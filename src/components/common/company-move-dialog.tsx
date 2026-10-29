@@ -6,6 +6,14 @@ import { CustomSelect } from "@/components/common/custom-select";
 import { LoadingInline } from "@/components/common/loading";
 import { loginInputClassName } from "@/components/login/login-form";
 import {
+  defaultDepartmentId,
+  defaultJobGradeId,
+  fallbackSignupOptions,
+  toJoinTypeOptions,
+  toSelectOptions,
+  type JoinTypeChoice,
+} from "@/lib/signup-options";
+import {
   authApi,
   type AuthTokenResponse,
   type SignupJoinType,
@@ -24,7 +32,7 @@ type CompanyMoveDialogProps = {
   onClose: () => void;
 };
 
-const joinTypes: { key: SignupJoinType; label: string; description: string }[] = [
+const joinTypes: JoinTypeChoice[] = [
   {
     key: "NEW_COMPANY",
     label: "새 회사 만들기",
@@ -59,22 +67,26 @@ export function CompanyMoveDialog({
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 체험 회사 선택지용 부서·직급. 실패해도 미지정으로 진행 가능.
+  // 체험 회사 선택지용 부서·직급. 불러오면 첫 부서·사원을 기본으로 골라 둠. 실패해도 서버가 기본값을 넣어 진행 가능.
   useEffect(() => {
     let cancelled = false;
     authApi
       .signupOptions()
       .then((result) => {
-        if (!cancelled) setOptions(result);
+        if (cancelled) return;
+        setOptions(result);
+        setDepartmentId(defaultDepartmentId(result));
+        setJobGradeId(defaultJobGradeId(result));
       })
       .catch(() => {
-        if (!cancelled)
-          setOptions({ demoCompanyName: "체험 회사", departments: [], jobGrades: [] });
+        if (!cancelled) setOptions(fallbackSignupOptions);
       });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  const selectedJoinType = joinTypes.find((type) => type.key === joinType) ?? joinTypes[0];
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -115,11 +127,6 @@ export function CompanyMoveDialog({
     }
   };
 
-  const toOptions = (items: { id: number; name: string }[]) => [
-    { value: "", label: "미지정" },
-    ...items.map((item) => ({ value: String(item.id), label: item.name })),
-  ];
-
   return (
     <div
       role="dialog"
@@ -157,37 +164,22 @@ export function CompanyMoveDialog({
           방장인 그룹방은 다른 구성원에게 넘어갑니다. 되돌릴 수 없습니다.
         </p>
 
-        <div className="mt-4 grid gap-2">
-          {joinTypes.map((type) => (
-            <label
-              key={type.key}
-              className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3.5 py-3 transition ${joinType === type.key ? "border-blue-600 bg-blue-50/60 ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-300"}`}
-            >
-              <input
-                type="radio"
-                name="moveJoinType"
-                value={type.key}
-                checked={joinType === type.key}
-                onChange={() => {
-                  setJoinType(type.key);
-                  setError(null);
-                }}
-                disabled={isSubmitting}
-                className="mt-1 accent-blue-600"
-              />
-              <span>
-                <span className="block text-sm font-semibold text-slate-900">
-                  {type.label}
-                  {type.key === "DEMO" && options && (
-                    <span className="ml-1.5 text-xs font-medium text-slate-500">
-                      · {options.demoCompanyName}
-                    </span>
-                  )}
-                </span>
-                <span className="mt-0.5 block text-xs text-slate-500">{type.description}</span>
-              </span>
-            </label>
-          ))}
+        <div className="mt-4">
+          <span className="mb-2 block text-sm font-medium text-slate-700">옮길 방법</span>
+          <CustomSelect
+            label="옮길 방법"
+            value={joinType}
+            onChange={(value) => {
+              setJoinType(value as SignupJoinType);
+              setError(null);
+            }}
+            options={toJoinTypeOptions(joinTypes)}
+            disabled={isSubmitting}
+          />
+          <span className="mt-1.5 block text-xs text-slate-500">
+            {selectedJoinType.description}
+            {joinType === "DEMO" && options && ` (${options.demoCompanyName})`}
+          </span>
         </div>
 
         <div className="mt-4">
@@ -227,16 +219,16 @@ export function CompanyMoveDialog({
                 label="부서"
                 value={departmentId}
                 onChange={setDepartmentId}
-                options={toOptions(options?.departments ?? [])}
-                placeholder="부서 (선택)"
+                options={toSelectOptions(options?.departments ?? [])}
+                placeholder="부서 불러오는 중..."
                 disabled={isSubmitting || options === null}
               />
               <CustomSelect
                 label="직급"
                 value={jobGradeId}
                 onChange={setJobGradeId}
-                options={toOptions(options?.jobGrades ?? [])}
-                placeholder="직급 (선택)"
+                options={toSelectOptions(options?.jobGrades ?? [])}
+                placeholder="직급 불러오는 중..."
                 disabled={isSubmitting || options === null}
               />
             </div>
