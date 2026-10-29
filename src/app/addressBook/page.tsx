@@ -1089,6 +1089,30 @@ const groupTabs: { key: GroupTab; label: string }[] = [
   { key: "owner", label: "내가 마스터인 그룹" },
 ];
 
+type GroupSortKey = "name" | "memberCount" | "lastMessageAt" | "createdAt";
+const groupColumns: [GroupSortKey, string][] = [
+  ["name", "그룹명"],
+  ["memberCount", "멤버수"],
+  ["lastMessageAt", "마지막 대화"],
+  ["createdAt", "그룹 생성일"],
+];
+
+// 정렬 비교. 날짜는 문자열(ISO) 비교로 충분하고, 대화가 없는 방은 가장 뒤로 보냄.
+const compareGroups = (a: ChatGroupSummary, b: ChatGroupSummary, key: GroupSortKey) => {
+  if (key === "name") return (a.name ?? "").localeCompare(b.name ?? "", "ko");
+  if (key === "memberCount") return a.memberCount - b.memberCount;
+  const left = a[key] ?? "";
+  const right = b[key] ?? "";
+  return left < right ? -1 : left > right ? 1 : 0;
+};
+
+const formatDate = (value: string) =>
+  new Date(value).toLocaleDateString("ko-KR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+
 const formatGroupDate = (value: string | null) => {
   if (!value) return "대화 없음";
   const date = new Date(value);
@@ -1132,13 +1156,36 @@ function GroupPanel({
     };
   }, [accessToken, showToast]);
 
-  const visible = (groups ?? []).filter((group) =>
-    tab === "all" ? true : tab === "joined" ? group.joined : group.owner,
-  );
+  // 정렬 상태. 이름은 가나다순, 나머지는 큰 값이 먼저 보이도록 기본 방향을 둠.
+  const [sortKey, setSortKey] = useState<GroupSortKey>("name");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+  // 탭·정렬이 바뀌면 1페이지로 돌아가도록 키와 함께 저장.
+  const [pageState, setPageState] = useState({ key: "", page: 0 });
+  const filterKey = `${tab}|${sortKey}|${sortDirection}`;
+  const page = pageState.key === filterKey ? pageState.page : 0;
+
+  const selectSort = (key: GroupSortKey) => {
+    if (sortKey === key) setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+    else {
+      setSortKey(key);
+      setSortDirection(key === "name" ? "asc" : "desc");
+    }
+  };
+
+  const visible = (groups ?? [])
+    .filter((group) => (tab === "all" ? true : tab === "joined" ? group.joined : group.owner))
+    .sort((a, b) => compareGroups(a, b, sortKey) * (sortDirection === "asc" ? 1 : -1));
+  const totalPages = Math.max(Math.ceil(visible.length / MEMBER_PAGE_SIZE), 1);
+  const pageGroups = visible.slice(page * MEMBER_PAGE_SIZE, (page + 1) * MEMBER_PAGE_SIZE);
+
+  const openGroup = (group: ChatGroupSummary) =>
+    group.joined
+      ? onOpenRoom(group.id)
+      : showToast("참여 중인 그룹만 열 수 있습니다. 방장에게 초대를 요청해 주세요.");
 
   return (
-    <div>
-      <div className="mb-4 flex gap-5 border-b border-slate-200" role="tablist">
+    <>
+      <div className="mb-4 flex h-9 items-end gap-5" role="tablist">
         {groupTabs.map(({ key, label }) => {
           const count =
             groups === null
@@ -1152,7 +1199,7 @@ function GroupPanel({
               type="button"
               role="tab"
               aria-selected={tab === key}
-              className={`flex cursor-pointer items-center gap-1.5 border-b-2 px-1 pb-3 text-sm transition ${tab === key ? "border-blue-600 font-semibold text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+              className={`flex cursor-pointer items-center gap-1.5 border-b-2 px-1 pb-2 text-sm transition ${tab === key ? "border-blue-600 font-semibold text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
               onClick={() => setTab(key)}
             >
               {label}
@@ -1167,65 +1214,88 @@ function GroupPanel({
           );
         })}
       </div>
-      {groups === null ? (
-        <LoadingInline message="그룹 목록을 불러오는 중입니다." className="py-10 text-sm" />
-      ) : visible.length === 0 ? (
-        <div className="rounded-xl border border-slate-200 p-12 text-center text-sm text-slate-500">
-          {tab === "joined"
-            ? "참여 중인 그룹이 없습니다."
-            : tab === "owner"
-              ? "내가 방장인 그룹이 없습니다."
-              : "회사에 그룹 채팅방이 없습니다."}
+      {/* 구성원 목록과 같은 틀: 위쪽 선이 있는 표 + 바닥 고정 페이지 영역. */}
+      <div className="flex flex-1 border-t border-slate-200">
+        <div className="min-w-0 flex-1 overflow-auto">
+          <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+            <thead className="border-b border-slate-200 bg-white text-slate-700">
+              <tr>
+                <th className="w-16 px-4 py-3 font-semibold">프로필</th>
+                {groupColumns.map(([key, label]) => (
+                  <th key={key} className="px-4 py-3 font-semibold">
+                    <button
+                      className="cursor-pointer hover:text-blue-600"
+                      onClick={() => selectSort(key)}
+                    >
+                      {label}
+                      {sortKey === key ? (sortDirection === "asc" ? " ↓" : " ↑") : ""}
+                    </button>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {pageGroups.map((group) => (
+                <tr
+                  key={group.id}
+                  className={`border-b border-slate-100 transition ${group.joined ? "cursor-pointer hover:bg-blue-50" : "cursor-default text-slate-500"}`}
+                  onClick={() => openGroup(group)}
+                >
+                  <td className="px-4 py-3">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+                      <UsersRound size={16} aria-hidden="true" />
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <b className={group.joined ? "text-slate-900" : ""}>
+                        {group.name || "이름 없는 그룹"}
+                      </b>
+                      {group.owner && (
+                        <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                          마스터
+                        </span>
+                      )}
+                      {!group.joined && (
+                        <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+                          미참여
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 font-bold text-blue-600">{group.memberCount}</td>
+                  <td className="px-4 py-3">{formatGroupDate(group.lastMessageAt)}</td>
+                  <td className="px-4 py-3">{formatDate(group.createdAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {groups === null ? (
+            <LoadingInline message="그룹 목록을 불러오는 중입니다." className="py-10 text-sm" />
+          ) : (
+            visible.length === 0 && (
+              <p className="p-12 text-center text-sm text-slate-500">
+                {tab === "joined"
+                  ? "참여 중인 그룹이 없습니다."
+                  : tab === "owner"
+                    ? "내가 방장인 그룹이 없습니다."
+                    : "회사에 그룹 채팅방이 없습니다."}
+              </p>
+            )
+          )}
         </div>
-      ) : (
-        <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
-          {visible.map((group) => (
-            <li key={group.id}>
-              <button
-                type="button"
-                onClick={() =>
-                  group.joined
-                    ? onOpenRoom(group.id)
-                    : showToast("참여 중인 그룹만 열 수 있습니다. 방장에게 초대를 요청해 주세요.")
-                }
-                className={`flex w-full items-center gap-4 px-5 py-3.5 text-left transition ${group.joined ? "cursor-pointer hover:bg-slate-50" : "cursor-default"}`}
-              >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-                  <UsersRound size={18} aria-hidden="true" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="flex items-center gap-2">
-                    <span className="truncate text-sm font-semibold text-slate-900">
-                      {group.name || "이름 없는 그룹"}
-                    </span>
-                    <span className="shrink-0 text-xs font-bold text-blue-600">
-                      {group.memberCount}
-                    </span>
-                    {group.owner && (
-                      <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-                        마스터
-                      </span>
-                    )}
-                    {!group.joined && (
-                      <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
-                        미참여
-                      </span>
-                    )}
-                  </span>
-                  <span className="mt-0.5 block truncate text-xs text-slate-500">
-                    방장 {group.ownerName ?? "없음"} · 마지막 대화{" "}
-                    {formatGroupDate(group.lastMessageAt)}
-                  </span>
-                </span>
-                {group.joined && (
-                  <MessageCircle size={16} className="shrink-0 text-slate-400" aria-hidden="true" />
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
+      </div>
+      <div className="-mx-6 flex h-12 shrink-0 items-center justify-center border-t border-slate-200">
+        {visible.length > 0 && (
+          <Pagination
+            label="그룹 목록 페이지"
+            page={page}
+            totalPages={totalPages}
+            onChange={(nextPage) => setPageState({ key: filterKey, page: nextPage })}
+          />
+        )}
+      </div>
+    </>
   );
 }
 
