@@ -103,6 +103,9 @@ export const MessageRoomItem = memo(function MessageRoomItem({
             <MessageMemberAvatar
               name={avatarName}
               presenceStatus={presenceStatus}
+              statusType={
+                isSelf ? null : contactMemberById.get(room.directMembershipId ?? -1)?.statusType
+              }
               onClick={() =>
                 onProfileClick(isSelf ? currentMember!.membershipId : room.directMembershipId!)
               }

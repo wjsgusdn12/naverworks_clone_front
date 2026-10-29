@@ -20,9 +20,9 @@ export function ReadMemberModal({
   onTab: (read: boolean) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  // 행마다 주소록 배열을 다시 훑지 않도록 접속 상태를 Map으로 한 번만 만들어 둠.
-  const presenceByMemberId = useMemo(
-    () => new Map(contactMembers.map((member) => [member.membershipId, member.presenceStatus])),
+  // 행마다 주소록 배열을 다시 훑지 않도록 구성원 프로필을 Map으로 한 번만 만들어 둠.
+  const profileByMemberId = useMemo(
+    () => new Map(contactMembers.map((member) => [member.membershipId, member])),
     [contactMembers],
   );
   const members = modal.read ? modal.readMembers : modal.unreadMembers;
@@ -102,7 +102,10 @@ export function ReadMemberModal({
               >
                 <MessageMemberAvatar
                   name={member.displayName}
-                  presenceStatus={presenceByMemberId.get(member.membershipId) ?? "OFFLINE"}
+                  presenceStatus={
+                    profileByMemberId.get(member.membershipId)?.presenceStatus ?? "OFFLINE"
+                  }
+                  statusType={profileByMemberId.get(member.membershipId)?.statusType}
                 />
                 <span className="min-w-0 flex-1">
                   <b className="block truncate text-sm text-slate-900">{member.displayName}</b>

@@ -136,6 +136,7 @@ export function MessageComposer({
                     contactMemberById.get(replyTarget.senderMembershipId)?.presenceStatus ??
                     (replyTarget.senderMembershipId === myMembershipId ? "ONLINE" : "OFFLINE")
                   }
+                  statusType={contactMemberById.get(replyTarget.senderMembershipId)?.statusType}
                   onClick={() => onProfileClick(replyTarget.senderMembershipId)}
                 />
               }

@@ -51,6 +51,7 @@ export function TypingBubble({
       <MessageMemberAvatar
         name={senderProfile?.displayName ?? member.displayName}
         presenceStatus={senderProfile?.presenceStatus ?? "OFFLINE"}
+        statusType={senderProfile?.statusType}
         onClick={() => onProfileClick(member.membershipId)}
       />
       <div className="w-fit max-w-[70%]">

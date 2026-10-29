@@ -153,6 +153,7 @@ export function GroupRoomDetail({
                   <MessageMemberAvatar
                     name={selectedInvite.displayName}
                     presenceStatus={selectedInvite.presenceStatus}
+                    statusType={selectedInvite.statusType}
                   />
                   <span className="min-w-0 flex-1">
                     <b className="block truncate">{selectedInvite.displayName}</b>
@@ -190,6 +191,7 @@ export function GroupRoomDetail({
                     <MessageMemberAvatar
                       name={candidate.displayName}
                       presenceStatus={candidate.presenceStatus}
+                      statusType={candidate.statusType}
                     />
                     <span className="min-w-0">
                       <b className="block truncate text-sm">{candidate.displayName}</b>
@@ -226,10 +228,10 @@ export function GroupRoomDetail({
           {participants.map((participant) => {
             const isRoomOwner = participant.membershipId === room.ownerMembershipId;
             const isMe = participant.membershipId === currentMemberId;
-            const presenceStatus = isMe
-              ? "ONLINE"
-              : (members.find((member) => member.membershipId === participant.membershipId)
-                  ?.presenceStatus ?? "OFFLINE");
+            const profile = members.find(
+              (member) => member.membershipId === participant.membershipId,
+            );
+            const presenceStatus = isMe ? "ONLINE" : (profile?.presenceStatus ?? "OFFLINE");
             return (
               <div
                 key={participant.membershipId}
@@ -245,6 +247,7 @@ export function GroupRoomDetail({
                   <MessageMemberAvatar
                     name={participant.displayName}
                     presenceStatus={presenceStatus}
+                    statusType={profile?.statusType}
                   />
                   <span className="min-w-0 flex-1">
                     <b className="block truncate text-sm">

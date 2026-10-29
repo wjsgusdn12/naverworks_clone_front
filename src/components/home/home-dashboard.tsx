@@ -8,6 +8,7 @@ import { MeBadge } from "@/components/common/me-badge";
 import { UserAvatar } from "@/components/common/user-avatar";
 import { addressBookApi, type AddressBookMember } from "@/lib/api/address-book-api";
 import { chatApi, type ChatRoom } from "@/lib/api/chat-api";
+import { withLiveStatus } from "@/lib/live-status";
 import type { NotificationItem } from "@/lib/api/notification-api";
 import {
   ArrowRight,
@@ -58,8 +59,13 @@ export function HomeDashboard({
   showToast,
 }: HomeDashboardProps) {
   const router = useRouter();
-  const { presenceByMembershipId, notifications, notificationCount, notificationsLoaded } =
-    useChatNotification();
+  const {
+    presenceByMembershipId,
+    memberStatusByMembershipId,
+    notifications,
+    notificationCount,
+    notificationsLoaded,
+  } = useChatNotification();
   const [rooms, setRooms] = useState<ChatRoom[] | null>(null);
   const [favorites, setFavorites] = useState<AddressBookMember[] | null>(null);
 
@@ -237,6 +243,11 @@ export function HomeDashboard({
                                 ? (presenceByMembershipId[room.directMembershipId] ?? "OFFLINE")
                                 : "OFFLINE"
                           }
+                          statusType={
+                            room.type !== "SELF" && room.directMembershipId !== null
+                              ? memberStatusByMembershipId[room.directMembershipId]?.statusType
+                              : null
+                          }
                         />
                       )}
                       <span className="min-w-0 flex-1">
@@ -323,17 +334,19 @@ export function HomeDashboard({
                 />
               ) : (
                 <ul className="divide-y divide-slate-100">
-                  {favorites.map((target) => {
-                    const presenceStatus =
-                      target.presenceStatus === "INACTIVE"
-                        ? target.presenceStatus
-                        : (presenceByMembershipId[target.membershipId] ?? target.presenceStatus);
+                  {favorites.map((favorite) => {
+                    const target = withLiveStatus(
+                      favorite,
+                      presenceByMembershipId,
+                      memberStatusByMembershipId,
+                    );
                     return (
                       <li key={target.membershipId} className="flex items-center gap-3 px-2 py-2.5">
                         <UserAvatar
                           size="md"
                           name={target.displayName}
-                          presenceStatus={presenceStatus}
+                          presenceStatus={target.presenceStatus}
+                          statusType={target.statusType}
                         />
                         <span className="min-w-0 flex-1">
                           <span className="flex items-center gap-1.5">

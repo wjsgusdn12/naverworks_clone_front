@@ -151,6 +151,7 @@ export function NewRoomModal({
                 <MessageMemberAvatar
                   name={member.displayName}
                   presenceStatus={member.presenceStatus}
+                  statusType={member.statusType}
                   onClick={() => onProfileClick(member.membershipId)}
                 />
                 <span className="min-w-0 flex-1">

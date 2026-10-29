@@ -14,11 +14,16 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import { CompanyMoveDialog } from "@/components/common/company-move-dialog";
-import { CustomSelect } from "@/components/common/custom-select";
 import { RecoveryCodeDialog } from "@/components/common/recovery-code-dialog";
+import { StatusSetting } from "@/components/common/status-setting";
 import { UserAvatar } from "@/components/common/user-avatar";
-import { addressBookApi, type MyPresence, type PresenceStatus } from "@/lib/api/address-book-api";
+import { addressBookApi, type MemberStatus } from "@/lib/api/address-book-api";
 import { authApi, type InviteCodeResponse } from "@/lib/api/auth-api";
+import {
+  formatMemberStatus,
+  memberStatusOption,
+  type MemberStatusType,
+} from "@/lib/status-options";
 
 // 상단바 프로필 아이콘 아래 열리는 내 프로필 패널. 알림 패널과 같은 폭·위치, 꾸밈 없이 정보와 메뉴만.
 // 대화상자(복구 코드·회사 옮기기·초대 코드)는 패널 위에 겹쳐 열리고, 닫으면 패널이 그대로 남음.
@@ -28,38 +33,8 @@ type ProfileMenuProps = {
   onToast?: (message: string) => void;
   // 세션 남은 시간 "HH:MM:SS". 없으면 줄 자체를 숨김.
   sessionRemainingText: string | null;
-  // 내 상태를 알게 되면 상단바 아바타 배지도 맞추도록 알림.
-  onPresenceChange: (status: PresenceStatus) => void;
-};
-
-// 상태 드롭다운 항목. 부재중은 시간별로 나눔.
-const presenceOptions: { value: string; label: string; awayHours?: number }[] = [
-  { value: "ONLINE", label: "온라인" },
-  { value: "AWAY_1", label: "부재중 · 1시간", awayHours: 1 },
-  { value: "AWAY_4", label: "부재중 · 4시간", awayHours: 4 },
-  { value: "AWAY_8", label: "부재중 · 8시간", awayHours: 8 },
-  { value: "AWAY_24", label: "부재중 · 하루", awayHours: 24 },
-  { value: "AWAY_168", label: "부재중 · 일주일", awayHours: 168 },
-  // 날짜·시각을 직접 고름. 고르면 아래에 입력칸이 열림.
-  { value: "AWAY_CUSTOM", label: "부재중 · 직접 설정" },
-];
-
-// datetime-local 입력값 "YYYY-MM-DDTHH:mm"(현지 시각). 기본은 내일 09:00.
-const toLocalInputValue = (date: Date) => {
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-};
-const defaultCustomAwayUntil = () => {
-  const date = new Date();
-  date.setDate(date.getDate() + 1);
-  date.setHours(9, 0, 0, 0);
-  return toLocalInputValue(date);
-};
-
-// 부재중 종료 시각을 "10월 30일 09:00까지"로.
-const formatAwayUntil = (value: string) => {
-  const date = new Date(value);
-  return `${date.toLocaleDateString("ko-KR", { month: "long", day: "numeric" })} ${date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}까지`;
+  // 내 상태 설정을 알게 되면 상단바 아바타 배지도 맞추도록 알림.
+  onStatusChange: (statusType: MemberStatusType | null) => void;
 };
 
 type MenuRow = { label: string; description: string; icon: LucideIcon; onClick: () => void };
@@ -69,30 +44,30 @@ export function ProfileMenu({
   onLogout,
   onToast,
   sessionRemainingText,
-  onPresenceChange,
+  onStatusChange,
 }: ProfileMenuProps) {
   const { member, accessToken, applySession } = useAuth();
-  const { presenceByMembershipId } = useChatNotification();
+  const { memberStatusByMembershipId } = useChatNotification();
   const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
   const [inviteCode, setInviteCode] = useState<InviteCodeResponse | null>(null);
   const [isCompanyMoveOpen, setIsCompanyMoveOpen] = useState(false);
   const [copiedLoginId, setCopiedLoginId] = useState(false);
-  const [presence, setPresence] = useState<MyPresence | null>(null);
-  const [isPresenceSaving, setIsPresenceSaving] = useState(false);
-  // "직접 설정"을 골랐을 때 열리는 종료 시각 입력. null이면 닫힘.
-  const [customAwayUntil, setCustomAwayUntil] = useState<string | null>(null);
+  const [savedStatus, setSavedStatus] = useState<MemberStatus | null>(null);
+  const [isStatusSaving, setIsStatusSaving] = useState(false);
+  // 상태 설정 목록 펼침 여부.
+  const [isStatusOpen, setIsStatusOpen] = useState(false);
 
   const membershipId = member?.membershipId;
   // 내 상태는 서버에서 한 번 읽고, 이후 WebSocket 이벤트(다른 탭에서 바꾼 경우 등)로 갱신.
-  const livePresence =
-    membershipId === undefined ? undefined : presenceByMembershipId[membershipId];
+  const liveStatus =
+    membershipId === undefined ? undefined : memberStatusByMembershipId[membershipId];
   useEffect(() => {
     if (!accessToken || membershipId === undefined) return;
     let cancelled = false;
     addressBookApi
-      .myPresence(accessToken)
+      .myStatus(accessToken)
       .then((result) => {
-        if (!cancelled) setPresence(result);
+        if (!cancelled) setSavedStatus(result);
       })
       .catch(() => undefined);
     return () => {
@@ -100,72 +75,37 @@ export function ProfileMenu({
     };
   }, [accessToken, membershipId]);
   // 실시간 이벤트가 있으면 그것이 최신. 없으면 서버에서 읽은 값.
-  const presenceStatus: PresenceStatus = livePresence ?? presence?.status ?? "ONLINE";
-  const awayUntil = presenceStatus === "AWAY" ? (presence?.awayUntil ?? null) : null;
+  const myStatus = liveStatus ?? savedStatus;
+  const statusType = myStatus?.statusType ?? null;
+  const statusUntil = myStatus?.statusUntil ?? null;
   useEffect(() => {
-    onPresenceChange(presenceStatus);
-  }, [onPresenceChange, presenceStatus]);
+    onStatusChange(statusType);
+  }, [onStatusChange, statusType]);
 
   if (!member || !accessToken) return null;
 
   const toast = (message: string) => onToast?.(message);
   const isAdmin = member.role === "ADMIN";
+  const currentOption = memberStatusOption(statusType);
+  const CurrentIcon = currentOption?.icon;
 
-  // 드롭다운에 보일 현재 값. 부재중이면 시간과 무관하게 첫 부재중 항목을 선택 표시로 씀.
-  const presenceValue =
-    customAwayUntil !== null ? "AWAY_CUSTOM" : presenceStatus === "AWAY" ? "AWAY_SET" : "ONLINE";
-  const presenceSelectOptions =
-    presenceStatus === "AWAY"
-      ? [
-          {
-            value: "AWAY_SET",
-            label: awayUntil ? `부재중 · ${formatAwayUntil(awayUntil)}` : "부재중",
-          },
-          ...presenceOptions,
-        ]
-      : presenceOptions;
-
-  const savePresence = async (
-    status: "ONLINE" | "AWAY",
-    away?: { awayHours?: number; awayUntil?: string },
-  ) => {
-    setIsPresenceSaving(true);
+  const saveStatus = async (nextType: MemberStatusType | null, until: Date | null) => {
+    setIsStatusSaving(true);
     try {
-      const next = await addressBookApi.updatePresence(accessToken, status, away);
-      setPresence(next);
-      setCustomAwayUntil(null);
-      toast(
-        next.status === "AWAY" && next.awayUntil
-          ? `${formatAwayUntil(next.awayUntil)} 부재중으로 표시됩니다.`
-          : "온라인으로 표시됩니다.",
+      const next = await addressBookApi.updateStatus(
+        accessToken,
+        nextType,
+        until ? until.toISOString() : undefined,
       );
+      setSavedStatus(next);
+      setIsStatusOpen(false);
+      const text = formatMemberStatus(next.statusType, next.statusUntil);
+      toast(text ? `상태를 '${text}'(으)로 설정했습니다.` : "상태 설정을 해제했습니다.");
     } catch (error) {
       toast(error instanceof Error ? error.message : "상태를 바꾸지 못했습니다.");
     } finally {
-      setIsPresenceSaving(false);
+      setIsStatusSaving(false);
     }
-  };
-
-  const changePresence = (value: string) => {
-    if (isPresenceSaving) return;
-    if (value === "AWAY_CUSTOM") {
-      setCustomAwayUntil(defaultCustomAwayUntil());
-      return;
-    }
-    const option = presenceOptions.find((item) => item.value === value);
-    if (!option) return;
-    void savePresence(option.awayHours ? "AWAY" : "ONLINE", { awayHours: option.awayHours });
-  };
-
-  // 직접 고른 현지 시각을 ISO(UTC)로 바꿔 저장.
-  const applyCustomAway = () => {
-    if (!customAwayUntil) return;
-    const until = new Date(customAwayUntil);
-    if (Number.isNaN(until.getTime()) || until.getTime() <= Date.now()) {
-      toast("지금 이후의 시각을 골라 주세요.");
-      return;
-    }
-    void savePresence("AWAY", { awayUntil: until.toISOString() });
   };
 
   // 복구 코드는 해시만 저장돼 다시 볼 수 없으므로 "보기"가 곧 재발급.
@@ -230,7 +170,12 @@ export function ProfileMenu({
         >
           {/* 상단: 공통 아바타 + 이름·역할·소속 */}
           <div className="flex items-center gap-4 px-5 pb-4 pt-5">
-            <UserAvatar name={member.displayName} presenceStatus={presenceStatus} size="lg" />
+            <UserAvatar
+              name={member.displayName}
+              presenceStatus="ONLINE"
+              statusType={statusType}
+              size="lg"
+            />
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <strong className="truncate text-base text-slate-900">{member.displayName}</strong>
@@ -242,103 +187,102 @@ export function ProfileMenu({
             </div>
           </div>
 
-          {/* 접속 상태. 부재중은 시간을 골라 설정하고, 온라인을 고르면 해제. */}
-          <div className="mx-5 flex items-center gap-3 border-t border-slate-100 py-3">
-            <span className="w-12 shrink-0 text-xs text-slate-400">상태</span>
-            <CustomSelect
-              label="접속 상태"
-              value={presenceValue}
-              onChange={changePresence}
-              options={presenceSelectOptions}
-              disabled={isPresenceSaving || presence === null}
-              className="flex-1 [&>button]:h-9 [&>button]:px-3"
-            />
-          </div>
-          {customAwayUntil !== null && (
-            // 직접 설정: 종료 날짜·시각을 고르고 적용. 최대 90일.
-            <div className="mx-5 flex items-center gap-2 pb-3">
-              <span className="w-12 shrink-0 text-xs text-slate-400">까지</span>
-              <input
-                type="datetime-local"
-                value={customAwayUntil}
-                min={toLocalInputValue(new Date())}
-                onChange={(event) => setCustomAwayUntil(event.target.value)}
-                disabled={isPresenceSaving}
-                aria-label="부재중 종료 시각"
-                className="h-9 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm text-slate-800 outline-none transition focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
-              />
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {/* 상태 설정. 줄을 누르면 목록이 펼쳐짐. */}
+            <div className="mx-5 border-t border-slate-100 py-2">
               <button
                 type="button"
-                onClick={applyCustomAway}
-                disabled={isPresenceSaving}
-                className="h-9 shrink-0 cursor-pointer rounded-lg bg-blue-600 px-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
+                aria-expanded={isStatusOpen}
+                disabled={savedStatus === null && liveStatus === undefined}
+                onClick={() => setIsStatusOpen((open) => !open)}
+                className="-mx-2 flex w-[calc(100%+1rem)] cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-slate-50 disabled:cursor-default"
               >
-                적용
-              </button>
-              <button
-                type="button"
-                onClick={() => setCustomAwayUntil(null)}
-                disabled={isPresenceSaving}
-                aria-label="직접 설정 취소"
-                className="h-9 shrink-0 cursor-pointer rounded-lg border border-slate-200 px-2.5 text-sm text-slate-600 transition hover:bg-slate-50"
-              >
-                취소
-              </button>
-            </div>
-          )}
-
-          {/* 아이디·이메일·세션. 아이디는 한 번에 복사. */}
-          <dl className="mx-5 grid gap-1.5 border-y border-slate-100 py-3 text-sm">
-            <div className="flex items-center gap-3">
-              <dt className="w-12 shrink-0 text-xs text-slate-400">아이디</dt>
-              <dd className="flex min-w-0 flex-1 items-center gap-1">
-                <span className="truncate text-slate-800">{member.loginId}</span>
-                <button
-                  type="button"
-                  aria-label="아이디 복사"
-                  onClick={() => void copyLoginId()}
-                  className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                >
-                  {copiedLoginId ? (
-                    <Check size={13} aria-hidden="true" className="text-emerald-600" />
-                  ) : (
-                    <Copy size={13} aria-hidden="true" />
-                  )}
-                </button>
-              </dd>
-            </div>
-            <div className="flex items-center gap-3">
-              <dt className="w-12 shrink-0 text-xs text-slate-400">이메일</dt>
-              <dd className={`truncate ${member.email ? "text-slate-800" : "text-slate-400"}`}>
-                {member.email ?? "미등록"}
-              </dd>
-            </div>
-            {sessionRemainingText && (
-              <div className="flex items-center gap-3">
-                <dt className="w-12 shrink-0 text-xs text-slate-400">세션</dt>
-                <dd className="font-mono text-slate-600">{sessionRemainingText}</dd>
-              </div>
-            )}
-          </dl>
-
-          {/* 계정 관리 */}
-          <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
-            {rows.map(({ label, description, icon: Icon, onClick }) => (
-              <button
-                key={label}
-                type="button"
-                role="menuitem"
-                onClick={onClick}
-                className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-blue-600"
-              >
-                <Icon size={18} aria-hidden="true" className="shrink-0 text-slate-500" />
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-medium text-slate-900">{label}</span>
-                  <span className="block truncate text-xs text-slate-500">{description}</span>
+                <span className="w-12 shrink-0 text-xs text-slate-400">상태</span>
+                {currentOption && CurrentIcon ? (
+                  <span
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${currentOption.className}`}
+                  >
+                    <CurrentIcon size={12} strokeWidth={3} aria-hidden="true" />
+                  </span>
+                ) : (
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" />
+                )}
+                <span className="min-w-0 flex-1 truncate text-slate-800">
+                  {formatMemberStatus(statusType, statusUntil) ?? "설정 안 함"}
                 </span>
-                <ChevronRight size={16} aria-hidden="true" className="shrink-0 text-slate-300" />
+                <ChevronRight
+                  size={16}
+                  aria-hidden="true"
+                  className={`shrink-0 text-slate-300 transition ${isStatusOpen ? "rotate-90" : ""}`}
+                />
               </button>
-            ))}
+              {isStatusOpen && (
+                <div className="pt-2">
+                  <StatusSetting
+                    // 저장 후 바뀐 값으로 목록을 새로 그림.
+                    key={`${statusType}-${statusUntil}`}
+                    statusType={statusType}
+                    statusUntil={statusUntil}
+                    saving={isStatusSaving}
+                    onSave={(nextType, until) => void saveStatus(nextType, until)}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* 아이디·이메일·세션. 아이디는 한 번에 복사. */}
+            <dl className="mx-5 grid gap-1.5 border-y border-slate-100 py-3 text-sm">
+              <div className="flex items-center gap-3">
+                <dt className="w-12 shrink-0 text-xs text-slate-400">아이디</dt>
+                <dd className="flex min-w-0 flex-1 items-center gap-1">
+                  <span className="truncate text-slate-800">{member.loginId}</span>
+                  <button
+                    type="button"
+                    aria-label="아이디 복사"
+                    onClick={() => void copyLoginId()}
+                    className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  >
+                    {copiedLoginId ? (
+                      <Check size={13} aria-hidden="true" className="text-emerald-600" />
+                    ) : (
+                      <Copy size={13} aria-hidden="true" />
+                    )}
+                  </button>
+                </dd>
+              </div>
+              <div className="flex items-center gap-3">
+                <dt className="w-12 shrink-0 text-xs text-slate-400">이메일</dt>
+                <dd className={`truncate ${member.email ? "text-slate-800" : "text-slate-400"}`}>
+                  {member.email ?? "미등록"}
+                </dd>
+              </div>
+              {sessionRemainingText && (
+                <div className="flex items-center gap-3">
+                  <dt className="w-12 shrink-0 text-xs text-slate-400">세션</dt>
+                  <dd className="font-mono text-slate-600">{sessionRemainingText}</dd>
+                </div>
+              )}
+            </dl>
+
+            {/* 계정 관리 */}
+            <div className="px-2 py-2">
+              {rows.map(({ label, description, icon: Icon, onClick }) => (
+                <button
+                  key={label}
+                  type="button"
+                  role="menuitem"
+                  onClick={onClick}
+                  className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-blue-600"
+                >
+                  <Icon size={18} aria-hidden="true" className="shrink-0 text-slate-500" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium text-slate-900">{label}</span>
+                    <span className="block truncate text-xs text-slate-500">{description}</span>
+                  </span>
+                  <ChevronRight size={16} aria-hidden="true" className="shrink-0 text-slate-300" />
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="border-t border-slate-100 px-2 py-2">

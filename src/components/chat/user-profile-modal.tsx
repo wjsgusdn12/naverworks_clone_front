@@ -2,6 +2,7 @@
 
 import type { AddressBookMemberDetail } from "@/lib/api/address-book-api";
 import { UserAvatar } from "@/components/common/user-avatar";
+import { formatMemberStatus } from "@/lib/status-options";
 import { CalendarDays, Mail, MessageCircle, Star, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 
@@ -33,6 +34,7 @@ export function UserProfileModal({
       document.removeEventListener("keydown", key);
     };
   }, [onClose]);
+  const statusText = formatMemberStatus(member.statusType, member.statusUntil);
   const hiredAt = member.hiredAt
     ? new Date(member.hiredAt)
         .toLocaleDateString("ko-KR", {
@@ -63,10 +65,17 @@ export function UserProfileModal({
           </button>
         </div>
         <div className="mt-7 flex items-center gap-5">
-          <UserAvatar name={member.displayName} presenceStatus={member.presenceStatus} size="xl" />
+          <UserAvatar
+            name={member.displayName}
+            presenceStatus={member.presenceStatus}
+            statusType={member.statusType}
+            size="xl"
+          />
           <div>
             <h2 className="text-xl font-bold">{member.displayName}</h2>
             <p className="mt-1 text-sm text-slate-500">{member.jobGradeName ?? "직급 미지정"}</p>
+            {/* 상태 설정이 있으면 "휴가 · 11월 3일 09:00까지"처럼 표시. */}
+            {statusText && <p className="mt-1 text-sm font-medium text-slate-700">{statusText}</p>}
             <button
               type="button"
               onClick={() => showToast("일정 기능은 준비 중입니다.")}

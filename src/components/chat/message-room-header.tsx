@@ -5,6 +5,7 @@ import { MessageMemberAvatar } from "@/components/chat/message-member-avatar";
 import { MeBadge } from "@/components/common/me-badge";
 import type { PresenceStatus } from "@/lib/api/address-book-api";
 import type { ChatRoom } from "@/lib/api/chat-api";
+import type { MemberStatusType } from "@/lib/status-options";
 
 // 선택한 방의 상단 헤더. 그룹방은 상세 패널 토글 버튼, 1:1·나와의 채팅은 프로필 표시.
 export function MessageRoomHeader({
@@ -14,6 +15,7 @@ export function MessageRoomHeader({
   displayRoomName,
   headerProfile,
   directPresenceStatus,
+  directStatusType,
   headerMembershipId,
   onProfileClick,
 }: {
@@ -28,6 +30,7 @@ export function MessageRoomHeader({
     companyName: string;
   } | null;
   directPresenceStatus: PresenceStatus | undefined;
+  directStatusType?: MemberStatusType | null;
   headerMembershipId: number | null | undefined;
   onProfileClick: (membershipId: number) => void;
 }) {
@@ -60,6 +63,7 @@ export function MessageRoomHeader({
               presenceStatus={
                 selectedRoom?.type === "SELF" ? "ONLINE" : (directPresenceStatus ?? "OFFLINE")
               }
+              statusType={selectedRoom?.type === "SELF" ? null : directStatusType}
               size="lg"
               onClick={headerMembershipId ? () => onProfileClick(headerMembershipId) : undefined}
             />

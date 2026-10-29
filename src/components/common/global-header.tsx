@@ -16,7 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { AuthMember } from "@/lib/api/auth-api";
-import type { PresenceStatus } from "@/lib/api/address-book-api";
+import type { MemberStatusType } from "@/lib/status-options";
 import type { NotificationCategory, NotificationItem } from "@/lib/api/notification-api";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
@@ -134,8 +134,8 @@ export function GlobalHeader({
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
   const [isNotificationModeOpen, setIsNotificationModeOpen] = useState(false);
   const [isProjectGuideOpen, setIsProjectGuideOpen] = useState(false);
-  // 내 접속 상태. 프로필 패널이 서버에서 읽어 알려 줌.
-  const [myPresenceStatus, setMyPresenceStatus] = useState<PresenceStatus>("ONLINE");
+  // 내 상태 설정(바쁨·휴가 등). 프로필 패널이 서버에서 읽어 알려 줌.
+  const [myStatusType, setMyStatusType] = useState<MemberStatusType | null>(null);
   // 알림 패널 상단 칩. "ALL"은 서버 분류와 무관하게 전체를 뜻함.
   const [notificationFilter, setNotificationFilter] = useState<"ALL" | NotificationCategory>("ALL");
   const visibleNotifications =
@@ -332,8 +332,13 @@ export function GlobalHeader({
                     className={`flex h-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-zinc-300 transition hover:-translate-y-0.5 hover:bg-zinc-800 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${label === "내 프로필" && isAuthenticated ? "min-w-9 px-0.5" : label === "프로젝트 소개" ? "ml-3 w-9 hover:scale-110 hover:bg-transparent" : "w-9"}`}
                   >
                     {label === "내 프로필" && isAuthenticated ? (
-                      // 주소록·메시지와 같은 공통 아바타. 본인은 항상 온라인으로 표시.
-                      <UserAvatar name={profileName} presenceStatus={myPresenceStatus} size="sm" />
+                      // 주소록·메시지와 같은 공통 아바타. 본인은 접속 중이라 온라인, 상태 설정이 있으면 그 아이콘.
+                      <UserAvatar
+                        name={profileName}
+                        presenceStatus="ONLINE"
+                        statusType={myStatusType}
+                        size="sm"
+                      />
                     ) : label === "프로젝트 소개" ? (
                       // 무지개 테두리가 돌고 빛이 지나가는 배지. 안쪽은 어두운 원이라 아이콘이 또렷하게 보임.
                       <span className="project-guide-badge flex h-8 w-8 items-center justify-center">
@@ -366,7 +371,7 @@ export function GlobalHeader({
                     onLogout={onLogout}
                     onToast={onToast}
                     sessionRemainingText={sessionRemainingText}
-                    onPresenceChange={setMyPresenceStatus}
+                    onStatusChange={setMyStatusType}
                   />
                 )}
                 {label === "알림" && isNotificationPanelOpen && (

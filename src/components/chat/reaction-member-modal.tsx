@@ -98,6 +98,7 @@ export function ReactionMemberModal({
                   presenceStatus={
                     contactMemberById.get(member.membershipId)?.presenceStatus ?? "OFFLINE"
                   }
+                  statusType={contactMemberById.get(member.membershipId)?.statusType}
                 />
                 <span className="min-w-0 flex-1">
                   <b className="block truncate text-sm text-slate-900">{member.displayName}</b>

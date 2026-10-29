@@ -1,6 +1,7 @@
 import { Client } from "@stomp/stompjs";
 import type { ChatMessage, ChatNotice } from "@/lib/api/chat-api";
 import type { NotificationItem } from "@/lib/api/notification-api";
+import type { MemberStatusType } from "@/lib/status-options";
 
 // 서버가 내 전용 큐(/user/queue/notification)로 보내는 새 서비스 알림.
 export type NotificationRealtimeEvent = {
@@ -56,8 +57,11 @@ export type PresenceRealtimeEvent = {
   type: "PRESENCE_CHANGED";
   membershipId: number;
   online: boolean;
-  // 부재중까지 반영한 화면 표시용 상태.
-  status: "ONLINE" | "OFFLINE" | "AWAY";
+  // 화면 표시용 접속 상태.
+  status: "ONLINE" | "OFFLINE";
+  // 구성원이 고른 상태 설정(바쁨·휴가 등). 없으면 null.
+  statusType: MemberStatusType | null;
+  statusUntil: string | null;
 };
 
 const websocketUrl = () => {

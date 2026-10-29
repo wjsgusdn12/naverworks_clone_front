@@ -260,6 +260,7 @@ export const MessageBubble = memo(function MessageBubble({
             <MessageMemberAvatar
               name={senderProfile?.displayName ?? message.senderName}
               presenceStatus={senderProfile?.presenceStatus ?? "OFFLINE"}
+              statusType={senderProfile?.statusType}
               onClick={() => onProfileClick(message.senderMembershipId)}
             />
           </span>

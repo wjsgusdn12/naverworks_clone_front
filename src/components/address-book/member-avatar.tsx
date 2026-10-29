@@ -10,6 +10,11 @@ export function MemberAvatar({
   size?: "sm" | "lg";
 }) {
   return (
-    <UserAvatar name={member.displayName} presenceStatus={member.presenceStatus} size={size} />
+    <UserAvatar
+      name={member.displayName}
+      presenceStatus={member.presenceStatus}
+      statusType={member.statusType}
+      size={size}
+    />
   );
 }

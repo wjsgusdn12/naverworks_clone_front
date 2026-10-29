@@ -60,6 +60,7 @@ import { connectChatRoom } from "@/lib/realtime/chat-realtime";
 import { useStableCallback } from "@/hooks/use-stable-callback";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowDown, ChevronDown, MessageCircle, Search, X } from "lucide-react";
+import { withLiveStatus } from "@/lib/live-status";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -82,8 +83,13 @@ function MessageContent() {
     .filter(Number.isInteger);
   const { accessToken, member, status, logout } = useAuth();
   const { toast, showToast, dismissToast } = useToast();
-  const { setActiveChatRoomId, syncChatRooms, refreshChatRooms, presenceByMembershipId } =
-    useChatNotification();
+  const {
+    setActiveChatRoomId,
+    syncChatRooms,
+    refreshChatRooms,
+    presenceByMembershipId,
+    memberStatusByMembershipId,
+  } = useChatNotification();
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -295,13 +301,10 @@ function MessageContent() {
       new Map(
         contactMembers.map((contact) => [
           contact.membershipId,
-          presenceByMembershipId[contact.membershipId] === undefined ||
-          contact.presenceStatus === "INACTIVE"
-            ? contact
-            : { ...contact, presenceStatus: presenceByMembershipId[contact.membershipId] },
+          withLiveStatus(contact, presenceByMembershipId, memberStatusByMembershipId),
         ]),
       ),
-    [contactMembers, presenceByMembershipId],
+    [contactMembers, presenceByMembershipId, memberStatusByMembershipId],
   );
   const openUserProfile = useCallback(
     (membershipId: number) => setProfileMemberId(membershipId),
@@ -1879,6 +1882,7 @@ function MessageContent() {
             displayRoomName={displayRoomName}
             headerProfile={headerProfile}
             directPresenceStatus={addressBookProfile?.presenceStatus}
+            directStatusType={addressBookProfile?.statusType}
             headerMembershipId={headerMembershipId}
             onProfileClick={openUserProfile}
           />

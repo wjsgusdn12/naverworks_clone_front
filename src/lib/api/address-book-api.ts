@@ -1,4 +1,5 @@
 import { ApiClientError } from "@/lib/api/auth-api";
+import type { MemberStatusType } from "@/lib/status-options";
 
 type ApiResponse<T> = {
   success: boolean;
@@ -7,7 +8,11 @@ type ApiResponse<T> = {
   data: T;
 };
 
-export type PresenceStatus = "ONLINE" | "OFFLINE" | "AWAY" | "INACTIVE";
+// 접속 상태. 상태 설정(바쁨·휴가 등)은 MemberStatus로 따로 옴.
+export type PresenceStatus = "ONLINE" | "OFFLINE" | "INACTIVE";
+
+// 구성원이 고른 상태와 자동 해제 시각. statusType이 null이면 설정 안 함.
+export type MemberStatus = { statusType: MemberStatusType | null; statusUntil: string | null };
 
 export type AddressBookOrganization = {
   companyId: number;
@@ -31,7 +36,7 @@ export type AddressBookMember = {
   enabled: boolean;
   presenceStatus: PresenceStatus;
   favorite: boolean;
-};
+} & MemberStatus;
 
 export type AddressBookMemberPage = {
   content: AddressBookMember[];
@@ -43,7 +48,6 @@ export type AddressBookMemberPage = {
 
 export type AddressBookMemberDetail = AddressBookMember & {
   hiredAt: string | null;
-  awayUntil: string | null;
 };
 
 export type AddressBookSearchHistory = {
@@ -139,19 +143,15 @@ export const addressBookApi = {
       method: "POST",
       body: JSON.stringify({ targetMembershipId }),
     }),
-  // 내 접속 상태(부재중 종료 시각 포함).
-  myPresence: (accessToken: string) =>
-    request<MyPresence>("/api/v1/addressBook/presence/me", accessToken),
-  // 부재중 설정(AWAY + 시간 또는 종료 시각) 또는 해제(ONLINE). 바뀐 상태가 돌아옴.
-  updatePresence: (
-    accessToken: string,
-    status: "ONLINE" | "AWAY",
-    away?: { awayHours?: number; awayUntil?: string },
-  ) =>
-    request<MyPresence>("/api/v1/addressBook/presence/update", accessToken, {
+  // 내 접속 상태와 상태 설정.
+  myStatus: (accessToken: string) =>
+    request<MyStatus>("/api/v1/addressBook/status/me", accessToken),
+  // 상태 설정. statusType이 null이면 해제, statusUntil이 null이면 직접 해제할 때까지 유지.
+  updateStatus: (accessToken: string, statusType: MemberStatusType | null, statusUntil?: string) =>
+    request<MyStatus>("/api/v1/addressBook/status/update", accessToken, {
       method: "POST",
-      body: JSON.stringify({ status, ...away }),
+      body: JSON.stringify({ statusType, statusUntil: statusUntil ?? null }),
     }),
 };
 
-export type MyPresence = { status: PresenceStatus; awayUntil: string | null };
+export type MyStatus = { presenceStatus: PresenceStatus } & MemberStatus;

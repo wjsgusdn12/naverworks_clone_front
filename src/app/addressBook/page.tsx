@@ -25,13 +25,14 @@ import { chatApi, type ChatGroupSummary } from "@/lib/api/chat-api";
 import { MEMBER_PAGE_SIZE, filterGroups, type GroupTab } from "@/lib/address-book-group";
 import { markAuthenticationRequired } from "@/lib/auth-required-notice";
 import { useToast } from "@/hooks/use-toast";
+import { withLiveStatus } from "@/lib/live-status";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function AddressBookPage() {
   const router = useRouter();
   const { accessToken, member, status, applySession, logout } = useAuth();
-  const { presenceByMembershipId } = useChatNotification();
+  const { presenceByMembershipId, memberStatusByMembershipId } = useChatNotification();
   const { toast, showToast, dismissToast, resetToast } = useToast();
   const [view, setView] = useState<AddressBookView>("company");
   const [departmentId, setDepartmentId] = useState<number | null>(null);
@@ -71,17 +72,13 @@ export default function AddressBookPage() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const previewRequestIdRef = useRef(0);
-  // REST 조회 결과 위에 WebSocket의 최신 접속 상태를 덮어 실시간 배지를 유지.
+  // REST 조회 결과 위에 WebSocket의 최신 접속 상태·상태 설정을 덮어 실시간 배지를 유지.
   const displayMembers = useMemo(
     () =>
-      members.map((target) => {
-        const live = presenceByMembershipId[target.membershipId];
-        // 비활성 계정은 실시간 이벤트와 무관하게 그대로 둠.
-        return live === undefined || target.presenceStatus === "INACTIVE"
-          ? target
-          : { ...target, presenceStatus: live };
-      }),
-    [members, presenceByMembershipId],
+      members.map((target) =>
+        withLiveStatus(target, presenceByMembershipId, memberStatusByMembershipId),
+      ),
+    [members, presenceByMembershipId, memberStatusByMembershipId],
   );
 
   // 주소록 프로필에서 1:1 채팅방을 준비한 뒤 해당 방을 바로 엶.
