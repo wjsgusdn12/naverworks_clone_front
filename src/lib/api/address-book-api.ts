@@ -142,11 +142,15 @@ export const addressBookApi = {
   // 내 접속 상태(부재중 종료 시각 포함).
   myPresence: (accessToken: string) =>
     request<MyPresence>("/api/v1/addressBook/presence/me", accessToken),
-  // 부재중 설정(AWAY + 시간) 또는 해제(ONLINE). 바뀐 상태가 돌아옴.
-  updatePresence: (accessToken: string, status: "ONLINE" | "AWAY", awayHours?: number) =>
+  // 부재중 설정(AWAY + 시간 또는 종료 시각) 또는 해제(ONLINE). 바뀐 상태가 돌아옴.
+  updatePresence: (
+    accessToken: string,
+    status: "ONLINE" | "AWAY",
+    away?: { awayHours?: number; awayUntil?: string },
+  ) =>
     request<MyPresence>("/api/v1/addressBook/presence/update", accessToken, {
       method: "POST",
-      body: JSON.stringify({ status, awayHours }),
+      body: JSON.stringify({ status, ...away }),
     }),
 };
 

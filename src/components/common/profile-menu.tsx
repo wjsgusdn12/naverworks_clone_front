@@ -40,7 +40,21 @@ const presenceOptions: { value: string; label: string; awayHours?: number }[] = 
   { value: "AWAY_8", label: "부재중 · 8시간", awayHours: 8 },
   { value: "AWAY_24", label: "부재중 · 하루", awayHours: 24 },
   { value: "AWAY_168", label: "부재중 · 일주일", awayHours: 168 },
+  // 날짜·시각을 직접 고름. 고르면 아래에 입력칸이 열림.
+  { value: "AWAY_CUSTOM", label: "부재중 · 직접 설정" },
 ];
+
+// datetime-local 입력값 "YYYY-MM-DDTHH:mm"(현지 시각). 기본은 내일 09:00.
+const toLocalInputValue = (date: Date) => {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+const defaultCustomAwayUntil = () => {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  date.setHours(9, 0, 0, 0);
+  return toLocalInputValue(date);
+};
 
 // 부재중 종료 시각을 "10월 30일 09:00까지"로.
 const formatAwayUntil = (value: string) => {
@@ -65,6 +79,8 @@ export function ProfileMenu({
   const [copiedLoginId, setCopiedLoginId] = useState(false);
   const [presence, setPresence] = useState<MyPresence | null>(null);
   const [isPresenceSaving, setIsPresenceSaving] = useState(false);
+  // "직접 설정"을 골랐을 때 열리는 종료 시각 입력. null이면 닫힘.
+  const [customAwayUntil, setCustomAwayUntil] = useState<string | null>(null);
 
   const membershipId = member?.membershipId;
   // 내 상태는 서버에서 한 번 읽고, 이후 WebSocket 이벤트(다른 탭에서 바꾼 경우 등)로 갱신.
@@ -96,7 +112,8 @@ export function ProfileMenu({
   const isAdmin = member.role === "ADMIN";
 
   // 드롭다운에 보일 현재 값. 부재중이면 시간과 무관하게 첫 부재중 항목을 선택 표시로 씀.
-  const presenceValue = presenceStatus === "AWAY" ? "AWAY_SET" : "ONLINE";
+  const presenceValue =
+    customAwayUntil !== null ? "AWAY_CUSTOM" : presenceStatus === "AWAY" ? "AWAY_SET" : "ONLINE";
   const presenceSelectOptions =
     presenceStatus === "AWAY"
       ? [
@@ -108,17 +125,15 @@ export function ProfileMenu({
         ]
       : presenceOptions;
 
-  const changePresence = async (value: string) => {
-    const option = presenceOptions.find((item) => item.value === value);
-    if (!option || isPresenceSaving) return;
+  const savePresence = async (
+    status: "ONLINE" | "AWAY",
+    away?: { awayHours?: number; awayUntil?: string },
+  ) => {
     setIsPresenceSaving(true);
     try {
-      const next = await addressBookApi.updatePresence(
-        accessToken,
-        option.awayHours ? "AWAY" : "ONLINE",
-        option.awayHours,
-      );
+      const next = await addressBookApi.updatePresence(accessToken, status, away);
       setPresence(next);
+      setCustomAwayUntil(null);
       toast(
         next.status === "AWAY" && next.awayUntil
           ? `${formatAwayUntil(next.awayUntil)} 부재중으로 표시됩니다.`
@@ -129,6 +144,28 @@ export function ProfileMenu({
     } finally {
       setIsPresenceSaving(false);
     }
+  };
+
+  const changePresence = (value: string) => {
+    if (isPresenceSaving) return;
+    if (value === "AWAY_CUSTOM") {
+      setCustomAwayUntil(defaultCustomAwayUntil());
+      return;
+    }
+    const option = presenceOptions.find((item) => item.value === value);
+    if (!option) return;
+    void savePresence(option.awayHours ? "AWAY" : "ONLINE", { awayHours: option.awayHours });
+  };
+
+  // 직접 고른 현지 시각을 ISO(UTC)로 바꿔 저장.
+  const applyCustomAway = () => {
+    if (!customAwayUntil) return;
+    const until = new Date(customAwayUntil);
+    if (Number.isNaN(until.getTime()) || until.getTime() <= Date.now()) {
+      toast("지금 이후의 시각을 골라 주세요.");
+      return;
+    }
+    void savePresence("AWAY", { awayUntil: until.toISOString() });
   };
 
   // 복구 코드는 해시만 저장돼 다시 볼 수 없으므로 "보기"가 곧 재발급.
@@ -211,12 +248,44 @@ export function ProfileMenu({
             <CustomSelect
               label="접속 상태"
               value={presenceValue}
-              onChange={(value) => void changePresence(value)}
+              onChange={changePresence}
               options={presenceSelectOptions}
               disabled={isPresenceSaving || presence === null}
               className="flex-1 [&>button]:h-9 [&>button]:px-3"
             />
           </div>
+          {customAwayUntil !== null && (
+            // 직접 설정: 종료 날짜·시각을 고르고 적용. 최대 90일.
+            <div className="mx-5 flex items-center gap-2 pb-3">
+              <span className="w-12 shrink-0 text-xs text-slate-400">까지</span>
+              <input
+                type="datetime-local"
+                value={customAwayUntil}
+                min={toLocalInputValue(new Date())}
+                onChange={(event) => setCustomAwayUntil(event.target.value)}
+                disabled={isPresenceSaving}
+                aria-label="부재중 종료 시각"
+                className="h-9 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm text-slate-800 outline-none transition focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
+              />
+              <button
+                type="button"
+                onClick={applyCustomAway}
+                disabled={isPresenceSaving}
+                className="h-9 shrink-0 cursor-pointer rounded-lg bg-blue-600 px-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
+              >
+                적용
+              </button>
+              <button
+                type="button"
+                onClick={() => setCustomAwayUntil(null)}
+                disabled={isPresenceSaving}
+                aria-label="직접 설정 취소"
+                className="h-9 shrink-0 cursor-pointer rounded-lg border border-slate-200 px-2.5 text-sm text-slate-600 transition hover:bg-slate-50"
+              >
+                취소
+              </button>
+            </div>
+          )}
 
           {/* 아이디·이메일·세션. 아이디는 한 번에 복사. */}
           <dl className="mx-5 grid gap-1.5 border-y border-slate-100 py-3 text-sm">
