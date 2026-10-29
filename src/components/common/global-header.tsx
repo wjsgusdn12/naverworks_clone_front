@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { AuthMember } from "@/lib/api/auth-api";
+import type { PresenceStatus } from "@/lib/api/address-book-api";
 import type { NotificationCategory, NotificationItem } from "@/lib/api/notification-api";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
@@ -133,6 +134,8 @@ export function GlobalHeader({
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
   const [isNotificationModeOpen, setIsNotificationModeOpen] = useState(false);
   const [isProjectGuideOpen, setIsProjectGuideOpen] = useState(false);
+  // 내 접속 상태. 프로필 패널이 서버에서 읽어 알려 줌.
+  const [myPresenceStatus, setMyPresenceStatus] = useState<PresenceStatus>("ONLINE");
   // 알림 패널 상단 칩. "ALL"은 서버 분류와 무관하게 전체를 뜻함.
   const [notificationFilter, setNotificationFilter] = useState<"ALL" | NotificationCategory>("ALL");
   const visibleNotifications =
@@ -170,16 +173,20 @@ export function GlobalHeader({
       return;
     }
 
+    // 패널 위에 대화상자(회사 옮기기·복구 코드 등)가 떠 있는 동안은 패널을 닫지 않음.
+    const hasDialogOpen = () =>
+      document.querySelector('[role="dialog"][aria-modal="true"]') !== null;
+
     // 메뉴 영역 밖을 클릭하면 열린 프로필 메뉴를 닫음.
     const closeProfileMenuOnOutsideClick = (event: MouseEvent) => {
-      if (!profileMenuRef.current?.contains(event.target as Node)) {
+      if (!hasDialogOpen() && !profileMenuRef.current?.contains(event.target as Node)) {
         onCloseProfileMenu();
       }
     };
 
-    // 키보드 사용자도 Esc로 메뉴를 닫을 수 있게 처리.
+    // 키보드 사용자도 Esc로 메뉴를 닫을 수 있게 처리. 대화상자가 열려 있으면 Esc는 대화상자만 닫음.
     const closeProfileMenuOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && !hasDialogOpen()) {
         onCloseProfileMenu();
       }
     };
@@ -326,7 +333,7 @@ export function GlobalHeader({
                   >
                     {label === "내 프로필" && isAuthenticated ? (
                       // 주소록·메시지와 같은 공통 아바타. 본인은 항상 온라인으로 표시.
-                      <UserAvatar name={profileName} presenceStatus="ONLINE" size="sm" />
+                      <UserAvatar name={profileName} presenceStatus={myPresenceStatus} size="sm" />
                     ) : label === "프로젝트 소개" ? (
                       // 무지개 테두리가 돌고 빛이 지나가는 배지. 안쪽은 어두운 원이라 아이콘이 또렷하게 보임.
                       <span className="project-guide-badge flex h-8 w-8 items-center justify-center">
@@ -356,10 +363,10 @@ export function GlobalHeader({
                   // 알림 패널과 같은 폭·위치의 내 프로필 패널. 대화상자 상태를 들고 있어 항상 마운트.
                   <ProfileMenu
                     open={isProfileMenuOpen}
-                    onClose={() => onCloseProfileMenu?.()}
                     onLogout={onLogout}
                     onToast={onToast}
                     sessionRemainingText={sessionRemainingText}
+                    onPresenceChange={setMyPresenceStatus}
                   />
                 )}
                 {label === "알림" && isNotificationPanelOpen && (
