@@ -23,7 +23,7 @@ type UntilChoice = "NONE" | "1H" | "4H" | "TODAY" | "WEEK" | "CUSTOM";
 // 서버 상한(90일)과 맞춤.
 const MAX_DAYS = 90;
 
-// 자동 해제 시점 → 실제 시각. 해제 안 함·직접 설정은 null(직접 설정은 따로 고른 값 사용).
+// 자동 해제 시점 → 실제 시각. 계속·직접 설정은 null(직접 설정은 따로 고른 값 사용).
 const untilFor = (choice: UntilChoice): Date | null => {
   const now = new Date();
   switch (choice) {
@@ -44,7 +44,7 @@ const untilFor = (choice: UntilChoice): Date | null => {
 };
 
 const untilChoices: { value: UntilChoice; label: string }[] = [
-  { value: "NONE", label: "해제 안 함" },
+  { value: "NONE", label: "계속" },
   { value: "1H", label: "1시간" },
   { value: "4H", label: "4시간" },
   { value: "TODAY", label: "오늘까지" },
