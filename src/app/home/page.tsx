@@ -12,7 +12,7 @@ import { useEffect, useState } from "react";
 export default function HomePage() {
   const router = useRouter();
   const { toast, showToast, dismissToast, resetToast } = useToast();
-  const { status, member, logout } = useAuth();
+  const { status, member, accessToken, logout } = useAuth();
   // 프로필 아이콘 아래 메뉴의 열림 상태.
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -34,7 +34,7 @@ export default function HomePage() {
     router.replace("/");
   };
 
-  if (status !== "authenticated" || !member) {
+  if (status !== "authenticated" || !member || !accessToken) {
     // 화면 전환 전에는 빈 배경만 보여 보호 화면 내용을 노출하지 않음.
     return <div className="min-h-screen bg-slate-100" />;
   }
@@ -59,14 +59,11 @@ export default function HomePage() {
         profileName={member.displayName}
         isAuthenticated
       />
-      {/* 아직 연결되지 않은 홈 기능은 공통 안내 토스트로 처리. */}
       <HomeDashboard
+        accessToken={accessToken}
         displayName={member.displayName}
-        onFeatureClick={(featureName) =>
-          featureName === "메시지"
-            ? router.push("/message")
-            : showToast(`${featureName} 기능은 준비 중입니다.`)
-        }
+        membershipId={member.membershipId}
+        showToast={showToast}
       />
       {toast && (
         <Toast key={toast.id} message={toast.message} phase={toast.phase} onClose={dismissToast} />
