@@ -75,7 +75,7 @@ export function UserProfileModal({
             <h2 className="text-xl font-bold">{member.displayName}</h2>
             <p className="mt-1 text-sm text-slate-500">{member.jobGradeName ?? "직급 미지정"}</p>
             {/* 상태 설정이 있으면 "휴가 · 11월 3일 09:00까지"처럼 표시. */}
-            {statusText && <p className="mt-1 text-sm font-medium text-slate-700">{statusText}</p>}
+            {statusText && <p className="mt-1 text-sm text-slate-500">{statusText}</p>}
             <button
               type="button"
               onClick={() => showToast("일정 기능은 준비 중입니다.")}

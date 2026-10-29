@@ -258,7 +258,7 @@ export function ProfileMenu({
                 ) : (
                   <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" />
                 )}
-                <span className="min-w-0 flex-1 truncate text-slate-800">
+                <span className="min-w-0 flex-1 truncate text-slate-500">
                   {formatMemberStatus(statusType, statusUntil) ?? "설정 안 함"}
                 </span>
                 <ChevronDown
