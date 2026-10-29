@@ -2,6 +2,7 @@
 
 import { GroupAvatar } from "@/components/chat/group-avatar";
 import { MessageMemberAvatar } from "@/components/chat/message-member-avatar";
+import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import { CustomCheckbox } from "@/components/common/custom-checkbox";
 import { MeBadge } from "@/components/common/me-badge";
 import type { AddressBookMember } from "@/lib/api/address-book-api";
@@ -44,6 +45,8 @@ export const MessageRoomItem = memo(function MessageRoomItem({
   onToggleHidden: (roomId: number) => void;
   onAction: (room: ChatRoom, action: "notification" | "pin" | "hide" | "leave") => void;
 }) {
+  // 본인 아바타 배지에 쓰는 내 상태 설정.
+  const { myStatusType } = useChatNotification();
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [menuPosition, setMenuPosition] = useState<{ left: number; top: number } | null>(null);
   // 1:1 방은 상대방, 나와의 채팅은 본인 프로필을 목록에 표시.
@@ -104,7 +107,9 @@ export const MessageRoomItem = memo(function MessageRoomItem({
               name={avatarName}
               presenceStatus={presenceStatus}
               statusType={
-                isSelf ? null : contactMemberById.get(room.directMembershipId ?? -1)?.statusType
+                isSelf
+                  ? myStatusType
+                  : contactMemberById.get(room.directMembershipId ?? -1)?.statusType
               }
               onClick={() =>
                 onProfileClick(isSelf ? currentMember!.membershipId : room.directMembershipId!)

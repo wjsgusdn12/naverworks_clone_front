@@ -62,6 +62,7 @@ export function HomeDashboard({
   const {
     presenceByMembershipId,
     memberStatusByMembershipId,
+    myStatusType,
     notifications,
     notificationCount,
     notificationsLoaded,
@@ -244,9 +245,11 @@ export function HomeDashboard({
                                 : "OFFLINE"
                           }
                           statusType={
-                            room.type !== "SELF" && room.directMembershipId !== null
-                              ? memberStatusByMembershipId[room.directMembershipId]?.statusType
-                              : null
+                            room.type === "SELF"
+                              ? myStatusType
+                              : room.directMembershipId !== null
+                                ? memberStatusByMembershipId[room.directMembershipId]?.statusType
+                                : null
                           }
                         />
                       )}

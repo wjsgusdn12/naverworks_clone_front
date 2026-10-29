@@ -1,4 +1,5 @@
 import { ApiClientError } from "@/lib/api/auth-api";
+import type { MemberStatus, PresenceStatus } from "@/lib/api/address-book-api";
 
 type ApiResponse<T> = { success: boolean; code: string; message: string; data: T };
 
@@ -72,7 +73,8 @@ export type ChatGroupMember = {
   companyName: string;
   favorite: boolean;
   owner: boolean;
-};
+  presenceStatus: PresenceStatus;
+} & MemberStatus;
 
 // 방 상단에 고정하는 공지. 방당 여러 개, 최근 등록이 앞.
 export type ChatNotice = {

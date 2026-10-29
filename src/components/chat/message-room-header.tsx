@@ -2,6 +2,7 @@
 
 import { GroupAvatar } from "@/components/chat/group-avatar";
 import { MessageMemberAvatar } from "@/components/chat/message-member-avatar";
+import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import { MeBadge } from "@/components/common/me-badge";
 import type { PresenceStatus } from "@/lib/api/address-book-api";
 import type { ChatRoom } from "@/lib/api/chat-api";
@@ -34,6 +35,8 @@ export function MessageRoomHeader({
   headerMembershipId: number | null | undefined;
   onProfileClick: (membershipId: number) => void;
 }) {
+  // 본인 아바타 배지에 쓰는 내 상태 설정.
+  const { myStatusType } = useChatNotification();
   return (
     <header className="border-b border-slate-200 px-6">
       <div className="flex h-20 items-center justify-between">
@@ -63,7 +66,7 @@ export function MessageRoomHeader({
               presenceStatus={
                 selectedRoom?.type === "SELF" ? "ONLINE" : (directPresenceStatus ?? "OFFLINE")
               }
-              statusType={selectedRoom?.type === "SELF" ? null : directStatusType}
+              statusType={selectedRoom?.type === "SELF" ? myStatusType : directStatusType}
               size="lg"
               onClick={headerMembershipId ? () => onProfileClick(headerMembershipId) : undefined}
             />

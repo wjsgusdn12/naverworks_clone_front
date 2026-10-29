@@ -89,6 +89,7 @@ function MessageContent() {
     refreshChatRooms,
     presenceByMembershipId,
     memberStatusByMembershipId,
+    myStatusType,
   } = useChatNotification();
   const [rooms, setRooms] = useState<ChatRoom[]>([]);
   const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null);
@@ -1949,6 +1950,8 @@ function MessageContent() {
                   messages={messages}
                   highlightedMessageId={highlightedMessageId}
                   myMembershipId={member?.membershipId ?? null}
+                  myDisplayName={member?.displayName ?? null}
+                  myStatusType={myStatusType}
                   roomType={selectedRoom?.type ?? null}
                   contactMemberById={contactMemberById}
                   onOpenReadMembers={stableOpenReadMembers}

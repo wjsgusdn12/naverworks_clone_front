@@ -4,7 +4,10 @@ import { GroupAvatar } from "@/components/chat/group-avatar";
 import { FavoriteBadge } from "@/components/address-book/favorite-badge";
 import { LoadingInline } from "@/components/common/loading";
 import { MeBadge } from "@/components/common/me-badge";
+import { UserAvatar } from "@/components/common/user-avatar";
+import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import type { ChatGroupMember, ChatGroupSummary } from "@/lib/api/chat-api";
+import { withLiveStatus } from "@/lib/live-status";
 import { CalendarDays, Mail, MessageCircle, X } from "lucide-react";
 import { useState } from "react";
 
@@ -35,7 +38,11 @@ export function GroupDetailPanel({
   const [expandState, setExpandState] = useState({ groupId: 0, steps: 1 });
   const steps = expandState.groupId === group.id ? expandState.steps : 1;
 
-  const list = (members ?? []).filter((member) => (tab === "owner" ? member.owner : true));
+  const { presenceByMembershipId, memberStatusByMembershipId } = useChatNotification();
+  // 실시간 접속 상태·상태 설정을 덮어 공통 아바타 배지가 바로 바뀌게 함.
+  const list = (members ?? [])
+    .filter((member) => (tab === "owner" ? member.owner : true))
+    .map((member) => withLiveStatus(member, presenceByMembershipId, memberStatusByMembershipId));
   const shown = tab === "member" ? list.slice(0, steps * GROUP_MEMBER_STEP) : list;
 
   return (
@@ -113,9 +120,12 @@ export function GroupDetailPanel({
                 className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-left transition hover:bg-slate-50"
                 onClick={() => onSelectMember(member)}
               >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-[11px] font-bold text-slate-800">
-                  {member.displayName.slice(0, 3)}
-                </span>
+                <UserAvatar
+                  name={member.displayName}
+                  presenceStatus={member.presenceStatus}
+                  statusType={member.statusType}
+                  size="md"
+                />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
                     {member.membershipId === myMembershipId && <MeBadge />}

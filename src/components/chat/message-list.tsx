@@ -4,7 +4,8 @@ import { MessageBubble } from "@/components/chat/message-bubble";
 import type { AddressBookMember } from "@/lib/api/address-book-api";
 import type { ChatMessage, ChatRoom } from "@/lib/api/chat-api";
 import { dateKey, formatChatDate, minuteKey } from "@/lib/chat-format";
-import { Fragment, memo } from "react";
+import type { MemberStatusType } from "@/lib/status-options";
+import { Fragment, memo, useMemo } from "react";
 
 // 메시지 목록만 따로 memo로 묶어, 입력칸 타이핑·상대 입력 표시·접속 상태 같은 다른 state가 바뀔 때
 // 말풍선 50개를 매번 다시 계산하지 않게 함. messages 배열이나 강조 ID가 바뀔 때만 다시 그려짐.
@@ -26,6 +27,8 @@ export const MessageList = memo(function MessageList({
   onForward,
   onToggleNotice,
   noticeMessageIds,
+  myDisplayName,
+  myStatusType,
 }: {
   messages: ChatMessage[];
   highlightedMessageId: number | null;
@@ -45,7 +48,18 @@ export const MessageList = memo(function MessageList({
   onToggleNotice: (message: ChatMessage) => void;
   // 현재 방 공지 메시지 ID 목록. 포함된 말풍선의 메뉴가 "공지 내리기"로 바뀜.
   noticeMessageIds: Set<number>;
+  // 답장 인용이 내 메시지일 때 아바타 배지에 쓰는 내 이름·상태.
+  myDisplayName: string | null;
+  myStatusType: MemberStatusType | null;
 }) {
+  // 답장 인용에는 작성자 이름만 있어 이름으로 주소록 프로필을 찾음.
+  const contactByName = useMemo(
+    () =>
+      new Map(
+        Array.from(contactMemberById.values()).map((contact) => [contact.displayName, contact]),
+      ),
+    [contactMemberById],
+  );
   return (
     <>
       {messages.map((message, index) => {
@@ -53,6 +67,12 @@ export const MessageList = memo(function MessageList({
         const showDate =
           index === 0 || dateKey(messages[index - 1].createdAt) !== dateKey(message.createdAt);
         const sender = contactMemberById.get(message.senderMembershipId);
+        const replySenderName = message.reply?.senderName;
+        const isMyReply = replySenderName !== undefined && replySenderName === myDisplayName;
+        const replyContact =
+          replySenderName === undefined || isMyReply
+            ? undefined
+            : contactByName.get(replySenderName);
         const previousMessage = messages[index - 1];
         const nextMessage = messages[index + 1];
         const isGroupedWithPrevious =
@@ -90,6 +110,8 @@ export const MessageList = memo(function MessageList({
                   isDirect={roomType === "DIRECT"}
                   isGroup={roomType === "GROUP"}
                   senderProfile={sender}
+                  replyPresenceStatus={isMyReply ? "ONLINE" : replyContact?.presenceStatus}
+                  replyStatusType={isMyReply ? myStatusType : replyContact?.statusType}
                   showSender={!isGroupedWithPrevious}
                   showMeta={!isGroupedWithNext}
                   showTail={!isGroupedWithPrevious}

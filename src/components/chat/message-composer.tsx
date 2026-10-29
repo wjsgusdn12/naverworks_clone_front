@@ -2,6 +2,7 @@
 
 import { MessageMemberAvatar } from "@/components/chat/message-member-avatar";
 import { MessageQuote } from "@/components/chat/message-quote";
+import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import { Tooltip } from "@/components/common/tooltip";
 import type { AddressBookMember } from "@/lib/api/address-book-api";
 import type { ChatMessage } from "@/lib/api/chat-api";
@@ -70,6 +71,8 @@ export function MessageComposer({
   onProfileClick: (membershipId: number) => void;
   showToast: (message: string) => void;
 }) {
+  // 본인 아바타 배지에 쓰는 내 상태 설정.
+  const { myStatusType } = useChatNotification();
   const inputResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
   return (
     <form
@@ -136,7 +139,11 @@ export function MessageComposer({
                     contactMemberById.get(replyTarget.senderMembershipId)?.presenceStatus ??
                     (replyTarget.senderMembershipId === myMembershipId ? "ONLINE" : "OFFLINE")
                   }
-                  statusType={contactMemberById.get(replyTarget.senderMembershipId)?.statusType}
+                  statusType={
+                    replyTarget.senderMembershipId === myMembershipId
+                      ? myStatusType
+                      : contactMemberById.get(replyTarget.senderMembershipId)?.statusType
+                  }
                   onClick={() => onProfileClick(replyTarget.senderMembershipId)}
                 />
               }
@@ -169,7 +176,11 @@ export function MessageComposer({
                 content: editingTarget.content,
               }}
               avatar={
-                <MessageMemberAvatar name={editingTarget.senderName} presenceStatus="ONLINE" />
+                <MessageMemberAvatar
+                  name={editingTarget.senderName}
+                  presenceStatus="ONLINE"
+                  statusType={myStatusType}
+                />
               }
             />
           </div>
@@ -273,7 +284,13 @@ export function MessageComposer({
                   <AtSign size={18} />
                 </span>
               ) : (
-                <MessageMemberAvatar name={candidate.displayName} presenceStatus="OFFLINE" />
+                <MessageMemberAvatar
+                  name={candidate.displayName}
+                  presenceStatus={
+                    contactMemberById.get(candidate.membershipId)?.presenceStatus ?? "OFFLINE"
+                  }
+                  statusType={contactMemberById.get(candidate.membershipId)?.statusType}
+                />
               )}
               <span className="min-w-0">
                 <span className="block text-sm font-medium text-slate-900">

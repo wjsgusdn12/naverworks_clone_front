@@ -4,7 +4,8 @@ import { MessageNotificationToast } from "@/components/common/message-notificati
 import { useAuth } from "@/components/auth/auth-provider";
 import { chatApi, type ChatRoom } from "@/lib/api/chat-api";
 import { connectChatNotification, type PresenceRealtimeEvent } from "@/lib/realtime/chat-realtime";
-import type { MemberStatus, PresenceStatus } from "@/lib/api/address-book-api";
+import { addressBookApi, type MemberStatus, type PresenceStatus } from "@/lib/api/address-book-api";
+import type { MemberStatusType } from "@/lib/status-options";
 import { notificationApi, type NotificationItem } from "@/lib/api/notification-api";
 import {
   createContext,
@@ -29,6 +30,8 @@ type ChatNotificationContextValue = {
   // WebSocket으로 받은 구성원별 최신 접속 상태(ONLINE/OFFLINE/AWAY). REST 조회 결과 위에 덮어씀.
   presenceByMembershipId: Record<number, PresenceStatus>;
   memberStatusByMembershipId: Record<number, MemberStatus>;
+  // 내 상태 설정. 본인 아바타 배지에 씀.
+  myStatusType: MemberStatusType | null;
   activeChatRoomId: number | null;
   acknowledgeNotifications: () => void;
   markNotificationRead: (notificationId: number) => void;
@@ -160,6 +163,37 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
 
     void refreshChatRooms().catch(() => undefined);
   }, [accessToken, status, refreshChatRooms]);
+
+  // 로그인 직후 내 상태 설정을 한 번 읽어 둠. 이후 변경은 실시간 이벤트로 갱신되므로 이미 받은 값은 덮지 않음.
+  const myMembershipId = member?.membershipId;
+  useEffect(() => {
+    if (status !== "authenticated" || !accessToken || myMembershipId === undefined) return;
+    let cancelled = false;
+    addressBookApi
+      .myStatus(accessToken)
+      .then((result) => {
+        if (cancelled) return;
+        setMemberStatusByMembershipId((current) =>
+          current[myMembershipId]
+            ? current
+            : {
+                ...current,
+                [myMembershipId]: {
+                  statusType: result.statusType,
+                  statusUntil: result.statusUntil,
+                },
+              },
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, myMembershipId, status]);
+  const myStatusType =
+    myMembershipId === undefined
+      ? null
+      : (memberStatusByMembershipId[myMembershipId]?.statusType ?? null);
 
   // 로그인 직후 최근 30일 알림을 서버에서 불러옴. 토큰이 바뀌거나 로그아웃하면 정리 단계에서 비움.
   useEffect(() => {
@@ -294,6 +328,7 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
       notificationMode,
       presenceByMembershipId,
       memberStatusByMembershipId,
+      myStatusType,
       activeChatRoomId,
       acknowledgeNotifications,
       markNotificationRead,
@@ -314,6 +349,7 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
       notificationsLoaded,
       presenceByMembershipId,
       memberStatusByMembershipId,
+      myStatusType,
       setNotificationEnabled,
       setNotificationMode,
       status,
@@ -330,6 +366,9 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
           key={messageNotification.id}
           notification={messageNotification}
           senderOnline={presenceByMembershipId[messageNotification.senderMembershipId] === "ONLINE"}
+          senderStatusType={
+            memberStatusByMembershipId[messageNotification.senderMembershipId]?.statusType ?? null
+          }
           onClose={dismissMessageNotification}
           onOpenChatRoom={(notificationId, chatRoomId) => {
             markNotificationRead(notificationId);

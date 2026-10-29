@@ -2,6 +2,9 @@
 
 import { GlobalHeader } from "@/components/common/global-header";
 import { FavoriteButton } from "@/components/address-book/favorite-button";
+import { MemberAvatar } from "@/components/address-book/member-avatar";
+import { useChatNotification } from "@/components/chat/chat-notification-provider";
+import { withLiveStatus } from "@/lib/live-status";
 import { Toast } from "@/components/common/toast";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useToast } from "@/hooks/use-toast";
@@ -457,11 +460,13 @@ function Checkbox({
     </button>
   );
 }
+// 검색 결과·상세 패널 아바타. 공통 아바타에 실시간 접속 상태·상태 설정을 덮어 그림.
 function Avatar({ member }: { member: AddressBookMember | AddressBookMemberDetail }) {
+  const { presenceByMembershipId, memberStatusByMembershipId } = useChatNotification();
   return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-[10px] font-bold">
-      {member.displayName.slice(0, 3)}
-    </span>
+    <MemberAvatar
+      member={withLiveStatus(member, presenceByMembershipId, memberStatusByMembershipId)}
+    />
   );
 }
 function MemberPanel({

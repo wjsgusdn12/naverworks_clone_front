@@ -1,3 +1,4 @@
+import { UserAvatar } from "@/components/common/user-avatar";
 import type { ChatReply } from "@/lib/api/chat-api";
 import { Fragment, type ReactNode } from "react";
 
@@ -20,14 +21,7 @@ export function MessageQuote({
         onClick={onOpen}
         className="flex w-full min-w-0 cursor-pointer items-center gap-2 rounded-t-2xl border-b border-slate-300/70 px-3 py-2 text-left transition hover:bg-white/25 focus-visible:outline-2 focus-visible:outline-blue-500 active:bg-white/40"
       >
-        {avatar ?? (
-          <span
-            aria-hidden="true"
-            className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-[10px] font-bold text-slate-800"
-          >
-            {reply.senderName.slice(0, 3)}
-          </span>
-        )}
+        {avatar ?? <UserAvatar name={reply.senderName} presenceStatus="OFFLINE" />}
         <span className="min-w-0 flex-1">
           <span className="block truncate text-xs font-semibold text-slate-800">
             {reply.senderName}

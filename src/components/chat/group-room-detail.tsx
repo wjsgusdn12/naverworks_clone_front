@@ -2,6 +2,7 @@
 
 import { GroupAvatar } from "@/components/chat/group-avatar";
 import { MessageMemberAvatar } from "@/components/chat/message-member-avatar";
+import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import { LoadingState } from "@/components/common/loading";
 import type { AddressBookMember } from "@/lib/api/address-book-api";
 import { chatApi, type ChatMemberProfile, type ChatRoom } from "@/lib/api/chat-api";
@@ -33,6 +34,8 @@ export function GroupRoomDetail({
   onProfileClick: (membershipId: number) => void;
   showToast: (message: string) => void;
 }) {
+  // 본인 아바타 배지에 쓰는 내 상태 설정.
+  const { myStatusType } = useChatNotification();
   const [name, setName] = useState(room.name ?? "");
   const [inviteId, setInviteId] = useState<number | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -247,7 +250,7 @@ export function GroupRoomDetail({
                   <MessageMemberAvatar
                     name={participant.displayName}
                     presenceStatus={presenceStatus}
-                    statusType={profile?.statusType}
+                    statusType={isMe ? myStatusType : profile?.statusType}
                   />
                   <span className="min-w-0 flex-1">
                     <b className="block truncate text-sm">

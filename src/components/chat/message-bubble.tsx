@@ -13,7 +13,9 @@ import { MessageQuote } from "@/components/chat/message-quote";
 import { ReactionEmoji } from "@/components/chat/reaction-emoji";
 import { ReactionPicker } from "@/components/chat/reaction-picker";
 import { Tooltip } from "@/components/common/tooltip";
-import type { AddressBookMember } from "@/lib/api/address-book-api";
+import { UserAvatar } from "@/components/common/user-avatar";
+import type { AddressBookMember, PresenceStatus } from "@/lib/api/address-book-api";
+import type { MemberStatusType } from "@/lib/status-options";
 import type { ChatMessage } from "@/lib/api/chat-api";
 import { isMessageEditable } from "@/lib/chat-page-helpers";
 import { reactionLabel } from "@/lib/chat-reactions";
@@ -28,6 +30,8 @@ export const MessageBubble = memo(function MessageBubble({
   isDirect,
   isGroup,
   senderProfile,
+  replyPresenceStatus,
+  replyStatusType,
   showSender,
   showMeta,
   showTail,
@@ -50,6 +54,9 @@ export const MessageBubble = memo(function MessageBubble({
   isDirect: boolean;
   isGroup: boolean;
   senderProfile?: AddressBookMember;
+  // 답장 인용 속 원문 작성자의 아바타 배지(접속 상태·상태 설정).
+  replyPresenceStatus?: PresenceStatus;
+  replyStatusType?: MemberStatusType | null;
   showSender: boolean;
   showMeta: boolean;
   showTail: boolean;
@@ -228,7 +235,19 @@ export const MessageBubble = memo(function MessageBubble({
           }}
         />
       )}
-      {reply && <MessageQuote reply={reply} onOpen={() => onOpenOriginal(reply.messageId)} />}
+      {reply && (
+        <MessageQuote
+          reply={reply}
+          onOpen={() => onOpenOriginal(reply.messageId)}
+          avatar={
+            <UserAvatar
+              name={reply.senderName}
+              presenceStatus={replyPresenceStatus ?? "OFFLINE"}
+              statusType={replyStatusType}
+            />
+          }
+        />
+      )}
       {/* 다른 방에서 전달해 온 메시지는 본문 위에 작은 라벨로 표시. */}
       {message.forwarded && !message.deletedAt && (
         <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-slate-500">

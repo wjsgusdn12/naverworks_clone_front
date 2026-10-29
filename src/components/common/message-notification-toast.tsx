@@ -1,12 +1,15 @@
 import { Bell, BellOff, X } from "lucide-react";
 import type { MessageNotificationToastState } from "@/hooks/use-message-notification-toast";
 import { UserAvatar } from "@/components/common/user-avatar";
+import type { MemberStatusType } from "@/lib/status-options";
 import { useState } from "react";
 
 type MessageNotificationToastProps = {
   notification: MessageNotificationToastState;
   // 보낸 사람의 접속 여부. 프로필 아바타의 상태 점 색에 사용.
   senderOnline: boolean;
+  // 보낸 사람의 상태 설정(바쁨·휴가 등). 있으면 배지에 그 아이콘.
+  senderStatusType: MemberStatusType | null;
   onClose: () => void;
   onOpenChatRoom: (notificationId: number, chatRoomId: number) => void;
   onDisableNotifications: (chatRoomId: number) => Promise<void>;
@@ -16,6 +19,7 @@ type MessageNotificationToastProps = {
 export function MessageNotificationToast({
   notification,
   senderOnline,
+  senderStatusType,
   onClose,
   onOpenChatRoom,
   onDisableNotifications,
@@ -56,6 +60,7 @@ export function MessageNotificationToast({
           size="md"
           name={notification.senderName}
           presenceStatus={senderOnline ? "ONLINE" : "OFFLINE"}
+          statusType={senderStatusType}
         />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-bold">{notification.roomName}</p>
