@@ -1,6 +1,7 @@
 "use client";
 
 import { LoaderCircle } from "lucide-react";
+import type { CSSProperties } from "react";
 
 // 프로젝트 공통 로딩 표시. 세 가지 형태를 상황에 맞게 골라 씀.
 // - Spinner: 회전 아이콘만. 버튼 안처럼 글자 옆에 붙일 때.
@@ -26,6 +27,8 @@ type LoadingInlineProps = {
   className?: string;
   // 아이콘만 다른 색으로 칠하고 싶을 때(기본 파란색).
   spinnerClassName?: string;
+  // 위치처럼 계산한 값을 넘길 때.
+  style?: CSSProperties;
 };
 
 export function LoadingInline({
@@ -33,11 +36,13 @@ export function LoadingInline({
   size = 14,
   className = "",
   spinnerClassName = "text-blue-500",
+  style,
 }: LoadingInlineProps) {
   return (
     <span
       role="status"
       aria-live="polite"
+      style={style}
       className={`inline-flex items-center gap-2 ${className}`}
     >
       <Spinner size={size} className={spinnerClassName} />
