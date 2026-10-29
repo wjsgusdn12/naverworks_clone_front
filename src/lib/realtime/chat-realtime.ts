@@ -1,5 +1,5 @@
 import { Client } from "@stomp/stompjs";
-import type { ChatMessage } from "@/lib/api/chat-api";
+import type { ChatMessage, ChatNotice } from "@/lib/api/chat-api";
 import type { NotificationItem } from "@/lib/api/notification-api";
 
 // 서버가 내 전용 큐(/user/queue/notification)로 보내는 새 서비스 알림.
@@ -38,6 +38,13 @@ export type ChatReactionEvent = {
   action: "added" | "removed";
 };
 
+// 공지 등록·교체·해제. notice가 null이면 공지 띠를 내림.
+export type ChatNoticeEvent = {
+  type: "NOTICE_UPDATED";
+  chatRoomId: number;
+  notice: ChatNotice | null;
+};
+
 type ChatReadEvent = {
   type: "READ_UPDATED";
   chatRoomId: number;
@@ -68,6 +75,7 @@ type ConnectChatRoomOptions = {
   onRoomMessageCreated: (event: ChatRealtimeEvent) => void;
   onMessageChanged: (event: ChatMessageChangeEvent) => void;
   onReactionChanged: (event: ChatReactionEvent) => void;
+  onNoticeChanged: (event: ChatNoticeEvent) => void;
   onReadUpdated: (event: ChatReadEvent) => void;
   onTypingChanged: (event: ChatTypingEvent) => void;
   onGlobalTypingChanged: (event: ChatTypingEvent) => void;
@@ -94,6 +102,7 @@ export const connectChatRoom = ({
   onRoomMessageCreated,
   onMessageChanged,
   onReactionChanged,
+  onNoticeChanged,
   onReadUpdated,
   onTypingChanged,
   onGlobalTypingChanged,
@@ -122,7 +131,8 @@ export const connectChatRoom = ({
               | ChatTypingEvent
               | ChatReadEvent
               | ChatMessageChangeEvent
-              | ChatReactionEvent;
+              | ChatReactionEvent
+              | ChatNoticeEvent;
             if (event.type === "MESSAGE_CREATED") {
               // 방 목록은 모든 참여 방의 최신 메시지를 받아 즉시 갱신.
               onRoomMessageCreated(event);
@@ -138,6 +148,8 @@ export const connectChatRoom = ({
               onMessageChanged(event);
             if (event.type === "REACTION_UPDATED" && event.chatRoomId === chatRoomId)
               onReactionChanged(event);
+            if (event.type === "NOTICE_UPDATED" && event.chatRoomId === chatRoomId)
+              onNoticeChanged(event);
           } catch {
             onError("실시간 메시지 데이터를 해석하지 못했습니다.");
           }

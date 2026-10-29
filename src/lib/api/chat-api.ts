@@ -45,6 +45,18 @@ export type ChatMessage = {
   version: number;
   // 이모지별 집계. reactedByMe는 로그인한 사용자 기준.
   reactions: ChatReaction[];
+  // 다른 방에서 전달해 온 메시지면 true("전달된 메시지" 라벨 표시).
+  forwarded: boolean;
+};
+
+// 방 상단에 고정하는 공지. 방당 하나.
+export type ChatNotice = {
+  messageId: number;
+  senderName: string;
+  content: string;
+  setByMembershipId: number | null;
+  setByName: string | null;
+  setAt: string;
 };
 
 // 서버에는 코드명(thumbs_up 등)으로 저장하고, 화면에서 문자로 바꿔 보여 줌.
@@ -86,6 +98,7 @@ export type ChatRoomDetail = {
   memberIds: number[];
   members: ChatMemberProfile[];
   readCursors: ChatReadCursor[];
+  notice: ChatNotice | null;
 };
 
 const apiBaseUrl = () => {
@@ -236,6 +249,24 @@ export const chatApi = {
       token,
       { method: "POST", body: JSON.stringify({ emoji }) },
     ),
+  // 메시지 전달. 선택한 방마다 새 메시지로 복사(최대 10개).
+  forwardMessage: (token: string, roomId: number, messageId: number, targetChatRoomIds: number[]) =>
+    request<ChatMessage[]>(
+      `/api/v1/chatRoom/message/forward?chatRoomId=${roomId}&messageId=${messageId}`,
+      token,
+      { method: "POST", body: JSON.stringify({ targetChatRoomIds }) },
+    ),
+  // 공지 등록(기존 공지 교체)과 해제.
+  updateNotice: (token: string, roomId: number, messageId: number) =>
+    request<ChatNotice>(
+      `/api/v1/chatRoom/notice/update?chatRoomId=${roomId}&messageId=${messageId}`,
+      token,
+      { method: "POST" },
+    ),
+  removeNotice: (token: string, roomId: number) =>
+    request<void>(`/api/v1/chatRoom/notice/remove?chatRoomId=${roomId}`, token, {
+      method: "POST",
+    }),
   // 메시지에 리액션한 사람 전체(이모지 구분 없음, 누른 순서).
   reactionMembers: (token: string, roomId: number, messageId: number) =>
     request<ChatReactionMember[]>(
