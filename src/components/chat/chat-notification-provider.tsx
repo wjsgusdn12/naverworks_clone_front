@@ -115,6 +115,20 @@ export function ChatNotificationProvider({ children }: Readonly<{ children: Reac
 
   const notificationCount = notifications.filter((item) => !item.read).length;
 
+  // 보고 있는 방으로 연결되는 알림은 사용자가 내용을 이미 확인한 것이므로 자동으로 읽음 처리.
+  // 방에 들어온 순간 쌓여 있던 알림과, 방을 보는 중에 새로 온 알림 모두 해당.
+  const activeRoomLinkPath =
+    activeChatRoomId === null ? null : `/message?roomId=${activeChatRoomId}`;
+  useEffect(() => {
+    if (!activeRoomLinkPath) return;
+    const pending = notifications.filter(
+      (item) => !item.read && item.linkPath === activeRoomLinkPath,
+    );
+    if (pending.length === 0) return;
+    // 렌더링 직후 비동기로 처리해 Effect 안의 동기 상태 변경을 피함.
+    void Promise.resolve().then(() => pending.forEach((item) => markNotificationRead(item.id)));
+  }, [activeRoomLinkPath, markNotificationRead, notifications]);
+
   const roomIdsKey = useMemo(
     () =>
       chatRooms
