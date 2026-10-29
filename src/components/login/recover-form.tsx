@@ -18,6 +18,8 @@ type Step = "code" | "password";
 
 export function RecoverForm({ onToast, onReset, onBackToLogin }: RecoverFormProps) {
   const [step, setStep] = useState<Step>("code");
+  // 아이디 또는 이메일. 복구 코드와 함께 맞아야 계정이 확인됨.
+  const [loginId, setLoginId] = useState("");
   const [recoveryCode, setRecoveryCode] = useState("");
   const [account, setAccount] = useState<{ maskedLoginId: string; displayName: string } | null>(
     null,
@@ -31,6 +33,10 @@ export function RecoverForm({ onToast, onReset, onBackToLogin }: RecoverFormProp
   const lookup = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const code = recoveryCode.trim().toUpperCase();
+    if (!loginId.trim()) {
+      setError("아이디 또는 이메일을 입력해 주세요.");
+      return;
+    }
     if (!code) {
       setError("복구 코드를 입력해 주세요.");
       return;
@@ -38,7 +44,7 @@ export function RecoverForm({ onToast, onReset, onBackToLogin }: RecoverFormProp
     setIsSubmitting(true);
     setError(null);
     try {
-      setAccount(await authApi.recoverLookup(code));
+      setAccount(await authApi.recoverLookup(loginId.trim(), code));
       setRecoveryCode(code);
       setStep("password");
     } catch (caught) {
@@ -63,7 +69,7 @@ export function RecoverForm({ onToast, onReset, onBackToLogin }: RecoverFormProp
     setIsSubmitting(true);
     setError(null);
     try {
-      onReset((await authApi.recoverReset(recoveryCode, newPassword)).recoveryCode);
+      onReset((await authApi.recoverReset(loginId.trim(), recoveryCode, newPassword)).recoveryCode);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "비밀번호를 변경하지 못했습니다.";
       setError(message);
@@ -80,13 +86,31 @@ export function RecoverForm({ onToast, onReset, onBackToLogin }: RecoverFormProp
         <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-900">계정 찾기</h1>
         <p className="mt-2 text-sm text-slate-500">
           {step === "code"
-            ? "가입할 때 받은 복구 코드를 입력해 주세요."
+            ? "아이디와 가입할 때 받은 복구 코드를 입력해 주세요."
             : "확인된 계정의 새 비밀번호를 설정해 주세요."}
         </p>
       </div>
 
       {step === "code" ? (
         <form className="space-y-4" noValidate onSubmit={lookup}>
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-slate-700">
+              아이디 또는 이메일
+            </span>
+            <input
+              type="text"
+              value={loginId}
+              autoFocus
+              onChange={(event) => {
+                setLoginId(event.target.value);
+                setError(null);
+              }}
+              placeholder="아이디 또는 이메일"
+              autoComplete="username"
+              disabled={isSubmitting}
+              className={loginInputClassName(Boolean(error))}
+            />
+          </label>
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-slate-700">복구 코드</span>
             <span className="relative block">
@@ -98,7 +122,6 @@ export function RecoverForm({ onToast, onReset, onBackToLogin }: RecoverFormProp
               <input
                 type="text"
                 value={recoveryCode}
-                autoFocus
                 onChange={(event) => {
                   setRecoveryCode(event.target.value.toUpperCase());
                   setError(null);
