@@ -520,6 +520,7 @@ export default function AddressBookPage() {
           {view === "group" ? (
             <GroupPanel
               accessToken={accessToken}
+              myMembershipId={member.membershipId}
               groups={groups}
               tab={groupTab}
               onTabChange={setGroupTab}
@@ -554,6 +555,7 @@ export default function AddressBookPage() {
               <div className="flex flex-1 border-t border-slate-200">
                 <MemberTable
                   members={displayMembers}
+                  myMembershipId={member.membershipId}
                   selectedMemberId={selectedMember?.membershipId ?? null}
                   selectedMemberIds={selectedMemberIds}
                   sort={sort}

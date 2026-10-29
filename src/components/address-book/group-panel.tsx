@@ -23,6 +23,7 @@ import { useEffect, useState } from "react";
 
 export function GroupPanel({
   accessToken,
+  myMembershipId,
   groups,
   tab,
   onTabChange,
@@ -30,6 +31,8 @@ export function GroupPanel({
   onOpenRoom,
 }: {
   accessToken: string | null;
+  // 그룹 상세 패널의 본인 줄에 "나" 딱지를 붙이기 위한 로그인 사용자 ID.
+  myMembershipId: number;
   groups: ChatGroupSummary[] | null;
   tab: GroupTab;
   onTabChange: (tab: GroupTab) => void;
@@ -296,6 +299,7 @@ export function GroupPanel({
             <GroupDetailPanel
               group={selectedGroup}
               members={groupMembers}
+              myMembershipId={myMembershipId}
               onClose={closePanel}
               onSelectMember={(target) => void selectGroupMember(target)}
               onMessage={() => openGroup(selectedGroup)}

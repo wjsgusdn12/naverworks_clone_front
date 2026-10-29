@@ -3,6 +3,7 @@
 import { GroupAvatar } from "@/components/chat/group-avatar";
 import { FavoriteBadge } from "@/components/address-book/favorite-badge";
 import { LoadingInline } from "@/components/common/loading";
+import { MeBadge } from "@/components/common/me-badge";
 import type { ChatGroupMember, ChatGroupSummary } from "@/lib/api/chat-api";
 import { CalendarDays, Mail, MessageCircle, X } from "lucide-react";
 import { useState } from "react";
@@ -14,6 +15,7 @@ const GROUP_MEMBER_STEP = 5;
 export function GroupDetailPanel({
   group,
   members,
+  myMembershipId,
   onClose,
   onSelectMember,
   onMessage,
@@ -21,6 +23,8 @@ export function GroupDetailPanel({
 }: {
   group: ChatGroupSummary;
   members: ChatGroupMember[] | null;
+  // 본인 줄에 "나" 딱지를 붙이기 위한 로그인 사용자 ID.
+  myMembershipId: number;
   onClose: () => void;
   onSelectMember: (member: ChatGroupMember) => void;
   onMessage: () => void;
@@ -114,6 +118,7 @@ export function GroupDetailPanel({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
+                    {member.membershipId === myMembershipId && <MeBadge />}
                     <b className="truncate text-sm text-slate-900">{member.displayName}</b>
                     {member.favorite && <FavoriteBadge />}
                     {member.owner && (
