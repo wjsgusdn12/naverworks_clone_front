@@ -62,6 +62,18 @@ export type ChatGroupSummary = {
   lastMessageAt: string | null;
 };
 
+// 주소록 그룹 상세 패널의 구성원 한 줄. favorite은 내 즐겨찾기 여부, owner는 방장 여부.
+export type ChatGroupMember = {
+  membershipId: number;
+  displayName: string;
+  jobTitle: string | null;
+  jobGradeName: string | null;
+  departmentName: string | null;
+  companyName: string;
+  favorite: boolean;
+  owner: boolean;
+};
+
 // 방 상단에 고정하는 공지. 방당 여러 개, 최근 등록이 앞.
 export type ChatNotice = {
   messageId: number;
@@ -153,6 +165,8 @@ export const chatApi = {
   rooms: (token: string) => request<ChatRoom[]>("/api/v1/chatRoom", token),
   // 주소록 "그룹" 탭: 내 회사의 그룹 채팅방 전체(참여 여부 무관).
   groupRooms: (token: string) => request<ChatGroupSummary[]>("/api/v1/chatRoom/group/list", token),
+  groupMembers: (token: string, roomId: number) =>
+    request<ChatGroupMember[]>(`/api/v1/chatRoom/group/members?chatRoomId=${roomId}`, token),
   // 기존 1:1 방은 재사용하고 없을 때만 서버가 새 방을 생성.
   createDirect: (token: string, targetMembershipId: number) =>
     request<ChatRoom>("/api/v1/chatRoom/direct/create", token, {
