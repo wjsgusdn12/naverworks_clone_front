@@ -1,0 +1,433 @@
+"use client";
+
+import { ChevronDown, Eye, EyeOff } from "lucide-react";
+import { FormEvent, useEffect, useState, type ReactNode } from "react";
+import { LoadingInline } from "@/components/common/loading";
+import { loginInputClassName } from "@/components/login/login-form";
+import {
+  authApi,
+  type SignupInput,
+  type SignupJoinType,
+  type SignupOptions,
+  type SignupResult,
+} from "@/lib/api/auth-api";
+
+// 칸별 오류 문구.
+type SignupFieldError = Partial<
+  Record<
+    | "loginId"
+    | "password"
+    | "passwordConfirm"
+    | "displayName"
+    | "email"
+    | "companyName"
+    | "inviteCode",
+    string
+  >
+>;
+
+type SignupFormProps = {
+  onToast: (message: string) => void;
+  // 가입 성공 시 부모가 세션 적용과 복구 코드 안내를 처리.
+  onSignedUp: (result: SignupResult) => void;
+  onBackToLogin: () => void;
+};
+
+// 소속 선택지. 기본은 체험 회사 참여.
+const joinTypes: { key: SignupJoinType; label: string; description: string }[] = [
+  {
+    key: "DEMO",
+    label: "체험 회사 참여",
+    description: "구성원과 그룹방이 이미 있어 바로 써 볼 수 있어요.",
+  },
+  {
+    key: "NEW_COMPANY",
+    label: "새 회사 만들기",
+    description: "내가 대표가 되고 초대 코드로 사람을 모읍니다.",
+  },
+  {
+    key: "INVITE",
+    label: "초대 코드로 참여",
+    description: "관리자에게 받은 초대 코드를 입력합니다.",
+  },
+];
+
+const LOGIN_ID_PATTERN = /^[a-z0-9._-]{4,30}$/;
+
+export function SignupForm({ onToast, onSignedUp, onBackToLogin }: SignupFormProps) {
+  const [loginId, setLoginId] = useState("");
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [displayName, setDisplayName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [joinType, setJoinType] = useState<SignupJoinType>("DEMO");
+  const [departmentId, setDepartmentId] = useState("");
+  const [jobGradeId, setJobGradeId] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
+  const [options, setOptions] = useState<SignupOptions | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<SignupFieldError>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // 체험 회사의 부서·직급 목록. 실패해도 가입 자체는 가능(미지정으로).
+  useEffect(() => {
+    let cancelled = false;
+    authApi
+      .signupOptions()
+      .then((result) => {
+        if (!cancelled) setOptions(result);
+      })
+      .catch(() => {
+        if (!cancelled)
+          setOptions({ demoCompanyName: "체험 회사", departments: [], jobGrades: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const clearError = (key: keyof SignupFieldError) =>
+    setFieldErrors((current) => ({ ...current, [key]: undefined }));
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const normalizedLoginId = loginId.trim().toLowerCase();
+    const normalizedEmail = email.trim();
+    const errors: SignupFieldError = {
+      loginId: !normalizedLoginId
+        ? "아이디를 입력해 주세요."
+        : !LOGIN_ID_PATTERN.test(normalizedLoginId)
+          ? "영문 소문자·숫자·. _ - 조합 4~30자로 입력해 주세요."
+          : undefined,
+      password: password.length < 8 ? "비밀번호는 8자 이상이어야 합니다." : undefined,
+      passwordConfirm: password !== passwordConfirm ? "비밀번호가 서로 다릅니다." : undefined,
+      displayName: !displayName.trim() ? "이름을 입력해 주세요." : undefined,
+      email:
+        normalizedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
+          ? "올바른 이메일 주소 형식이 아닙니다."
+          : undefined,
+      companyName:
+        joinType === "NEW_COMPANY" && !companyName.trim()
+          ? "회사 이름을 입력해 주세요."
+          : undefined,
+      inviteCode:
+        joinType === "INVITE" && !inviteCode.trim() ? "초대 코드를 입력해 주세요." : undefined,
+    };
+    if (Object.values(errors).some(Boolean)) {
+      setFieldErrors(errors);
+      onToast("입력 내용을 확인해 주세요.");
+      return;
+    }
+
+    const input: SignupInput = {
+      loginId: normalizedLoginId,
+      password,
+      displayName: displayName.trim(),
+      email: normalizedEmail || undefined,
+      phoneNumber: phoneNumber.trim() || undefined,
+      joinType,
+      departmentId: joinType === "DEMO" && departmentId ? Number(departmentId) : undefined,
+      jobGradeId: joinType === "DEMO" && jobGradeId ? Number(jobGradeId) : undefined,
+      companyName: joinType === "NEW_COMPANY" ? companyName.trim() : undefined,
+      inviteCode: joinType === "INVITE" ? inviteCode.trim().toUpperCase() : undefined,
+    };
+
+    setFieldErrors({});
+    setIsSubmitting(true);
+    try {
+      onSignedUp(await authApi.signup(input));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "가입을 처리하지 못했습니다.";
+      // 서버가 알려 준 중복·코드 오류는 해당 칸 아래에도 표시.
+      const code = error instanceof Error && "code" in error ? String(error.code) : "";
+      if (code === "AUTH_LOGIN_ID_TAKEN") setFieldErrors({ loginId: message });
+      else if (code === "AUTH_EMAIL_TAKEN") setFieldErrors({ email: message });
+      else if (code === "AUTH_COMPANY_NAME_TAKEN" || code === "AUTH_COMPANY_NAME_REQUIRED")
+        setFieldErrors({ companyName: message });
+      else if (code === "AUTH_INVITE_CODE_INVALID") setFieldErrors({ inviteCode: message });
+      onToast(message);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <section className="w-full max-w-[480px] rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_12px_36px_rgba(15,23,42,0.08)] sm:p-10">
+      <div className="mb-7 text-center">
+        <p className="text-xs font-semibold tracking-[0.2em] text-blue-600">NAVER WORKS CLONE</p>
+        <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-900">회원가입</h1>
+        <p className="mt-2 text-sm text-slate-500">이메일 없이 아이디만으로 가입할 수 있습니다.</p>
+      </div>
+
+      <form className="space-y-4" noValidate onSubmit={handleSubmit}>
+        <Field label="아이디" error={fieldErrors.loginId}>
+          <input
+            type="text"
+            value={loginId}
+            autoFocus
+            onChange={(event) => {
+              setLoginId(event.target.value);
+              clearError("loginId");
+            }}
+            placeholder="영문 소문자·숫자 4~30자"
+            autoComplete="username"
+            disabled={isSubmitting}
+            aria-invalid={Boolean(fieldErrors.loginId) || undefined}
+            className={loginInputClassName(Boolean(fieldErrors.loginId))}
+          />
+        </Field>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="비밀번호" error={fieldErrors.password}>
+            <span className="relative block">
+              <input
+                type={isPasswordVisible ? "text" : "password"}
+                value={password}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  clearError("password");
+                  clearError("passwordConfirm");
+                }}
+                placeholder="8자 이상"
+                autoComplete="new-password"
+                disabled={isSubmitting}
+                aria-invalid={Boolean(fieldErrors.password) || undefined}
+                className={`${loginInputClassName(Boolean(fieldErrors.password))} pr-12`}
+              />
+              <button
+                type="button"
+                aria-label={isPasswordVisible ? "비밀번호 숨기기" : "비밀번호 보기"}
+                onClick={() => setIsPasswordVisible((visible) => !visible)}
+                className="absolute inset-y-0 right-0 flex w-12 cursor-pointer items-center justify-center text-slate-500 transition hover:text-blue-600"
+              >
+                {isPasswordVisible ? <EyeOff size={19} /> : <Eye size={19} />}
+              </button>
+            </span>
+          </Field>
+          <Field label="비밀번호 확인" error={fieldErrors.passwordConfirm}>
+            <input
+              type={isPasswordVisible ? "text" : "password"}
+              value={passwordConfirm}
+              onChange={(event) => {
+                setPasswordConfirm(event.target.value);
+                clearError("passwordConfirm");
+              }}
+              placeholder="한 번 더 입력"
+              autoComplete="new-password"
+              disabled={isSubmitting}
+              aria-invalid={Boolean(fieldErrors.passwordConfirm) || undefined}
+              className={loginInputClassName(Boolean(fieldErrors.passwordConfirm))}
+            />
+          </Field>
+        </div>
+
+        <Field label="이름" error={fieldErrors.displayName}>
+          <input
+            type="text"
+            value={displayName}
+            onChange={(event) => {
+              setDisplayName(event.target.value);
+              clearError("displayName");
+            }}
+            placeholder="주소록과 대화에 보이는 이름"
+            autoComplete="name"
+            disabled={isSubmitting}
+            aria-invalid={Boolean(fieldErrors.displayName) || undefined}
+            className={loginInputClassName(Boolean(fieldErrors.displayName))}
+          />
+        </Field>
+
+        {/* 소속 선택 */}
+        <fieldset>
+          <legend className="mb-2 block text-sm font-medium text-slate-700">소속</legend>
+          <div className="grid gap-2">
+            {joinTypes.map((type) => (
+              <label
+                key={type.key}
+                className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3.5 py-3 transition ${joinType === type.key ? "border-blue-600 bg-blue-50/60 ring-2 ring-blue-100" : "border-slate-200 hover:border-blue-300"}`}
+              >
+                <input
+                  type="radio"
+                  name="joinType"
+                  value={type.key}
+                  checked={joinType === type.key}
+                  onChange={() => setJoinType(type.key)}
+                  disabled={isSubmitting}
+                  className="mt-1 accent-blue-600"
+                />
+                <span>
+                  <span className="block text-sm font-semibold text-slate-900">
+                    {type.label}
+                    {type.key === "DEMO" && options && (
+                      <span className="ml-1.5 text-xs font-medium text-slate-500">
+                        · {options.demoCompanyName}
+                      </span>
+                    )}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-slate-500">{type.description}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        {joinType === "DEMO" && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="부서 (선택)">
+              <SelectBox
+                value={departmentId}
+                onChange={setDepartmentId}
+                placeholder="미지정"
+                options={options?.departments ?? []}
+                disabled={isSubmitting || options === null}
+              />
+            </Field>
+            <Field label="직급 (선택)">
+              <SelectBox
+                value={jobGradeId}
+                onChange={setJobGradeId}
+                placeholder="미지정"
+                options={options?.jobGrades ?? []}
+                disabled={isSubmitting || options === null}
+              />
+            </Field>
+          </div>
+        )}
+        {joinType === "NEW_COMPANY" && (
+          <Field label="회사 이름" error={fieldErrors.companyName}>
+            <input
+              type="text"
+              value={companyName}
+              onChange={(event) => {
+                setCompanyName(event.target.value);
+                clearError("companyName");
+              }}
+              placeholder="예: 우리 스타트업"
+              disabled={isSubmitting}
+              aria-invalid={Boolean(fieldErrors.companyName) || undefined}
+              className={loginInputClassName(Boolean(fieldErrors.companyName))}
+            />
+          </Field>
+        )}
+        {joinType === "INVITE" && (
+          <Field label="초대 코드" error={fieldErrors.inviteCode}>
+            <input
+              type="text"
+              value={inviteCode}
+              onChange={(event) => {
+                setInviteCode(event.target.value.toUpperCase());
+                clearError("inviteCode");
+              }}
+              placeholder="XXXX-XXXX"
+              disabled={isSubmitting}
+              aria-invalid={Boolean(fieldErrors.inviteCode) || undefined}
+              className={`${loginInputClassName(Boolean(fieldErrors.inviteCode))} font-mono tracking-widest`}
+            />
+          </Field>
+        )}
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="이메일 (선택)" error={fieldErrors.email}>
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                clearError("email");
+              }}
+              placeholder="비밀번호 재설정 메일용"
+              autoComplete="email"
+              disabled={isSubmitting}
+              aria-invalid={Boolean(fieldErrors.email) || undefined}
+              className={loginInputClassName(Boolean(fieldErrors.email))}
+            />
+          </Field>
+          <Field label="전화번호 (선택)">
+            <input
+              type="tel"
+              value={phoneNumber}
+              onChange={(event) => setPhoneNumber(event.target.value)}
+              placeholder="010-0000-0000"
+              autoComplete="tel"
+              disabled={isSubmitting}
+              className={loginInputClassName(false)}
+            />
+          </Field>
+        </div>
+
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="flex h-12 w-full cursor-pointer items-center justify-center rounded-lg bg-blue-600 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-md disabled:cursor-wait disabled:opacity-70"
+        >
+          {isSubmitting ? (
+            <LoadingInline message="가입 중..." spinnerClassName="text-white" />
+          ) : (
+            "가입하고 시작하기"
+          )}
+        </button>
+      </form>
+
+      <p className="mt-6 text-center text-sm text-slate-500">
+        이미 계정이 있으신가요?{" "}
+        <button
+          type="button"
+          onClick={onBackToLogin}
+          className="cursor-pointer font-semibold text-blue-600 hover:underline"
+        >
+          로그인
+        </button>
+      </p>
+    </section>
+  );
+}
+
+function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-slate-700">{label}</span>
+      {children}
+      {error && <span className="mt-1.5 block text-xs text-red-600">{error}</span>}
+    </label>
+  );
+}
+
+// 기본 select를 입력칸과 같은 모양으로 감쌈.
+function SelectBox({
+  value,
+  onChange,
+  placeholder,
+  options,
+  disabled,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  options: { id: number; name: string }[];
+  disabled: boolean;
+}) {
+  return (
+    <span className="relative block">
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
+        className={`${loginInputClassName(false)} cursor-pointer appearance-none pr-10 disabled:cursor-not-allowed disabled:bg-slate-50`}
+      >
+        <option value="">{placeholder}</option>
+        {options.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.name}
+          </option>
+        ))}
+      </select>
+      <ChevronDown
+        size={16}
+        aria-hidden="true"
+        className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500"
+      />
+    </span>
+  );
+}
