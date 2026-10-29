@@ -143,6 +143,8 @@ export function GlobalHeader({
   // 프로필 버튼과 메뉴 영역을 함께 참조해 바깥 클릭을 판별.
   const profileMenuRef = useRef<HTMLSpanElement>(null);
   const notificationPanelRef = useRef<HTMLSpanElement>(null);
+  // 알림 설정 드롭다운(버튼 + 목록) 영역. 바깥 클릭 판별용.
+  const notificationModeRef = useRef<HTMLDivElement>(null);
   // 한글·영문·이모지 모두 글자 단위가 깨지지 않도록 앞 세 글자만 사용.
   const profileAvatarText = Array.from(profileName).slice(0, 3).join("") || "사용자";
   const sessionRemainingSeconds =
@@ -210,8 +212,27 @@ export function GlobalHeader({
     };
   }, [isNotificationPanelOpen]);
 
+  // 알림 설정 드롭다운: 바깥 클릭·Esc로 닫음. 알림 패널 안을 눌러도 드롭다운 밖이면 닫힘.
+  useEffect(() => {
+    if (!isNotificationModeOpen) return;
+    const closeOutside = (event: MouseEvent) => {
+      if (!notificationModeRef.current?.contains(event.target as Node)) {
+        setIsNotificationModeOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsNotificationModeOpen(false);
+    };
+    document.addEventListener("mousedown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isNotificationModeOpen]);
+
   return (
-    <header className="relative z-50 flex h-14 shrink-0 items-center justify-between gap-6 bg-zinc-950 px-5 text-white shadow-sm sm:px-8">
+    <header className="relative z-50 flex h-14 shrink-0 items-center justify-between gap-6 bg-zinc-950 px-3 text-white shadow-sm sm:px-4">
       <div className="flex min-w-fit items-center gap-8">
         {onSidebarToggle && (
           <button
@@ -302,13 +323,20 @@ export function GlobalHeader({
                     }
                     aria-haspopup={label === "알림" || label === "내 프로필" ? "menu" : undefined}
                     onClick={onClick}
-                    className={`flex h-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-zinc-300 transition hover:-translate-y-0.5 hover:bg-zinc-800 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${label === "내 프로필" && isAuthenticated ? "min-w-9 px-0.5" : "w-9"}`}
+                    className={`flex h-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-zinc-300 transition hover:-translate-y-0.5 hover:bg-zinc-800 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${label === "내 프로필" && isAuthenticated ? "min-w-9 px-0.5" : label === "프로젝트 소개" ? "w-10 hover:scale-110 hover:bg-transparent" : "w-9"}`}
                   >
                     {label === "내 프로필" && isAuthenticated ? (
                       // 사진 업로드 전에는 이름 길이에 맞는 기본 아바타를 사용.
                       <span className="relative flex h-8 min-w-8 items-center justify-center whitespace-nowrap rounded-full bg-slate-100 px-0 text-[11px] font-bold tracking-[-0.1em] leading-none text-slate-900 shadow-sm">
                         {profileAvatarText}
                         <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-slate-950" />
+                      </span>
+                    ) : label === "프로젝트 소개" ? (
+                      // 무지개 테두리가 돌고 빛이 지나가는 배지. 안쪽은 어두운 원이라 아이콘이 또렷하게 보임.
+                      <span className="project-guide-badge flex h-8 w-8 items-center justify-center">
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-950 text-amber-300">
+                          <Icon size={14} strokeWidth={2.4} aria-hidden="true" />
+                        </span>
                       </span>
                     ) : label === "알림" ? (
                       <span className="relative">
@@ -355,7 +383,7 @@ export function GlobalHeader({
                         >
                           모두 읽음
                         </button>
-                        <div className="relative">
+                        <div ref={notificationModeRef} className="relative">
                           {/* 메시지 알림 수신 범위(전체·멘션만·끔) 설정. */}
                           <button
                             type="button"
