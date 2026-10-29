@@ -2,6 +2,7 @@
 
 import { GroupAvatar } from "@/components/chat/group-avatar";
 import { MessageMemberAvatar } from "@/components/chat/message-member-avatar";
+import { MeBadge } from "@/components/common/me-badge";
 import type { AddressBookMember } from "@/lib/api/address-book-api";
 import type { ChatRoom } from "@/lib/api/chat-api";
 import { formatRoomTime } from "@/lib/chat-format";
@@ -119,11 +120,7 @@ export const MessageRoomItem = memo(function MessageRoomItem({
           <span className="min-w-0 flex-1">
             <span className="flex justify-between gap-2">
               <b className="flex min-w-0 items-center gap-1 truncate">
-                {isSelf && (
-                  <span className="shrink-0 rounded bg-slate-700 px-1 py-0.5 text-[9px] text-white">
-                    나
-                  </span>
-                )}
+                {isSelf && <MeBadge />}
                 <span className="truncate">{displayName}</span>
                 {room.type === "GROUP" && (
                   <span className="shrink-0 text-base font-extrabold text-blue-600">

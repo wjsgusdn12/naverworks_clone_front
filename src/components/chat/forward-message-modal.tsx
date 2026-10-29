@@ -4,6 +4,7 @@ import { Check, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { MessageDialogShell } from "@/components/chat/message-change-dialog";
 import { Spinner } from "@/components/common/loading";
+import { MeBadge } from "@/components/common/me-badge";
 import type { ChatMessage, ChatRoom } from "@/lib/api/chat-api";
 
 const MAX_TARGETS = 10;
@@ -96,6 +97,7 @@ export function ForwardMessageModal({
                 >
                   {checked && <Check size={14} strokeWidth={3} />}
                 </span>
+                {room.type === "SELF" && <MeBadge />}
                 <span className="min-w-0 flex-1 truncate font-medium">{roomName(room)}</span>
                 {room.type === "GROUP" && (
                   <span className="shrink-0 text-xs text-slate-400">{room.memberCount}명</span>

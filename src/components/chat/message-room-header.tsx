@@ -2,6 +2,7 @@
 
 import { GroupAvatar } from "@/components/chat/group-avatar";
 import { MessageMemberAvatar } from "@/components/chat/message-member-avatar";
+import { MeBadge } from "@/components/common/me-badge";
 import type { PresenceStatus } from "@/lib/api/address-book-api";
 import type { ChatRoom } from "@/lib/api/chat-api";
 
@@ -63,12 +64,8 @@ export function MessageRoomHeader({
               onClick={headerMembershipId ? () => onProfileClick(headerMembershipId) : undefined}
             />
             <div>
-              <h1 className="font-bold">
-                {selectedRoom?.type === "SELF" && (
-                  <span className="mr-1 rounded bg-slate-700 px-1 py-0.5 text-[10px] text-white">
-                    나
-                  </span>
-                )}
+              <h1 className="flex items-center gap-1 font-bold">
+                {selectedRoom?.type === "SELF" && <MeBadge />}
                 {headerProfile?.displayName ?? "메시지"}
               </h1>
               <p className="mt-1 text-xs">

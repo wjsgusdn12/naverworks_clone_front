@@ -1127,9 +1127,10 @@ function MessageContent() {
       onAction={handleRoomAction}
     />
   );
+  // 나와의 채팅은 이름만 돌려주고, "나" 딱지는 각 화면이 이름 왼쪽에 붙임.
   const displayRoomName = (room: ChatRoom) =>
     room.type === "SELF"
-      ? `[나] ${member?.displayName ?? "나"}`
+      ? (member?.displayName ?? "나")
       : room.type === "DIRECT"
         ? (room.directDisplayName ?? "사용자")
         : (room.name ?? "그룹 메시지");
