@@ -66,7 +66,7 @@ export default function Home() {
           onToast={showToast}
           onLogin={handleLogin}
           onSignup={() => router.push("/signup")}
-          onRecover={() => showToast("계정 찾기 기능은 준비 중입니다.")}
+          onRecover={() => router.push("/recover")}
           loginIdInputRef={loginIdInputRef}
         />
       </main>

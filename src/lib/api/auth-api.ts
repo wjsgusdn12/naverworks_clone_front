@@ -150,6 +150,20 @@ export const authApi = {
       body: JSON.stringify(input),
     }),
 
+  // 계정 찾기 1단계: 복구 코드로 계정 확인(아이디는 가려서 옴).
+  recoverLookup: (recoveryCode: string) =>
+    request<{ maskedLoginId: string; displayName: string }>("/api/v1/auth/recover/lookup", {
+      method: "POST",
+      body: JSON.stringify({ recoveryCode }),
+    }),
+
+  // 계정 찾기 2단계: 비밀번호 재설정. 쓴 코드는 버려지고 새 복구 코드가 옴.
+  recoverReset: (recoveryCode: string, newPassword: string) =>
+    request<{ recoveryCode: string }>("/api/v1/auth/recover/reset", {
+      method: "POST",
+      body: JSON.stringify({ recoveryCode, newPassword }),
+    }),
+
   // 복구 코드 재발급(내 프로필). 이전 코드는 즉시 무효.
   regenerateRecoveryCode: (accessToken: string) =>
     request<{ recoveryCode: string }>("/api/v1/auth/recoveryCode/regenerate", {
