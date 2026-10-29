@@ -442,7 +442,7 @@ export default function AddressBookPage() {
         pageTitle="주소록"
         isAuthenticated
         profileName={member.displayName}
-        profileLabel={`${member.displayName} · ${member.role === "ADMIN" ? "관리자" : "일반 사용자"}`}
+        onToast={showToast}
         isProfileMenuOpen={isProfileMenuOpen}
         onHomeAction={() => router.push("/home")}
         onServiceAction={(label) =>

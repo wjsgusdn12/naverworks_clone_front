@@ -21,7 +21,9 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import { Tooltip } from "@/components/common/tooltip";
 import { LoadingState } from "@/components/common/loading";
+import { ProfileMenu } from "@/components/common/profile-menu";
 import { ProjectGuideModal } from "@/components/common/project-guide-modal";
+import { UserAvatar } from "@/components/common/user-avatar";
 import { useRouter } from "next/navigation";
 
 // 상단 헤더에서 반복 렌더링할 서비스 아이콘 정보.
@@ -89,9 +91,8 @@ type GlobalHeaderProps = {
   onCloseProfileMenu?: () => void;
   isProfileMenuOpen?: boolean;
   onLogout?: () => void;
-  // 프로필 메뉴에서 로그아웃 위에 보여 줄 추가 항목(복구 코드, 초대 코드 등).
-  profileMenuItems?: { label: string; onClick: () => void }[];
-  profileLabel?: string;
+  // 프로필 패널 안의 동작(복구 코드·회사 옮기기 등) 결과를 화면 토스트로 알림.
+  onToast?: (message: string) => void;
   profileName?: string;
   isAuthenticated?: boolean;
   headerContent?: ReactNode;
@@ -108,8 +109,7 @@ export function GlobalHeader({
   onCloseProfileMenu,
   isProfileMenuOpen = false,
   onLogout,
-  profileMenuItems = [],
-  profileLabel = "내 프로필",
+  onToast,
   profileName = "",
   isAuthenticated = false,
   headerContent,
@@ -146,8 +146,6 @@ export function GlobalHeader({
   const notificationPanelRef = useRef<HTMLSpanElement>(null);
   // 알림 설정 드롭다운(버튼 + 목록) 영역. 바깥 클릭 판별용.
   const notificationModeRef = useRef<HTMLDivElement>(null);
-  // 한글·영문·이모지 모두 글자 단위가 깨지지 않도록 앞 세 글자만 사용.
-  const profileAvatarText = Array.from(profileName).slice(0, 3).join("") || "사용자";
   const sessionRemainingSeconds =
     sessionExpiresAt && now > 0
       ? Math.max(0, Math.floor((new Date(sessionExpiresAt).getTime() - now) / 1000))
@@ -327,11 +325,8 @@ export function GlobalHeader({
                     className={`flex h-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-zinc-300 transition hover:-translate-y-0.5 hover:bg-zinc-800 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${label === "내 프로필" && isAuthenticated ? "min-w-9 px-0.5" : label === "프로젝트 소개" ? "ml-3 w-9 hover:scale-110 hover:bg-transparent" : "w-9"}`}
                   >
                     {label === "내 프로필" && isAuthenticated ? (
-                      // 사진 업로드 전에는 이름 길이에 맞는 기본 아바타를 사용.
-                      <span className="relative flex h-8 min-w-8 items-center justify-center whitespace-nowrap rounded-full bg-slate-100 px-0 text-[11px] font-bold tracking-[-0.1em] leading-none text-slate-900 shadow-sm">
-                        {profileAvatarText}
-                        <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-slate-950" />
-                      </span>
+                      // 주소록·메시지와 같은 공통 아바타. 본인은 항상 온라인으로 표시.
+                      <UserAvatar name={profileName} presenceStatus="ONLINE" size="sm" />
                     ) : label === "프로젝트 소개" ? (
                       // 무지개 테두리가 돌고 빛이 지나가는 배지. 안쪽은 어두운 원이라 아이콘이 또렷하게 보임.
                       <span className="project-guide-badge flex h-8 w-8 items-center justify-center">
@@ -357,28 +352,15 @@ export function GlobalHeader({
                     )}
                   </button>
                 </Tooltip>
-                {label === "내 프로필" && isProfileMenuOpen && onLogout && (
-                  <div className="absolute right-0 top-11 z-[60] w-44 rounded-lg border border-slate-200 bg-white p-1.5 text-slate-800 shadow-lg">
-                    {/* 로그인 API에서 받은 사용자 이름과 역할을 표시. */}
-                    <p className="px-3 py-2 text-xs text-slate-500">{profileLabel}</p>
-                    {profileMenuItems.map((item) => (
-                      <button
-                        key={item.label}
-                        type="button"
-                        onClick={item.onClick}
-                        className="w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm font-medium transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-blue-600"
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={onLogout}
-                      className="w-full cursor-pointer rounded-md px-3 py-2 text-left text-sm font-medium transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-blue-600"
-                    >
-                      로그아웃
-                    </button>
-                  </div>
+                {label === "내 프로필" && isAuthenticated && onLogout && (
+                  // 알림 패널과 같은 폭·위치의 내 프로필 패널. 대화상자 상태를 들고 있어 항상 마운트.
+                  <ProfileMenu
+                    open={isProfileMenuOpen}
+                    onClose={() => onCloseProfileMenu?.()}
+                    onLogout={onLogout}
+                    onToast={onToast}
+                    sessionRemainingText={sessionRemainingText}
+                  />
                 )}
                 {label === "알림" && isNotificationPanelOpen && (
                   // 네이버웍스처럼 화면 오른쪽 끝에 붙는 세로로 긴 패널. 종 아이콘 위치와 무관하게 fixed로 고정하고 내부만 스크롤.
@@ -474,7 +456,8 @@ export function GlobalHeader({
                                   setIsNotificationPanelOpen(false);
                                   router.push(notification.linkPath);
                                 }}
-                                className={`mb-2.5 block w-full cursor-pointer rounded-xl border bg-white px-4 py-3.5 text-left transition hover:border-blue-100 ${notification.read ? "border-slate-100" : "border-blue-100"}`}
+                                // 읽은 알림은 색을 바래게 해 안 읽은 것과 한눈에 구분.
+                                className={`mb-2.5 block w-full cursor-pointer rounded-xl border px-4 py-3.5 text-left transition hover:border-blue-100 ${notification.read ? "border-slate-100 bg-slate-50/70 opacity-60 hover:opacity-90" : "border-blue-100 bg-white"}`}
                               >
                                 <div className="flex items-center justify-between gap-3">
                                   <span className="flex min-w-0 items-center gap-2">

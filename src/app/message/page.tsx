@@ -1817,7 +1817,7 @@ function MessageContent() {
           pageTitle="메시지"
           isAuthenticated
           profileName={member.displayName}
-          profileLabel={`${member.displayName} · ${member.role === "ADMIN" ? "관리자" : "일반 사용자"}`}
+          onToast={showToast}
           isProfileMenuOpen={isProfileOpen}
           onHomeAction={() => router.push("/home")}
           onServiceAction={(label) =>
