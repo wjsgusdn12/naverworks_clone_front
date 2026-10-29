@@ -672,7 +672,7 @@ export default function AddressBookPage() {
                   메시지
                 </button>
               </div>
-              <div className="flex flex-1 border-y border-slate-200">
+              <div className="flex flex-1 border-t border-slate-200">
                 <div className="min-w-0 flex-1 overflow-auto">
                   <table className="w-full min-w-[900px] border-collapse text-left text-sm">
                     <thead className="border-b border-slate-200 bg-white text-slate-700">
@@ -757,10 +757,10 @@ export default function AddressBookPage() {
                   />
                 )}
               </div>
-              {/* 표 아래 선 밑의 고정 영역. 목록 길이와 상관없이 항상 같은 자리에 둠. */}
+              {/* 바닥 고정 영역. 섹션 좌우 여백만큼 바깥으로 빼서 위쪽 선이 끝까지 이어짐. */}
               <nav
                 aria-label="구성원 목록 페이지"
-                className="flex h-16 shrink-0 items-center justify-center gap-1.5 text-sm"
+                className="-mx-6 flex h-16 shrink-0 items-center justify-center gap-1.5 border-t border-slate-200 text-sm"
               >
                 {memberTotal > 0 && (
                   <>
