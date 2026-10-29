@@ -321,7 +321,7 @@ export function GlobalHeader({
                     }
                     aria-haspopup={label === "알림" || label === "내 프로필" ? "menu" : undefined}
                     onClick={onClick}
-                    className={`flex h-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-zinc-300 transition hover:-translate-y-0.5 hover:bg-zinc-800 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${label === "내 프로필" && isAuthenticated ? "min-w-9 px-0.5" : label === "프로젝트 소개" ? "w-9 hover:scale-110 hover:bg-transparent" : "w-9"}`}
+                    className={`flex h-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-zinc-300 transition hover:-translate-y-0.5 hover:bg-zinc-800 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${label === "내 프로필" && isAuthenticated ? "min-w-9 px-0.5" : label === "프로젝트 소개" ? "ml-3 w-9 hover:scale-110 hover:bg-transparent" : "w-9"}`}
                   >
                     {label === "내 프로필" && isAuthenticated ? (
                       // 사진 업로드 전에는 이름 길이에 맞는 기본 아바타를 사용.
