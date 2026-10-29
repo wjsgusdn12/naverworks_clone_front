@@ -75,7 +75,7 @@ export function MemberPanel({
         <Info label="소속" value={member.companyName} strong />
         <Info label="" value={member.departmentName ?? "부서 미지정"} />
         <Info label="전화" value={member.phoneNumber ?? "-"} />
-        <Info label="이메일" value={member.email} />
+        <Info label="이메일" value={member.email ?? "-"} />
         <Info label="입사일" value={member.hiredAt ?? "-"} />
       </dl>
     </aside>

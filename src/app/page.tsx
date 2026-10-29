@@ -15,11 +15,11 @@ export default function Home() {
   const router = useRouter();
   const { toast, showToast, dismissToast } = useToast();
   const { status, login } = useAuth();
-  // 헤더 아이콘을 누르면 안내 토스트와 함께 이메일 칸으로 포커스를 보냄.
-  const emailInputRef = useRef<HTMLInputElement | null>(null);
+  // 헤더 아이콘을 누르면 안내 토스트와 함께 아이디 칸으로 포커스를 보냄.
+  const loginIdInputRef = useRef<HTMLInputElement | null>(null);
   const requireLogin = () => {
     showToast("로그인이 필요합니다. 로그인 후 이용해 주세요.");
-    emailInputRef.current?.focus();
+    loginIdInputRef.current?.focus();
   };
 
   useEffect(() => {
@@ -62,7 +62,13 @@ export default function Home() {
         onProfileAction={requireLogin}
       />
       <main className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-5 py-12 sm:px-8">
-        <LoginForm onToast={showToast} onLogin={handleLogin} emailInputRef={emailInputRef} />
+        <LoginForm
+          onToast={showToast}
+          onLogin={handleLogin}
+          onSignup={() => router.push("/signup")}
+          onRecover={() => showToast("계정 찾기 기능은 준비 중입니다.")}
+          loginIdInputRef={loginIdInputRef}
+        />
       </main>
       {toast && (
         <Toast key={toast.id} message={toast.message} phase={toast.phase} onClose={dismissToast} />

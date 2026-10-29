@@ -25,6 +25,8 @@ type AuthContextValue = {
   sessionExpiresAt: string | null;
   member: AuthMember | null;
   login: (input: LoginInput) => Promise<void>;
+  // 가입처럼 이미 받은 세션을 그대로 로그인 상태로 적용.
+  applySession: (session: AuthTokenResponse) => void;
   logout: () => Promise<void>;
 };
 
@@ -94,6 +96,14 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
     [establishAuthentication],
   );
 
+  const applySession = useCallback(
+    (session: AuthTokenResponse) => {
+      ++authRequestVersionRef.current;
+      establishAuthentication(session, session.member);
+    },
+    [establishAuthentication],
+  );
+
   const logout = useCallback(async () => {
     // 로그아웃 뒤 도착하는 이전 Refresh 응답은 모두 무시.
     ++authRequestVersionRef.current;
@@ -144,8 +154,8 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
   }, [clearAuthentication, sessionExpiresAt]);
 
   const value = useMemo(
-    () => ({ status, accessToken, sessionExpiresAt, member, login, logout }),
-    [status, accessToken, sessionExpiresAt, member, login, logout],
+    () => ({ status, accessToken, sessionExpiresAt, member, login, applySession, logout }),
+    [status, accessToken, sessionExpiresAt, member, login, applySession, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

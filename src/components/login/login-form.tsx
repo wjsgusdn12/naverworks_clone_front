@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { FormEvent, useState, type RefObject } from "react";
 import { Tooltip } from "@/components/common/tooltip";
 import { LoadingInline } from "@/components/common/loading";
@@ -12,16 +12,18 @@ import { ApiClientError, type LoginInput } from "@/lib/api/auth-api";
 
 // 입력칸 아래에 보여 줄 오류 문구. 비어 있으면 정상.
 type LoginFieldError = {
-  email?: string;
+  loginId?: string;
   password?: string;
 };
 
-// 부모 화면이 로그인 결과와 안내 토스트를 처리하도록 콜백만 전달받음.
-// emailInputRef는 헤더 등 바깥에서 이메일 칸으로 포커스를 보낼 때 사용.
+// 부모 화면이 로그인 결과와 화면 이동을 처리하도록 콜백만 전달받음.
+// loginIdInputRef는 헤더 등 바깥에서 아이디 칸으로 포커스를 보낼 때 사용.
 type LoginFormProps = {
   onToast: (message: string) => void;
   onLogin: (input: LoginInput) => Promise<void>;
-  emailInputRef?: RefObject<HTMLInputElement | null>;
+  onSignup: () => void;
+  onRecover: () => void;
+  loginIdInputRef?: RefObject<HTMLInputElement | null>;
 };
 
 // 실제 소셜 인증 전까지 사용하는 로그인 버튼 표시 정보.
@@ -43,61 +45,46 @@ const socialProviders = [
   { name: "Google", tooltip: "Google 로그인", icon: FcGoogle, iconSize: 24, className: "bg-white" },
 ];
 
-// "@" 뒤에 보여 줄 자주 쓰는 이메일 도메인.
-const emailDomains = ["naver.com", "gmail.com", "daum.net", "kakao.com", "outlook.com"];
-
-const inputClassName = (invalid: boolean) =>
+export const loginInputClassName = (invalid: boolean) =>
   `h-12 w-full rounded-lg border px-3.5 text-sm outline-none transition placeholder:text-slate-400 focus:ring-4 ${
     invalid
       ? "border-red-500 bg-red-50 focus:border-red-600 focus:ring-red-100"
       : "border-slate-300 focus:border-blue-600 focus:ring-blue-100"
   }`;
 
-export function LoginForm({ onToast, onLogin, emailInputRef }: LoginFormProps) {
+export function LoginForm({
+  onToast,
+  onLogin,
+  onSignup,
+  onRecover,
+  loginIdInputRef,
+}: LoginFormProps) {
   // 입력창과 UI 상태는 로그인 화면 내부에서 관리.
-  const [email, setEmail] = useState("");
+  const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   // 토스트와 함께 어느 입력값을 수정해야 하는지 칸 아래 문구로도 표시.
   const [fieldErrors, setFieldErrors] = useState<LoginFieldError>({});
-  // 이메일은 아이디 · @ · 도메인으로 나눠 입력. 도메인은 드롭다운에서 고르거나 직접 침.
-  const [emailDomain, setEmailDomain] = useState("");
-  // 드롭다운에서 고른 값. "" 이면 직접 입력 상태.
-  const [selectedDomain, setSelectedDomain] = useState("");
   const [isCapsLockOn, setIsCapsLockOn] = useState(false);
-
-  const clearEmailError = () => setFieldErrors((current) => ({ ...current, email: undefined }));
-
-  const selectDomain = (domain: string) => {
-    setSelectedDomain(domain);
-    setEmailDomain(domain);
-    clearEmailError();
-  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     // 폼 제출로 페이지가 새로고침되는 기본 동작을 막음.
     event.preventDefault();
 
-    const normalizedEmail = `${email.trim()}@${emailDomain.trim()}`;
+    const normalizedLoginId = loginId.trim();
     const nextFieldErrors: LoginFieldError = {
-      email: !email.trim()
-        ? "이메일 아이디를 입력해 주세요."
-        : !emailDomain.trim()
-          ? "이메일 도메인을 입력하거나 선택해 주세요."
-          : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
-            ? "올바른 이메일 주소 형식이 아닙니다."
-            : undefined,
+      loginId: !normalizedLoginId ? "아이디를 입력해 주세요." : undefined,
       password: !password ? "비밀번호를 입력해 주세요." : undefined,
     };
 
-    if (nextFieldErrors.email || nextFieldErrors.password) {
+    if (nextFieldErrors.loginId || nextFieldErrors.password) {
       setFieldErrors(nextFieldErrors);
       onToast(
-        nextFieldErrors.email && nextFieldErrors.password
-          ? "이메일과 비밀번호를 확인해 주세요."
-          : (nextFieldErrors.email ?? nextFieldErrors.password ?? ""),
+        nextFieldErrors.loginId && nextFieldErrors.password
+          ? "아이디와 비밀번호를 입력해 주세요."
+          : (nextFieldErrors.loginId ?? nextFieldErrors.password ?? ""),
       );
       return;
     }
@@ -107,11 +94,11 @@ export function LoginForm({ onToast, onLogin, emailInputRef }: LoginFormProps) {
 
     try {
       // API 요청과 성공 후 화면 이동은 부모 페이지가 담당.
-      await onLogin({ email: normalizedEmail, password, rememberMe });
+      await onLogin({ loginId: normalizedLoginId, password, rememberMe });
     } catch (error) {
       // 인증 실패는 어느 값이 틀렸는지 노출하지 않고 두 입력칸을 함께 표시.
       if (error instanceof ApiClientError && error.code === "AUTHENTICATION_FAILED") {
-        setFieldErrors({ email: " ", password: "이메일 또는 비밀번호가 올바르지 않습니다." });
+        setFieldErrors({ loginId: " ", password: "아이디 또는 비밀번호가 올바르지 않습니다." });
       }
     } finally {
       // 성공 시에는 페이지가 이동하고, 실패 시에는 버튼을 다시 활성화.
@@ -129,70 +116,27 @@ export function LoginForm({ onToast, onLogin, emailInputRef }: LoginFormProps) {
 
       {/* noValidate로 브라우저 기본 팝업을 끄고 프로젝트 토스트 UX만 사용. */}
       <form className="space-y-4" noValidate onSubmit={handleSubmit}>
-        <div>
-          <label htmlFor="login-email-id" className="mb-2 block text-sm font-medium text-slate-700">
-            이메일
-          </label>
-          {/* 아이디 · @ · 도메인. 도메인은 오른쪽 드롭다운에서 고르면 채워지고, "직접 입력"이면 자유롭게 침. */}
-          <div className="flex items-center gap-1.5">
-            <input
-              id="login-email-id"
-              ref={emailInputRef}
-              type="text"
-              value={email}
-              autoFocus
-              onChange={(event) => {
-                setEmail(event.target.value);
-                clearEmailError();
-              }}
-              placeholder="아이디"
-              autoComplete="username"
-              disabled={isSubmitting}
-              aria-invalid={Boolean(fieldErrors.email) || undefined}
-              className={`${inputClassName(Boolean(fieldErrors.email))} min-w-0 flex-[1.1]`}
-            />
-            <span className="shrink-0 text-sm font-semibold text-slate-400">@</span>
-            <input
-              type="text"
-              value={emailDomain}
-              onChange={(event) => {
-                setEmailDomain(event.target.value);
-                // 손으로 고치면 드롭다운은 직접 입력 상태로 돌아감.
-                setSelectedDomain("");
-                clearEmailError();
-              }}
-              placeholder="도메인"
-              aria-label="이메일 도메인"
-              disabled={isSubmitting}
-              aria-invalid={Boolean(fieldErrors.email) || undefined}
-              className={`${inputClassName(Boolean(fieldErrors.email))} min-w-0 flex-1`}
-            />
-            <span className="relative shrink-0">
-              <select
-                value={selectedDomain}
-                onChange={(event) => selectDomain(event.target.value)}
-                aria-label="이메일 도메인 선택"
-                disabled={isSubmitting}
-                className="h-12 w-11 cursor-pointer appearance-none rounded-lg border border-slate-300 bg-white text-transparent outline-none transition hover:border-blue-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100"
-              >
-                <option value="">직접 입력</option>
-                {emailDomains.map((domain) => (
-                  <option key={domain} value={domain}>
-                    {domain}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={16}
-                aria-hidden="true"
-                className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-slate-500"
-              />
-            </span>
-          </div>
-          {fieldErrors.email && fieldErrors.email.trim() && (
-            <span className="mt-1.5 block text-xs text-red-600">{fieldErrors.email}</span>
+        <label className="block">
+          <span className="mb-2 block text-sm font-medium text-slate-700">아이디</span>
+          <input
+            ref={loginIdInputRef}
+            type="text"
+            value={loginId}
+            autoFocus
+            onChange={(event) => {
+              setLoginId(event.target.value);
+              setFieldErrors((current) => ({ ...current, loginId: undefined }));
+            }}
+            placeholder="아이디 또는 이메일"
+            autoComplete="username"
+            disabled={isSubmitting}
+            aria-invalid={Boolean(fieldErrors.loginId) || undefined}
+            className={loginInputClassName(Boolean(fieldErrors.loginId))}
+          />
+          {fieldErrors.loginId && fieldErrors.loginId.trim() && (
+            <span className="mt-1.5 block text-xs text-red-600">{fieldErrors.loginId}</span>
           )}
-        </div>
+        </label>
 
         <label className="block">
           <span className="mb-2 block text-sm font-medium text-slate-700">비밀번호</span>
@@ -212,7 +156,7 @@ export function LoginForm({ onToast, onLogin, emailInputRef }: LoginFormProps) {
               autoComplete="current-password"
               disabled={isSubmitting}
               aria-invalid={Boolean(fieldErrors.password) || undefined}
-              className={`${inputClassName(Boolean(fieldErrors.password))} pr-12`}
+              className={`${loginInputClassName(Boolean(fieldErrors.password))} pr-12`}
             />
             <Tooltip
               label={isPasswordVisible ? "비밀번호 숨기기" : "비밀번호 보기"}
@@ -287,16 +231,23 @@ export function LoginForm({ onToast, onLogin, emailInputRef }: LoginFormProps) {
       </div>
 
       <div className="mt-7 flex flex-wrap justify-center gap-x-4 gap-y-2 text-sm text-slate-500">
-        {["아이디 찾기", "비밀번호 찾기", "회원가입"].map((label) => (
-          <button
-            key={label}
-            type="button"
-            onClick={() => onToast(`${label} 기능은 준비 중입니다.`)}
-            className="cursor-pointer rounded-sm transition hover:text-blue-600 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
-          >
-            {label}
-          </button>
-        ))}
+        <button
+          type="button"
+          onClick={onRecover}
+          className="cursor-pointer rounded-sm transition hover:text-blue-600 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+        >
+          계정 찾기
+        </button>
+        <span aria-hidden="true" className="text-slate-300">
+          |
+        </span>
+        <button
+          type="button"
+          onClick={onSignup}
+          className="cursor-pointer rounded-sm font-semibold text-blue-600 transition hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+        >
+          회원가입
+        </button>
       </div>
     </section>
   );

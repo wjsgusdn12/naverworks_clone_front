@@ -11,8 +11,11 @@ type ApiResponse<T> = {
 export type AuthMember = {
   membershipId: number;
   companyId: number;
+  companyName: string;
   userAccountId: number;
-  email: string;
+  loginId: string;
+  // 공개 가입에서는 선택 입력이라 비어 있을 수 있음.
+  email: string | null;
   displayName: string;
   role: "ADMIN" | "USER";
 };
@@ -27,10 +30,44 @@ export type AuthTokenResponse = {
 };
 
 export type LoginInput = {
-  email: string;
+  // 아이디 또는 이메일
+  loginId: string;
   password: string;
   rememberMe: boolean;
 };
+
+// 가입 시 소속을 정하는 방식: 체험 회사 참여 / 새 회사 만들기 / 초대 코드로 참여.
+export type SignupJoinType = "DEMO" | "NEW_COMPANY" | "INVITE";
+
+export type SignupInput = {
+  loginId: string;
+  password: string;
+  displayName: string;
+  email?: string;
+  phoneNumber?: string;
+  joinType: SignupJoinType;
+  departmentId?: number;
+  jobGradeId?: number;
+  companyName?: string;
+  inviteCode?: string;
+};
+
+export type SignupOption = { id: number; name: string };
+
+// 가입 화면이 미리 보여 줄 체험 회사 정보.
+export type SignupOptions = {
+  demoCompanyName: string;
+  departments: SignupOption[];
+  jobGrades: SignupOption[];
+};
+
+// 가입 성공: 로그인 세션과 한 번만 보여 주는 복구 코드.
+export type SignupResult = {
+  session: AuthTokenResponse;
+  recoveryCode: string;
+};
+
+export type InviteCodeResponse = { companyName: string; inviteCode: string };
 
 // HTTP 상태와 백엔드 오류 코드를 함께 보관해 화면별 안내 문구를 결정.
 export class ApiClientError extends Error {
@@ -93,13 +130,39 @@ const request = async <T>(path: string, init: RequestInit): Promise<T> => {
   return responseBody.data;
 };
 
+const bearer = (accessToken: string) => ({ Authorization: `Bearer ${accessToken}` });
+
 export const authApi = {
-  // 이메일과 비밀번호로 Access Token과 HttpOnly Refresh Token 쿠키를 발급.
+  // 아이디(또는 이메일)와 비밀번호로 Access Token과 HttpOnly Refresh Token 쿠키를 발급.
   login: (input: LoginInput) =>
     request<AuthTokenResponse>("/api/v1/auth/login", {
       method: "POST",
       body: JSON.stringify(input),
     }),
+
+  // 가입 화면용 체험 회사 정보(로그인 전).
+  signupOptions: () => request<SignupOptions>("/api/v1/auth/signup/options", { method: "GET" }),
+
+  // 공개 가입. 성공하면 바로 로그인 세션이 함께 옴.
+  signup: (input: SignupInput) =>
+    request<SignupResult>("/api/v1/auth/signup", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+
+  // 복구 코드 재발급(내 프로필). 이전 코드는 즉시 무효.
+  regenerateRecoveryCode: (accessToken: string) =>
+    request<{ recoveryCode: string }>("/api/v1/auth/recoveryCode/regenerate", {
+      method: "POST",
+      headers: bearer(accessToken),
+    }),
+
+  // 회사 초대 코드(관리자). regenerate=true면 새 코드로 교체.
+  companyInviteCode: (accessToken: string, regenerate = false) =>
+    request<InviteCodeResponse>(
+      regenerate ? "/api/v1/auth/company/inviteCode/regenerate" : "/api/v1/auth/company/inviteCode",
+      { method: regenerate ? "POST" : "GET", headers: bearer(accessToken) },
+    ),
 
   // 브라우저가 가진 HttpOnly Refresh Token 쿠키로 로그인 상태를 복구.
   refresh: () => request<AuthTokenResponse>("/api/v1/auth/refresh", { method: "POST" }),
@@ -108,7 +171,7 @@ export const authApi = {
   getCurrentMember: (accessToken: string) =>
     request<AuthMember>("/api/v1/auth/me", {
       method: "GET",
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: bearer(accessToken),
     }),
 
   logout: async () => {

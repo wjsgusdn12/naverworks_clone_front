@@ -25,7 +25,8 @@ export type AddressBookMember = {
   jobGradeName: string | null;
   departmentName: string | null;
   companyName: string;
-  email: string;
+  // 공개 가입에서는 선택 입력이라 비어 있을 수 있음.
+  email: string | null;
   phoneNumber: string | null;
   enabled: boolean;
   presenceStatus: PresenceStatus;

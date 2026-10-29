@@ -122,7 +122,7 @@ export function UserProfileModal({
           </div>
           <div className="grid grid-cols-[92px_1fr] gap-3">
             <dt className="text-slate-500">메일</dt>
-            <dd className="underline">{member.email}</dd>
+            <dd className="underline">{member.email ?? "-"}</dd>
           </div>
           <div className="grid grid-cols-[92px_1fr] gap-3">
             <dt className="text-slate-500">입사일</dt>
