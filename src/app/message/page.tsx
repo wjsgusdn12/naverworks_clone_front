@@ -21,6 +21,7 @@ import { MessageQuote } from "@/components/chat/message-quote";
 import { MessageDeleteDialog } from "@/components/chat/message-change-dialog";
 import { ForwardMessageModal } from "@/components/chat/forward-message-modal";
 import { NoticePanel } from "@/components/chat/notice-panel";
+import { GroupAvatar } from "@/components/chat/group-avatar";
 import {
   applyMessageChange,
   applyReactionChange,
@@ -72,7 +73,6 @@ import {
   Search,
   SmilePlus,
   Star,
-  UsersRound,
   X,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -3065,21 +3065,6 @@ const MessageRoomItem = memo(function MessageRoomItem({
     </div>
   );
 });
-
-function GroupAvatar({ name, size = "md" }: { name: string; size?: "md" | "lg" }) {
-  const sizeClass = size === "lg" ? "h-10 w-10 text-xs" : "h-10 w-10 text-xs";
-  // 그룹방은 프로필 원형과 별개로 우하단 배지를 항상 표시.
-  return (
-    <span
-      className={`relative flex shrink-0 items-center justify-center rounded-full bg-slate-700 font-bold text-white ${sizeClass}`}
-    >
-      <span>{name.slice(0, 3)}</span>
-      <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-white ring-2 ring-white">
-        <UsersRound size={10} strokeWidth={3} />
-      </span>
-    </span>
-  );
-}
 
 function MessageMemberAvatar({
   name,
