@@ -1,0 +1,19 @@
+sequenceDiagram
+    participant U as 사용자
+    participant F as 화면
+    participant S as 세션 관리 (auth)
+    participant A as API
+
+    U->>F: 로그인
+    F->>A: POST /auth/login
+    A-->>S: Access (3h) · Refresh (쿠키)
+    S-->>F: 홈으로 이동 · 헤더에 잔여 시간
+    loop 만료 1분 전
+        S->>A: POST /auth/refresh
+        A-->>S: 새 Access
+    end
+    U->>F: 새로고침
+    S->>A: POST /auth/refresh
+    A-->>S: 세션 복구
+    A--xS: 7일 만료 · 갱신 실패
+    S-->>F: 로그인 화면 + "다시 로그인해 주세요"

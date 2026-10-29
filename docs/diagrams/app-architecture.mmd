@@ -1,0 +1,23 @@
+flowchart TB
+    subgraph App["src/app · App Router"]
+        P1["login"]
+        P2["home"]
+        P3["message"]
+        P4["addressBook"]
+    end
+    subgraph Comp["src/components"]
+        C1["common<br/>헤더 · 툴팁 · 로딩 · 토스트 · 모달"]
+        C2["chat<br/>메뉴 · 리액션 · 공지 패널 · 전달 모달"]
+        C3["address-book · home · login · auth"]
+    end
+    subgraph Lib["src/lib"]
+        L1["api/*<br/>fetch 래퍼 · 타입 · ApiClientError"]
+        L2["realtime/chat-realtime<br/>STOMP 연결 · 구독 · 이벤트 분기"]
+        L3["chat-message-state · message-tokens<br/>순수 함수 · 단위 테스트"]
+    end
+    API["Spring Boot API"]
+
+    App --> Comp
+    App --> Lib
+    L1 -->|"REST"| API
+    L2 -.->|"WebSocket"| API

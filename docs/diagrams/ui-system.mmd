@@ -1,0 +1,18 @@
+flowchart LR
+    subgraph Feedback["피드백"]
+        Toast["토스트<br/>성공 · 실패 · 재호출"]
+        Tooltip["툴팁<br/>지연 표시 · 다중 줄"]
+        Loading["로딩<br/>Spinner · Inline · State"]
+    end
+    subgraph Overlay["오버레이"]
+        Dialog["모달<br/>투명 배경 · 포커스 순환 · Esc"]
+        Menu["컨텍스트 메뉴<br/>포털 · 화면 밖 보정"]
+    end
+    subgraph Form["입력"]
+        Input["입력칸<br/>Enter 전송 · Shift+Enter 줄바꿈"]
+        Mention["@ 자동완성"]
+        Check["커스텀 체크박스 · 검색"]
+    end
+    Style["Tailwind 4 · Pretendard<br/>Prettier printWidth 100"] --> Feedback
+    Style --> Overlay
+    Style --> Form

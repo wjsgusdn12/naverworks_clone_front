@@ -1,0 +1,13 @@
+stateDiagram-v2
+    [*] --> Latest : 방 선택 · 최신 50개
+    Latest --> Older : 상단 도달<br/>이전 커서 50개 붙이고 스크롤 보존
+    Older --> Older : 계속 위로
+    Latest --> Anchored : 답장 · 공지 원문 클릭<br/>원문 기준 윈도우 · 파란 테두리 강조
+    Older --> Anchored : 원문 클릭
+    Anchored --> Anchored : 위 · 아래로 이어 붙임
+    Anchored --> Latest : "최신으로" 버튼 · 메시지 전송
+    Older --> Latest : 맨 아래 버튼
+    note right of Anchored
+        새 메시지는 추가하지 않고
+        "아래 N개" 배지로 표시
+    end note

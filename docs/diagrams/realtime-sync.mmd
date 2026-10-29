@@ -1,0 +1,13 @@
+flowchart LR
+    WS["STOMP Client<br/>자동 재연결"]
+    WS --> Topic["/topic/chatRoom/{id}<br/>참여 방 전부 구독"]
+    WS --> Queue["/user/queue/notification<br/>내 알림"]
+    Topic --> MC["MESSAGE_CREATED<br/>목록 미리보기 + 현재 방 추가"]
+    Topic --> MU["MESSAGE_UPDATED · DELETED<br/>말풍선 교체"]
+    Topic --> RE["REACTION_UPDATED<br/>델타 적용"]
+    Topic --> NO["NOTICE_UPDATED<br/>공지 목록 교체"]
+    Topic --> RD["READ_UPDATED<br/>커서 갱신 → 읽음 수 재계산"]
+    Topic --> TY["TYPING_CHANGED<br/>입력 중 말풍선"]
+    Queue --> NT["알림 패널 · 토스트"]
+    Presence["/topic/presence<br/>온 · 오프라인"] --> PR["주소록 · 모달 상태 점"]
+    WS --> Presence

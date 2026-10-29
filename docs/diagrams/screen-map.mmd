@@ -1,0 +1,11 @@
+flowchart LR
+    Login["/ 로그인"] --> Home["/home Today"]
+    Home --> Message["/message 메신저<br/>방 목록 · 대화 · 공지"]
+    Home --> Address["/addressBook 주소록<br/>조직도 · 즐겨찾기"]
+    Address --> Search["/addressBook/search<br/>구성원 검색"]
+    Home --> Calendar["/calendar 일정<br/>주 · 월 · 회의실 예약"]
+    Home --> Admin["/admin 관리자 대시보드<br/>활동 통계 · Drill-down"]
+    Header["Global Header<br/>알림 · 프로필 · 세션 · 프로젝트 소개"] -.-> Home
+    Header -.-> Message
+    Header -.-> Address
+    Header -.-> Calendar

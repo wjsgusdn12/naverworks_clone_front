@@ -1,0 +1,19 @@
+flowchart TB
+    subgraph Bubble["말풍선"]
+        Menu["⋮ 메뉴 · 우클릭<br/>복사 · 답장 · 전달 · 공지<br/>본인: 수정 · 삭제 (24h)"]
+        Smile["😊 리액션 선택<br/>1인 1이모지 · 24h"]
+        Chip["리액션 칩 클릭<br/>누른 사람 모달"]
+        Read["읽음 수 클릭<br/>읽은 · 안 읽은 사람"]
+        Link["URL 자동 링크 · @멘션 강조"]
+    end
+    subgraph Notice["공지 패널"]
+        Line["한 줄<br/>최신 공지 + ∨"]
+        List["펼침<br/>전체 목록 · 줄마다 ⋮<br/>4개 초과 시 스크롤"]
+        Icon["아이콘<br/>오른쪽 위 확성기"]
+        Line -->|"∨"| List
+        List -->|"∧"| Line
+        List -->|"접기"| Icon
+        Icon -->|"클릭 · 새 공지"| Line
+    end
+    Menu -->|"공지로 등록"| Line
+    List -->|"본문 클릭"| Jump["원문으로 점프 · 강조"]

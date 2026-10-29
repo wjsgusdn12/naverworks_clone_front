@@ -1,0 +1,6 @@
+flowchart LR
+    Dev["git push main"] --> Vercel["Vercel 빌드 · 배포<br/>nwclone.duckdns.org"]
+    Vercel --> Browser["브라우저"]
+    Browser -->|"REST · WebSocket<br/>credentials: include"| API["nwclone-api.duckdns.org<br/>nginx → Spring Boot"]
+    Env["NEXT_PUBLIC_API_BASE_URL"] -.-> Vercel
+    Guide["프로젝트 소개 모달"] -.->|"docs/diagrams/*.svg<br/>GitHub raw"| Browser

@@ -1,0 +1,62 @@
+[
+  {
+    "id": "screen-map",
+    "title": "1. 화면 지도",
+    "description": "로그인 뒤 Today 홈이 시작점입니다. 홈에서 메신저·주소록·일정으로 갈라지고, 관리자는 같은 자리에서 활동 대시보드를 봅니다.\n모든 화면 위에 공통 헤더가 유지됩니다. 알림 패널·프로필 메뉴·세션 잔여 시간·프로젝트 소개 모달이 여기에 붙습니다.",
+    "svg": "docs/diagrams/screen-map.svg"
+  },
+  {
+    "id": "app-architecture",
+    "title": "2. 앱 구조",
+    "description": "App Router 아래에 화면이 있고, 화면은 `components`의 조각과 `lib`의 API·실시간·순수 계산 함수를 조립합니다. 서버 상태는 화면이 직접 들고, 전역 라이브러리는 필요가 증명되기 전까지 넣지 않습니다.\n`lib`의 순수 함수(읽음 수 재계산, URL·멘션 토큰 분리)는 React 없이 node 테스트로 검증합니다.",
+    "svg": "docs/diagrams/app-architecture.svg"
+  },
+  {
+    "id": "auth-ux",
+    "title": "3. 인증 UX",
+    "description": "Access Token은 메모리에만 두고 만료 1분 전에 조용히 갱신합니다. 세션 전체(7일)가 끝나거나 갱신이 실패하면 로그인 화면으로 보내고, 헤더에는 남은 시간을 표시합니다.\n실패는 `alert` 대신 토스트와 입력 피드백으로 알립니다. 역할별 화면 차이는 서버가 돌려준 권한을 받은 뒤에만 적용합니다.",
+    "svg": "docs/diagrams/auth-ux.svg"
+  },
+  {
+    "id": "realtime-sync",
+    "title": "4. 실시간 동기화",
+    "description": "STOMP 연결 하나로 방 토픽과 개인 큐를 구독합니다. 이벤트 종류마다 핸들러가 나뉘고, 현재 보고 있는 방의 이벤트만 화면 상태를 바꿉니다.\n재연결하면 현재 방을 다시 조회해 끊긴 사이의 변화를 메웁니다. Pub/Sub은 저장하지 않기 때문입니다.",
+    "svg": "docs/diagrams/realtime-sync.svg"
+  },
+  {
+    "id": "message-state",
+    "title": "5. 메시지 화면 상태",
+    "description": "대화는 50개 단위 윈도우로 다룹니다. 위로 스크롤하면 이전 페이지를 붙이고, 답장 원문으로 점프하면 그 위치 중심의 새 윈도우를 엽니다. 최신으로 돌아오기 전까지는 새 메시지를 \"아래 N개\" 배지로만 알립니다.\n읽음 수는 서버 값과 참여자 커서를 합쳐 화면이 다시 셉니다. 이벤트 도착 순서가 뒤바뀌어도 숫자가 흔들리지 않습니다.",
+    "svg": "docs/diagrams/message-state.svg"
+  },
+  {
+    "id": "messenger-interaction",
+    "title": "6. 메신저 인터랙션",
+    "description": "말풍선 하나에 붙는 동작과, 방 상단의 공지 패널이 오가는 모양입니다.\n메뉴는 포털로 띄워 스크롤 영역에 가려지지 않고, 화면 아래쪽에서는 위로 접힙니다. 모든 확인은 커스텀 모달이고 브라우저 `confirm`은 쓰지 않습니다.",
+    "svg": "docs/diagrams/messenger-interaction.svg"
+  },
+  {
+    "id": "component-tree",
+    "title": "7. 컴포넌트 트리",
+    "description": "메시지 화면이 가장 큽니다. 목록과 말풍선은 `memo`로 감싸 다른 말풍선이 바뀌어도 다시 그리지 않고, 콜백은 참조가 고정된 래퍼로 넘깁니다.\n공통 UI는 한 곳에 두고 어디서든 붙입니다. 로딩 표시 세 가지(아이콘만 · 한 줄 · 영역 전체)를 상황에 맞게 고릅니다.",
+    "svg": "docs/diagrams/component-tree.svg"
+  },
+  {
+    "id": "ui-system",
+    "title": "8. 공통 UI 체계",
+    "description": "브라우저 기본 UI를 쓰지 않고 서비스 전반에 같은 모양을 유지합니다.\n접근성 속성(`aria-*`, `role`)을 모든 상호작용 요소에 붙이고, 키보드만으로 메뉴와 모달을 다룰 수 있게 합니다.",
+    "svg": "docs/diagrams/ui-system.svg"
+  },
+  {
+    "id": "deploy",
+    "title": "9. 배포 흐름",
+    "description": "프론트는 Vercel이 main 브랜치를 받아 바로 배포합니다. API 주소는 환경변수 하나로 바뀌고, 서버와는 다른 사이트이므로 쿠키와 CORS를 그에 맞춰 설정합니다.\n앱 안의 \"프로젝트 소개\" 모달은 두 저장소의 README 다이어그램을 그대로 보여 줍니다. README를 고치면 모달도 같이 바뀝니다.",
+    "svg": "docs/diagrams/deploy.svg"
+  },
+  {
+    "id": "roadmap",
+    "title": "10. 로드맵",
+    "description": "",
+    "svg": "docs/diagrams/roadmap.svg"
+  }
+]
