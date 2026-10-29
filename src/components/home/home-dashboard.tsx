@@ -4,6 +4,7 @@ import { FavoriteBadge } from "@/components/address-book/favorite-badge";
 import { GroupAvatar } from "@/components/chat/group-avatar";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import { LoadingInline } from "@/components/common/loading";
+import { MeBadge } from "@/components/common/me-badge";
 import { addressBookApi, type AddressBookMember } from "@/lib/api/address-book-api";
 import { chatApi, type ChatRoom } from "@/lib/api/chat-api";
 import type { NotificationItem } from "@/lib/api/notification-api";
@@ -237,12 +238,8 @@ export function HomeDashboard({
                       )}
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-2">
+                          {room.type === "SELF" && <MeBadge />}
                           <b className="truncate text-sm text-slate-900">{roomName(room)}</b>
-                          {room.type === "SELF" && (
-                            <span className="shrink-0 rounded bg-slate-900 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
-                              나
-                            </span>
-                          )}
                           {room.type === "GROUP" && (
                             <span className="shrink-0 text-xs font-bold text-blue-600">
                               {room.memberCount}
@@ -332,6 +329,7 @@ export function HomeDashboard({
                         <InitialAvatar name={target.displayName} online={online} />
                         <span className="min-w-0 flex-1">
                           <span className="flex items-center gap-1.5">
+                            {target.membershipId === membershipId && <MeBadge />}
                             <b className="truncate text-sm text-slate-900">{target.displayName}</b>
                             <FavoriteBadge />
                           </span>
