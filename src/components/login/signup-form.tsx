@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState, type ReactNode } from "react";
 import { CustomSelect } from "@/components/common/custom-select";
 import { LoadingInline } from "@/components/common/loading";
 import { loginInputClassName } from "@/components/login/login-form";
+import { formatPhoneNumber } from "@/lib/phone-format";
 import {
   authApi,
   type SignupInput,
@@ -351,8 +352,9 @@ export function SignupForm({ onToast, onSignedUp, onBackToLogin }: SignupFormPro
             <input
               type="tel"
               value={phoneNumber}
-              onChange={(event) => setPhoneNumber(event.target.value)}
+              onChange={(event) => setPhoneNumber(formatPhoneNumber(event.target.value))}
               placeholder="010-0000-0000"
+              inputMode="numeric"
               autoComplete="tel"
               disabled={isSubmitting}
               className={loginInputClassName(false)}
