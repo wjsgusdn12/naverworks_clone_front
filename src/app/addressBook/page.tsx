@@ -12,7 +12,7 @@ import {
   type AddressBookMemberDetail,
   type AddressBookSearchHistory,
 } from "@/lib/api/address-book-api";
-import { chatApi } from "@/lib/api/chat-api";
+import { chatApi, type ChatGroupSummary } from "@/lib/api/chat-api";
 import { markAuthenticationRequired } from "@/lib/auth-required-notice";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -570,7 +570,11 @@ export default function AddressBookPage() {
                             onClick={() => selectCompany(organization.companyId)}
                           >
                             <Building2 size={17} />
-                            {organization.companyName}
+                            <span className="truncate">{organization.companyName}</span>
+                            {/* 사용 중인 계정 기준 회사 인원수. */}
+                            <span className="shrink-0 text-xs font-bold text-blue-600">
+                              {organization.memberCount}
+                            </span>
                           </button>
                         </div>
                         {isCompanyExpanded &&
@@ -595,10 +599,21 @@ export default function AddressBookPage() {
         </aside>
         <section className="min-w-0 flex-1 p-6">
           <div className="mb-5 flex items-center justify-between gap-4">
-            <h1 className="text-xl font-bold">{sectionTitle}</h1>
+            <h1 className="flex items-baseline gap-2 text-xl font-bold">
+              {sectionTitle}
+              {view === "company" && selectedCompany && (
+                <span className="text-base font-bold text-blue-600">
+                  {selectedCompany.memberCount}
+                </span>
+              )}
+            </h1>
           </div>
           {view === "group" ? (
-            <GroupPlaceholder showToast={showToast} />
+            <GroupPanel
+              accessToken={accessToken}
+              showToast={showToast}
+              onOpenRoom={(roomId) => router.push(`/message?roomId=${roomId}`)}
+            />
           ) : (
             <>
               <div className="mb-4 flex h-9 items-center gap-2">
@@ -1029,30 +1044,150 @@ function CustomCheckbox({
   );
 }
 
-function GroupPlaceholder({ showToast }: { showToast: (message: string) => void }) {
-  const [tab, setTab] = useState("전체");
+// 그룹 탭: 회사의 그룹 채팅방을 "전체 · 내가 속한 그룹 · 내가 마스터인 그룹"으로 나눠 보여 줌. 기본은 내가 속한 그룹.
+type GroupTab = "all" | "joined" | "owner";
+const groupTabs: { key: GroupTab; label: string }[] = [
+  { key: "all", label: "전체" },
+  { key: "joined", label: "내가 속한 그룹" },
+  { key: "owner", label: "내가 마스터인 그룹" },
+];
+
+const formatGroupDate = (value: string | null) => {
+  if (!value) return "대화 없음";
+  const date = new Date(value);
+  const today = new Date();
+  const sameDay =
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate();
+  return sameDay
+    ? date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })
+    : date.toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
+};
+
+function GroupPanel({
+  accessToken,
+  showToast,
+  onOpenRoom,
+}: {
+  accessToken: string | null;
+  showToast: (message: string) => void;
+  onOpenRoom: (roomId: number) => void;
+}) {
+  const [tab, setTab] = useState<GroupTab>("joined");
+  const [groups, setGroups] = useState<ChatGroupSummary[] | null>(null);
+
+  useEffect(() => {
+    if (!accessToken) return;
+    let cancelled = false;
+    chatApi
+      .groupRooms(accessToken)
+      .then((result) => {
+        if (!cancelled) setGroups(result);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setGroups([]);
+        showToast(error instanceof Error ? error.message : "그룹 목록을 불러오지 못했습니다.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, showToast]);
+
+  const visible = (groups ?? []).filter((group) =>
+    tab === "all" ? true : tab === "joined" ? group.joined : group.owner,
+  );
+
   return (
     <div>
-      <div className="mb-4 flex gap-5 border-b border-slate-200">
-        {["전체", "내가 속한 그룹", "내가 마스터인 그룹"].map((label) => (
-          <button
-            key={label}
-            className={`cursor-pointer border-b-2 px-1 pb-3 text-sm ${tab === label ? "border-blue-600 font-semibold text-blue-600" : "border-transparent text-slate-500"}`}
-            onClick={() => setTab(label)}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="mb-4 flex gap-5 border-b border-slate-200" role="tablist">
+        {groupTabs.map(({ key, label }) => {
+          const count =
+            groups === null
+              ? null
+              : groups.filter((group) =>
+                  key === "all" ? true : key === "joined" ? group.joined : group.owner,
+                ).length;
+          return (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={tab === key}
+              className={`flex cursor-pointer items-center gap-1.5 border-b-2 px-1 pb-3 text-sm transition ${tab === key ? "border-blue-600 font-semibold text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+              onClick={() => setTab(key)}
+            >
+              {label}
+              {count !== null && (
+                <span
+                  className={`text-xs font-bold ${tab === key ? "text-blue-600" : "text-slate-400"}`}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
-      <div className="rounded-xl border border-slate-200 p-12 text-center text-sm text-slate-500">
-        주소록 그룹 목록은 준비 중입니다.
-        <button
-          className="ml-2 cursor-pointer font-semibold text-blue-600 hover:underline"
-          onClick={() => showToast("그룹 생성 기능은 준비 중입니다.")}
-        >
-          그룹 만들기
-        </button>
-      </div>
+      {groups === null ? (
+        <LoadingInline message="그룹 목록을 불러오는 중입니다." className="py-10 text-sm" />
+      ) : visible.length === 0 ? (
+        <div className="rounded-xl border border-slate-200 p-12 text-center text-sm text-slate-500">
+          {tab === "joined"
+            ? "참여 중인 그룹이 없습니다."
+            : tab === "owner"
+              ? "내가 방장인 그룹이 없습니다."
+              : "회사에 그룹 채팅방이 없습니다."}
+        </div>
+      ) : (
+        <ul className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
+          {visible.map((group) => (
+            <li key={group.id}>
+              <button
+                type="button"
+                onClick={() =>
+                  group.joined
+                    ? onOpenRoom(group.id)
+                    : showToast("참여 중인 그룹만 열 수 있습니다. 방장에게 초대를 요청해 주세요.")
+                }
+                className={`flex w-full items-center gap-4 px-5 py-3.5 text-left transition ${group.joined ? "cursor-pointer hover:bg-slate-50" : "cursor-default"}`}
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+                  <UsersRound size={18} aria-hidden="true" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2">
+                    <span className="truncate text-sm font-semibold text-slate-900">
+                      {group.name || "이름 없는 그룹"}
+                    </span>
+                    <span className="shrink-0 text-xs font-bold text-blue-600">
+                      {group.memberCount}
+                    </span>
+                    {group.owner && (
+                      <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                        마스터
+                      </span>
+                    )}
+                    {!group.joined && (
+                      <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+                        미참여
+                      </span>
+                    )}
+                  </span>
+                  <span className="mt-0.5 block truncate text-xs text-slate-500">
+                    방장 {group.ownerName ?? "없음"} · 마지막 대화{" "}
+                    {formatGroupDate(group.lastMessageAt)}
+                  </span>
+                </span>
+                {group.joined && (
+                  <MessageCircle size={16} className="shrink-0 text-slate-400" aria-hidden="true" />
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

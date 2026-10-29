@@ -49,6 +49,19 @@ export type ChatMessage = {
   forwarded: boolean;
 };
 
+// 주소록 "그룹" 탭의 그룹 채팅방 요약. joined는 내가 참여 중, owner는 내가 방장.
+export type ChatGroupSummary = {
+  id: number;
+  name: string | null;
+  ownerMembershipId: number | null;
+  ownerName: string | null;
+  memberCount: number;
+  joined: boolean;
+  owner: boolean;
+  createdAt: string;
+  lastMessageAt: string | null;
+};
+
 // 방 상단에 고정하는 공지. 방당 여러 개, 최근 등록이 앞.
 export type ChatNotice = {
   messageId: number;
@@ -138,6 +151,8 @@ const request = async <T>(path: string, accessToken: string, init: RequestInit =
 
 export const chatApi = {
   rooms: (token: string) => request<ChatRoom[]>("/api/v1/chatRoom", token),
+  // 주소록 "그룹" 탭: 내 회사의 그룹 채팅방 전체(참여 여부 무관).
+  groupRooms: (token: string) => request<ChatGroupSummary[]>("/api/v1/chatRoom/group/list", token),
   // 기존 1:1 방은 재사용하고 없을 때만 서버가 새 방을 생성.
   createDirect: (token: string, targetMembershipId: number) =>
     request<ChatRoom>("/api/v1/chatRoom/direct/create", token, {

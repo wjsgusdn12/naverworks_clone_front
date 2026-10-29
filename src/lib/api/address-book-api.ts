@@ -13,6 +13,8 @@ export type AddressBookOrganization = {
   companyId: number;
   companyName: string;
   currentCompany: boolean;
+  // 사용 중인 계정 기준 회사 인원수.
+  memberCount: number;
   departments: { id: number; name: string; enabled: boolean }[];
 };
 
