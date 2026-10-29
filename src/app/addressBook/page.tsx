@@ -4,6 +4,7 @@ import { GlobalHeader } from "@/components/common/global-header";
 import { FavoriteButton } from "@/components/address-book/favorite-button";
 import { Toast } from "@/components/common/toast";
 import { LoadingInline } from "@/components/common/loading";
+import { Pagination } from "@/components/common/pagination";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import {
@@ -20,7 +21,6 @@ import {
   CalendarDays,
   Check,
   ChevronDown,
-  ChevronLeft,
   ChevronRight,
   Clock3,
   ExternalLink,
@@ -47,13 +47,6 @@ type AddressBookView = "favorite" | "group" | "company" | "department";
 
 // 구성원 목록 한 페이지 크기.
 const MEMBER_PAGE_SIZE = 20;
-
-// 현재 페이지 주변으로 최대 5개의 번호만 보여 줌.
-const visiblePages = (page: number, totalPages: number) => {
-  const start = Math.max(0, Math.min(page - 2, totalPages - 5));
-  const end = Math.min(totalPages, start + 5);
-  return Array.from({ length: end - start }, (_, index) => start + index);
-};
 
 const statusClassName = {
   ONLINE: "bg-emerald-500",
@@ -758,41 +751,16 @@ export default function AddressBookPage() {
                 )}
               </div>
               {/* 바닥 고정 영역. 섹션 좌우 여백만큼 바깥으로 빼서 위쪽 선이 끝까지 이어짐. */}
-              <nav
-                aria-label="구성원 목록 페이지"
-                className="-mx-6 flex h-16 shrink-0 items-center justify-center gap-1.5 border-t border-slate-200 text-sm"
-              >
+              <div className="-mx-6 flex h-12 shrink-0 items-center justify-center border-t border-slate-200">
                 {memberTotal > 0 && (
-                  <>
-                    <button
-                      disabled={page === 0}
-                      aria-label="이전 페이지"
-                      className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition enabled:cursor-pointer enabled:hover:bg-slate-100 enabled:hover:text-slate-900 disabled:opacity-30"
-                      onClick={() => changePage(page - 1)}
-                    >
-                      <ChevronLeft size={16} aria-hidden="true" />
-                    </button>
-                    {visiblePages(page, totalPages).map((target) => (
-                      <button
-                        key={target}
-                        aria-current={target === page ? "page" : undefined}
-                        className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded-full font-medium transition ${target === page ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"}`}
-                        onClick={() => changePage(target)}
-                      >
-                        {target + 1}
-                      </button>
-                    ))}
-                    <button
-                      disabled={page >= totalPages - 1}
-                      aria-label="다음 페이지"
-                      className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition enabled:cursor-pointer enabled:hover:bg-slate-100 enabled:hover:text-slate-900 disabled:opacity-30"
-                      onClick={() => changePage(page + 1)}
-                    >
-                      <ChevronRight size={16} aria-hidden="true" />
-                    </button>
-                  </>
+                  <Pagination
+                    label="구성원 목록 페이지"
+                    page={page}
+                    totalPages={totalPages}
+                    onChange={changePage}
+                  />
                 )}
-              </nav>
+              </div>
             </>
           )}
         </section>
