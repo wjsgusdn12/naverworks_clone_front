@@ -2,11 +2,12 @@
 
 import { GroupAvatar } from "@/components/chat/group-avatar";
 import { MessageMemberAvatar } from "@/components/chat/message-member-avatar";
+import { CustomCheckbox } from "@/components/common/custom-checkbox";
 import { MeBadge } from "@/components/common/me-badge";
 import type { AddressBookMember } from "@/lib/api/address-book-api";
 import type { ChatRoom } from "@/lib/api/chat-api";
 import { formatRoomTime } from "@/lib/chat-format";
-import { AtSign, Bell, Check, EyeOff, Forward, LogOut, MoreVertical, Pin } from "lucide-react";
+import { AtSign, Bell, EyeOff, Forward, LogOut, MoreVertical, Pin } from "lucide-react";
 import { memo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -75,15 +76,12 @@ export const MessageRoomItem = memo(function MessageRoomItem({
       className={`group relative flex w-[calc(100%-1rem)] gap-3 rounded-lg ${isCollapsed ? "mx-2 my-1 justify-center px-2 py-3" : "mx-2 my-1 px-3 py-3"} text-left transition-colors duration-200 hover:bg-blue-50 ${isSelected ? "bg-blue-100" : ""}`}
     >
       {hideSelectionMode && !isCollapsed && (
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={hiddenSelected}
-          onClick={() => onToggleHidden(room.id)}
-          className={`custom-checkbox-button mt-1 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded-md border transition ${hiddenSelected ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300 bg-white"}`}
-        >
-          {hiddenSelected && <Check size={14} strokeWidth={3} />}
-        </button>
+        <CustomCheckbox
+          label={`${displayName} 숨김 선택`}
+          checked={hiddenSelected}
+          onChange={() => onToggleHidden(room.id)}
+          className="mt-0.5 h-6 w-6 shrink-0"
+        />
       )}
       <div
         role="button"

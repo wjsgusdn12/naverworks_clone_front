@@ -1,8 +1,8 @@
-"use client";
+﻿"use client";
 
 import { GlobalHeader } from "@/components/common/global-header";
 import { AddressBookSearch } from "@/components/address-book/address-book-search";
-import { CustomCheckbox } from "@/components/address-book/custom-checkbox";
+import { CustomCheckbox } from "@/components/common/custom-checkbox";
 import { GroupPanel } from "@/components/address-book/group-panel";
 import { MemberPanel } from "@/components/address-book/member-panel";
 import { MemberTable } from "@/components/address-book/member-table";

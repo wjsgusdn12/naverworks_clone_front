@@ -1,8 +1,9 @@
 "use client";
 
 import { MessageMemberAvatar } from "@/components/chat/message-member-avatar";
+import { CheckboxControl } from "@/components/common/custom-checkbox";
 import type { AddressBookMember } from "@/lib/api/address-book-api";
-import { Check, Search, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export function NewRoomModal({
@@ -165,11 +166,7 @@ export function NewRoomModal({
                     · {member.email}
                   </small>
                 </span>
-                <span
-                  className={`custom-checkbox-control flex h-5 w-5 shrink-0 items-center justify-center rounded-md border text-white transition-all duration-200 ${selected ? "border-blue-600 bg-blue-600 shadow-[0_0_0_3px_rgb(219_234_254)]" : "border-slate-300 bg-white"}`}
-                >
-                  {selected && <Check className="checkbox-check-mark" size={14} strokeWidth={3} />}
-                </span>
+                <CheckboxControl checked={selected} />
               </button>
             );
           })}

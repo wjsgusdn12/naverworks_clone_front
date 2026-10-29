@@ -1,7 +1,7 @@
-"use client";
+﻿"use client";
 
 import { GroupAvatar } from "@/components/chat/group-avatar";
-import { CustomCheckbox } from "@/components/address-book/custom-checkbox";
+import { CustomCheckbox } from "@/components/common/custom-checkbox";
 import { GroupDetailPanel } from "@/components/address-book/group-detail-panel";
 import { MemberPanel } from "@/components/address-book/member-panel";
 import { LoadingInline } from "@/components/common/loading";

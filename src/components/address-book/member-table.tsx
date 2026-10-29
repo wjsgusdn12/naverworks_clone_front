@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import { CustomCheckbox } from "@/components/address-book/custom-checkbox";
+import { CustomCheckbox } from "@/components/common/custom-checkbox";
 import { FavoriteButton } from "@/components/address-book/favorite-button";
 import { MemberAvatar } from "@/components/address-book/member-avatar";
 import { MeBadge } from "@/components/common/me-badge";
