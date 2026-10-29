@@ -5,7 +5,6 @@ import {
   Bell,
   BookOpen,
   BookUser,
-  Building2,
   CalendarDays,
   Grid2X2,
   Home,
@@ -41,7 +40,6 @@ const headerActions: HeaderAction[] = [
   { label: "관리자", icon: ShieldCheck, requiresAdmin: true },
   { label: "전체 서비스", icon: Grid2X2 },
   { label: "알림", icon: Bell },
-  { label: "조직도", icon: Building2 },
   { label: "설정", icon: Settings },
   { label: "내 프로필", icon: UserRound },
   // 두 저장소 README 다이어그램을 보여 주는 소개 모달.
@@ -277,7 +275,7 @@ export function GlobalHeader({
                 ? onHomeAction
                 : label === "메시지"
                   ? () => (isAuthenticated ? router.push("/message") : onServiceAction(label))
-                  : label === "주소록" || label === "조직도"
+                  : label === "주소록"
                     ? () => (isAuthenticated ? router.push("/addressBook") : onServiceAction(label))
                     : label === "알림"
                       ? () => setIsNotificationPanelOpen((current) => !current)
@@ -323,7 +321,7 @@ export function GlobalHeader({
                     }
                     aria-haspopup={label === "알림" || label === "내 프로필" ? "menu" : undefined}
                     onClick={onClick}
-                    className={`flex h-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-zinc-300 transition hover:-translate-y-0.5 hover:bg-zinc-800 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${label === "내 프로필" && isAuthenticated ? "min-w-9 px-0.5" : label === "프로젝트 소개" ? "w-10 hover:scale-110 hover:bg-transparent" : "w-9"}`}
+                    className={`flex h-9 shrink-0 cursor-pointer items-center justify-center rounded-md text-zinc-300 transition hover:-translate-y-0.5 hover:bg-zinc-800 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${label === "내 프로필" && isAuthenticated ? "min-w-9 px-0.5" : label === "프로젝트 소개" ? "w-9 hover:scale-110 hover:bg-transparent" : "w-9"}`}
                   >
                     {label === "내 프로필" && isAuthenticated ? (
                       // 사진 업로드 전에는 이름 길이에 맞는 기본 아바타를 사용.
