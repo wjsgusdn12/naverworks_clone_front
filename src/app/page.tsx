@@ -8,13 +8,19 @@ import { ApiClientError, type LoginInput } from "@/lib/api/auth-api";
 import { consumeAuthenticationRequired } from "@/lib/auth-required-notice";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 export default function Home() {
   // Next.js 페이지 이동과 공통 토스트 기능을 사용.
   const router = useRouter();
   const { toast, showToast, dismissToast } = useToast();
   const { status, login } = useAuth();
+  // 헤더 아이콘을 누르면 안내 토스트와 함께 이메일 칸으로 포커스를 보냄.
+  const emailInputRef = useRef<HTMLInputElement | null>(null);
+  const requireLogin = () => {
+    showToast("로그인이 필요합니다. 로그인 후 이용해 주세요.");
+    emailInputRef.current?.focus();
+  };
 
   useEffect(() => {
     // 이미 로그인한 사용자는 로그인 화면을 다시 보지 않도록 홈으로 이동.
@@ -51,12 +57,12 @@ export default function Home() {
     <div className="flex h-screen flex-col overflow-hidden bg-slate-100">
       <GlobalHeader
         role="USER"
-        onHomeAction={() => showToast("로그인이 필요합니다. 로그인 후 이용해 주세요.")}
-        onServiceAction={() => showToast("로그인이 필요합니다. 로그인 후 이용해 주세요.")}
-        onProfileAction={() => showToast("로그인이 필요합니다. 로그인 후 이용해 주세요.")}
+        onHomeAction={requireLogin}
+        onServiceAction={requireLogin}
+        onProfileAction={requireLogin}
       />
       <main className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-5 py-12 sm:px-8">
-        <LoginForm onToast={showToast} onLogin={handleLogin} />
+        <LoginForm onToast={showToast} onLogin={handleLogin} emailInputRef={emailInputRef} />
       </main>
       {toast && (
         <Toast key={toast.id} message={toast.message} phase={toast.phase} onClose={dismissToast} />
