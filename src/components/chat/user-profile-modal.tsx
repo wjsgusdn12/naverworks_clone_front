@@ -1,6 +1,7 @@
 "use client";
 
 import type { AddressBookMemberDetail } from "@/lib/api/address-book-api";
+import { UserAvatar } from "@/components/common/user-avatar";
 import { CalendarDays, Mail, MessageCircle, Star, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 
@@ -62,16 +63,7 @@ export function UserProfileModal({
           </button>
         </div>
         <div className="mt-7 flex items-center gap-5">
-          <span className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-2xl font-bold text-slate-800">
-            <span className="whitespace-nowrap">{member.displayName.slice(0, 3)}</span>
-            <span
-              className={`absolute -bottom-1 -right-1 inline-flex h-6 w-6 items-center justify-center rounded-full ring-2 ring-white ${member.presenceStatus === "ONLINE" ? "bg-emerald-500" : member.presenceStatus === "OFFLINE" ? "bg-slate-300" : member.presenceStatus === "AWAY" ? "bg-slate-500 text-white" : "bg-red-500 text-white"}`}
-            >
-              {(member.presenceStatus === "AWAY" || member.presenceStatus === "INACTIVE") && (
-                <X size={14} strokeWidth={3} />
-              )}
-            </span>
-          </span>
+          <UserAvatar name={member.displayName} presenceStatus={member.presenceStatus} size="xl" />
           <div>
             <h2 className="text-xl font-bold">{member.displayName}</h2>
             <p className="mt-1 text-sm text-slate-500">{member.jobGradeName ?? "직급 미지정"}</p>

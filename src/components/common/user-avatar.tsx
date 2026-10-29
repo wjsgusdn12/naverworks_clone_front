@@ -5,12 +5,14 @@ import type { PresenceStatus } from "@/lib/api/address-book-api";
 
 // 프로젝트 공통 사용자 프로필 아바타. 이름 앞 세 글자 + 오른쪽 아래 접속 상태 배지.
 // 주소록·메시지·상단바 프로필 패널이 모두 이 컴포넌트를 씀.
-export type UserAvatarSize = "sm" | "md" | "lg";
+export type UserAvatarSize = "sm" | "md" | "lg" | "xl";
 
 const sizeClassName: Record<UserAvatarSize, { box: string; badge: string; x: number }> = {
   sm: { box: "h-8 w-8 text-[10px]", badge: "h-3.5 w-3.5", x: 9 },
   md: { box: "h-10 w-10 text-xs", badge: "h-3.5 w-3.5", x: 9 },
   lg: { box: "h-16 w-16 text-lg", badge: "h-5 w-5", x: 13 },
+  // 메시지 화면 프로필 모달처럼 크게 보여 줄 때.
+  xl: { box: "h-24 w-24 text-2xl", badge: "-bottom-1 -right-1 h-6 w-6", x: 14 },
 };
 
 const statusClassName: Record<PresenceStatus, string> = {
@@ -63,7 +65,7 @@ export function UserAvatar({
     >
       <span className="whitespace-nowrap">{name.slice(0, 3)}</span>
       <span
-        className={`absolute -bottom-0.5 -right-0.5 inline-flex items-center justify-center rounded-full ring-2 ring-white ${sizes.badge} ${statusClassName[presenceStatus]}`}
+        className={`absolute inline-flex items-center justify-center rounded-full ring-2 ring-white ${size === "xl" ? "" : "-bottom-0.5 -right-0.5"} ${sizes.badge} ${statusClassName[presenceStatus]}`}
       >
         {(presenceStatus === "AWAY" || presenceStatus === "INACTIVE") && (
           <X size={sizes.x} strokeWidth={3} />
