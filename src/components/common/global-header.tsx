@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Bell,
+  BookOpen,
   BookUser,
   Building2,
   CalendarDays,
@@ -21,6 +22,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import { Tooltip } from "@/components/common/tooltip";
 import { LoadingState } from "@/components/common/loading";
+import { ProjectGuideModal } from "@/components/common/project-guide-modal";
 import { useRouter } from "next/navigation";
 
 // 상단 헤더에서 반복 렌더링할 서비스 아이콘 정보.
@@ -42,6 +44,8 @@ const headerActions: HeaderAction[] = [
   { label: "조직도", icon: Building2 },
   { label: "설정", icon: Settings },
   { label: "내 프로필", icon: UserRound },
+  // 두 저장소 README 다이어그램을 보여 주는 소개 모달.
+  { label: "프로젝트 소개", icon: BookOpen },
 ];
 
 // 알림 패널 칩 목록. 아직 기능이 없는 서비스(캘린더 등)는 칩을 만들지 않음.
@@ -127,6 +131,7 @@ export function GlobalHeader({
   const [now, setNow] = useState(0);
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
   const [isNotificationModeOpen, setIsNotificationModeOpen] = useState(false);
+  const [isProjectGuideOpen, setIsProjectGuideOpen] = useState(false);
   // 알림 패널 상단 칩. "ALL"은 서버 분류와 무관하게 전체를 뜻함.
   const [notificationFilter, setNotificationFilter] = useState<"ALL" | NotificationCategory>("ALL");
   const visibleNotifications =
@@ -257,7 +262,9 @@ export function GlobalHeader({
                       ? () => setIsNotificationPanelOpen((current) => !current)
                       : label === "내 프로필"
                         ? onProfileAction
-                        : () => onServiceAction(label);
+                        : label === "프로젝트 소개"
+                          ? () => setIsProjectGuideOpen(true)
+                          : () => onServiceAction(label);
 
             return (
               <span
@@ -472,6 +479,7 @@ export function GlobalHeader({
             );
           })}
       </nav>
+      {isProjectGuideOpen && <ProjectGuideModal onClose={() => setIsProjectGuideOpen(false)} />}
     </header>
   );
 }
