@@ -1,7 +1,8 @@
 "use client";
 
-import { ChevronDown, Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { FormEvent, useEffect, useState, type ReactNode } from "react";
+import { CustomSelect } from "@/components/common/custom-select";
 import { LoadingInline } from "@/components/common/loading";
 import { loginInputClassName } from "@/components/login/login-form";
 import {
@@ -276,20 +277,22 @@ export function SignupForm({ onToast, onSignedUp, onBackToLogin }: SignupFormPro
         {joinType === "DEMO" && (
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="부서 (선택)">
-              <SelectBox
+              <CustomSelect
+                label="부서"
                 value={departmentId}
                 onChange={setDepartmentId}
                 placeholder="미지정"
-                options={options?.departments ?? []}
+                options={toSelectOptions(options?.departments ?? [])}
                 disabled={isSubmitting || options === null}
               />
             </Field>
             <Field label="직급 (선택)">
-              <SelectBox
+              <CustomSelect
+                label="직급"
                 value={jobGradeId}
                 onChange={setJobGradeId}
                 placeholder="미지정"
-                options={options?.jobGrades ?? []}
+                options={toSelectOptions(options?.jobGrades ?? [])}
                 disabled={isSubmitting || options === null}
               />
             </Field>
@@ -394,40 +397,8 @@ function Field({ label, error, children }: { label: string; error?: string; chil
   );
 }
 
-// 기본 select를 입력칸과 같은 모양으로 감쌈.
-function SelectBox({
-  value,
-  onChange,
-  placeholder,
-  options,
-  disabled,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  options: { id: number; name: string }[];
-  disabled: boolean;
-}) {
-  return (
-    <span className="relative block">
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        disabled={disabled}
-        className={`${loginInputClassName(false)} cursor-pointer appearance-none pr-10 disabled:cursor-not-allowed disabled:bg-slate-50`}
-      >
-        <option value="">{placeholder}</option>
-        {options.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.name}
-          </option>
-        ))}
-      </select>
-      <ChevronDown
-        size={16}
-        aria-hidden="true"
-        className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-500"
-      />
-    </span>
-  );
-}
+// 서버의 {id, name} 목록을 공통 드롭다운 항목으로. 맨 앞은 "미지정".
+const toSelectOptions = (items: { id: number; name: string }[]) => [
+  { value: "", label: "미지정" },
+  ...items.map((item) => ({ value: String(item.id), label: item.name })),
+];
