@@ -26,7 +26,7 @@ type MessageActionMenuProps = {
   isMine: boolean;
   // 본인 메시지라도 24시간이 지나면 false. 메뉴의 "수정"·"삭제"를 비활성화하고 안내 툴팁을 띄움.
   canEdit: boolean;
-  // 이 메시지가 현재 방 공지면 "공지 해제"로 바뀜.
+  // 이 메시지가 현재 방 공지면 "공지 내리기"로 바뀜.
   isNotice: boolean;
   position: MessageMenuPosition | null;
   onPositionChange: (position: MessageMenuPosition | null) => void;
@@ -180,7 +180,7 @@ export function MessageActionMenu({
               ) : (
                 <Megaphone size={15} aria-hidden="true" />
               )}
-              {isNotice ? "공지 해제" : "공지로 등록"}
+              {isNotice ? "공지 내리기" : "공지로 등록"}
             </button>
             {isMine && (
               <>
