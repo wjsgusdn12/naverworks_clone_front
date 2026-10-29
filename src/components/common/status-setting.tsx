@@ -63,13 +63,16 @@ const tomorrowNine = () => {
 export function StatusSetting({ statusType, statusUntil, saving, onSave }: StatusSettingProps) {
   // 고르는 중인 상태. 처음엔 현재 상태.
   const [draft, setDraft] = useState<MemberStatusType | null>(statusType);
-  const [untilChoice, setUntilChoice] = useState<UntilChoice>(statusUntil ? "CUSTOM" : "NONE");
+  // 자동 해제 기본값은 "계속". 직접 설정을 누르면 현재 해제 시각(없으면 내일 09:00)부터 보여 줌.
+  const [untilChoice, setUntilChoice] = useState<UntilChoice>("NONE");
   const [customUntil, setCustomUntil] = useState<Date>(() =>
     statusUntil ? new Date(statusUntil) : tomorrowNine(),
   );
 
   const choose = (type: MemberStatusType | null) => {
     setDraft(type);
+    // 다른 상태를 고를 때마다 자동 해제는 "계속"으로 돌아감.
+    if (type !== draft) setUntilChoice("NONE");
     // 설정 안 함은 고를 것이 더 없어 바로 저장.
     if (type === null && statusType !== null) onSave(null, null);
   };
