@@ -27,8 +27,6 @@
 ```mermaid
 ---
 config:
-  theme: base
-  fontFamily: "Pretendard, Malgun Gothic, Apple SD Gothic Neo, Noto Sans KR, sans-serif"
   markdownAutoWrap: false
   flowchart:
     curve: basis
@@ -36,47 +34,6 @@ config:
     nodeSpacing: 36
     rankSpacing: 48
     wrappingWidth: 800
-  themeVariables:
-    fontSize: 14px
-    primaryColor: "#eef2ff"
-    primaryTextColor: "#1e1b4b"
-    primaryBorderColor: "#818cf8"
-    secondaryColor: "#f0f9ff"
-    secondaryBorderColor: "#7dd3fc"
-    tertiaryColor: "#f8fafc"
-    tertiaryBorderColor: "#cbd5e1"
-    lineColor: "#64748b"
-    textColor: "#1e293b"
-    clusterBkg: "#f8fafc"
-    clusterBorder: "#cbd5e1"
-    edgeLabelBackground: "#ffffff"
-    nodeBorder: "#818cf8"
-    mainBkg: "#eef2ff"
-    actorBkg: "#eef2ff"
-    actorBorder: "#818cf8"
-    actorTextColor: "#1e1b4b"
-    actorLineColor: "#cbd5e1"
-    signalColor: "#334155"
-    signalTextColor: "#334155"
-    labelBoxBkgColor: "#f1f5f9"
-    labelBoxBorderColor: "#cbd5e1"
-    noteBkgColor: "#fef3c7"
-    noteBorderColor: "#fbbf24"
-    noteTextColor: "#78350f"
-    activationBkgColor: "#e0e7ff"
-    activationBorderColor: "#818cf8"
-    cScale0: "#6366f1"
-    cScale1: "#0ea5e9"
-    cScale2: "#10b981"
-    cScale3: "#f59e0b"
-    cScale4: "#ec4899"
-    cScaleLabel0: "#ffffff"
-    cScaleLabel1: "#ffffff"
-    cScaleLabel2: "#ffffff"
-    cScaleLabel3: "#ffffff"
-    cScaleLabel4: "#ffffff"
-    attributeBackgroundColorEven: "#f8fafc"
-    attributeBackgroundColorOdd: "#ffffff"
 ---
 flowchart LR
     Login["/ 로그인"] --> Home["/home Today"]
@@ -89,11 +46,6 @@ flowchart LR
     Header -.-> Message
     Header -.-> Address
     Header -.-> Calendar
-    classDef store fill:#ecfdf5,stroke:#34d399,color:#064e3b
-    classDef focus fill:#4f46e5,stroke:#4338ca,color:#ffffff,font-weight:bold
-    classDef store fill:#ecfdf5,stroke:#34d399,color:#064e3b
-    classDef external fill:#fff7ed,stroke:#fb923c,color:#7c2d12
-    classDef focus fill:#4f46e5,stroke:#4338ca,color:#ffffff,font-weight:bold
 ```
 
 모든 화면 위에 공통 헤더가 유지됩니다. 알림 패널·프로필 메뉴·세션 잔여 시간·프로젝트 소개 모달이 여기에 붙습니다.
@@ -108,8 +60,6 @@ App Router 아래에 화면이 있고, 화면은 `components`의 조각과 `lib`
 ```mermaid
 ---
 config:
-  theme: base
-  fontFamily: "Pretendard, Malgun Gothic, Apple SD Gothic Neo, Noto Sans KR, sans-serif"
   markdownAutoWrap: false
   flowchart:
     curve: basis
@@ -117,47 +67,6 @@ config:
     nodeSpacing: 36
     rankSpacing: 48
     wrappingWidth: 800
-  themeVariables:
-    fontSize: 14px
-    primaryColor: "#eef2ff"
-    primaryTextColor: "#1e1b4b"
-    primaryBorderColor: "#818cf8"
-    secondaryColor: "#f0f9ff"
-    secondaryBorderColor: "#7dd3fc"
-    tertiaryColor: "#f8fafc"
-    tertiaryBorderColor: "#cbd5e1"
-    lineColor: "#64748b"
-    textColor: "#1e293b"
-    clusterBkg: "#f8fafc"
-    clusterBorder: "#cbd5e1"
-    edgeLabelBackground: "#ffffff"
-    nodeBorder: "#818cf8"
-    mainBkg: "#eef2ff"
-    actorBkg: "#eef2ff"
-    actorBorder: "#818cf8"
-    actorTextColor: "#1e1b4b"
-    actorLineColor: "#cbd5e1"
-    signalColor: "#334155"
-    signalTextColor: "#334155"
-    labelBoxBkgColor: "#f1f5f9"
-    labelBoxBorderColor: "#cbd5e1"
-    noteBkgColor: "#fef3c7"
-    noteBorderColor: "#fbbf24"
-    noteTextColor: "#78350f"
-    activationBkgColor: "#e0e7ff"
-    activationBorderColor: "#818cf8"
-    cScale0: "#6366f1"
-    cScale1: "#0ea5e9"
-    cScale2: "#10b981"
-    cScale3: "#f59e0b"
-    cScale4: "#ec4899"
-    cScaleLabel0: "#ffffff"
-    cScaleLabel1: "#ffffff"
-    cScaleLabel2: "#ffffff"
-    cScaleLabel3: "#ffffff"
-    cScaleLabel4: "#ffffff"
-    attributeBackgroundColorEven: "#f8fafc"
-    attributeBackgroundColorOdd: "#ffffff"
 ---
 flowchart TB
     subgraph App["src/app · App Router"]
@@ -182,11 +91,6 @@ flowchart TB
     App --> Lib
     L1 -->|"REST"| API
     L2 -.->|"WebSocket"| API
-    classDef store fill:#ecfdf5,stroke:#34d399,color:#064e3b
-    classDef focus fill:#4f46e5,stroke:#4338ca,color:#ffffff,font-weight:bold
-    classDef store fill:#ecfdf5,stroke:#34d399,color:#064e3b
-    classDef external fill:#fff7ed,stroke:#fb923c,color:#7c2d12
-    classDef focus fill:#4f46e5,stroke:#4338ca,color:#ffffff,font-weight:bold
 ```
 
 `lib`의 순수 함수(읽음 수 재계산, URL·멘션 토큰 분리)는 React 없이 node 테스트로 검증합니다.
@@ -201,55 +105,12 @@ Access Token은 메모리에만 두고 만료 1분 전에 조용히 갱신합니
 ```mermaid
 ---
 config:
-  theme: base
-  fontFamily: "Pretendard, Malgun Gothic, Apple SD Gothic Neo, Noto Sans KR, sans-serif"
   markdownAutoWrap: false
   sequence:
     actorMargin: 40
     messageMargin: 44
     mirrorActors: false
     wrap: false
-  themeVariables:
-    fontSize: 14px
-    primaryColor: "#eef2ff"
-    primaryTextColor: "#1e1b4b"
-    primaryBorderColor: "#818cf8"
-    secondaryColor: "#f0f9ff"
-    secondaryBorderColor: "#7dd3fc"
-    tertiaryColor: "#f8fafc"
-    tertiaryBorderColor: "#cbd5e1"
-    lineColor: "#64748b"
-    textColor: "#1e293b"
-    clusterBkg: "#f8fafc"
-    clusterBorder: "#cbd5e1"
-    edgeLabelBackground: "#ffffff"
-    nodeBorder: "#818cf8"
-    mainBkg: "#eef2ff"
-    actorBkg: "#eef2ff"
-    actorBorder: "#818cf8"
-    actorTextColor: "#1e1b4b"
-    actorLineColor: "#cbd5e1"
-    signalColor: "#334155"
-    signalTextColor: "#334155"
-    labelBoxBkgColor: "#f1f5f9"
-    labelBoxBorderColor: "#cbd5e1"
-    noteBkgColor: "#fef3c7"
-    noteBorderColor: "#fbbf24"
-    noteTextColor: "#78350f"
-    activationBkgColor: "#e0e7ff"
-    activationBorderColor: "#818cf8"
-    cScale0: "#6366f1"
-    cScale1: "#0ea5e9"
-    cScale2: "#10b981"
-    cScale3: "#f59e0b"
-    cScale4: "#ec4899"
-    cScaleLabel0: "#ffffff"
-    cScaleLabel1: "#ffffff"
-    cScaleLabel2: "#ffffff"
-    cScaleLabel3: "#ffffff"
-    cScaleLabel4: "#ffffff"
-    attributeBackgroundColorEven: "#f8fafc"
-    attributeBackgroundColorOdd: "#ffffff"
 ---
 sequenceDiagram
     participant U as 사용자
@@ -284,8 +145,6 @@ STOMP 연결 하나로 방 토픽과 개인 큐를 구독합니다. 이벤트 �
 ```mermaid
 ---
 config:
-  theme: base
-  fontFamily: "Pretendard, Malgun Gothic, Apple SD Gothic Neo, Noto Sans KR, sans-serif"
   markdownAutoWrap: false
   flowchart:
     curve: basis
@@ -293,47 +152,6 @@ config:
     nodeSpacing: 36
     rankSpacing: 48
     wrappingWidth: 800
-  themeVariables:
-    fontSize: 14px
-    primaryColor: "#eef2ff"
-    primaryTextColor: "#1e1b4b"
-    primaryBorderColor: "#818cf8"
-    secondaryColor: "#f0f9ff"
-    secondaryBorderColor: "#7dd3fc"
-    tertiaryColor: "#f8fafc"
-    tertiaryBorderColor: "#cbd5e1"
-    lineColor: "#64748b"
-    textColor: "#1e293b"
-    clusterBkg: "#f8fafc"
-    clusterBorder: "#cbd5e1"
-    edgeLabelBackground: "#ffffff"
-    nodeBorder: "#818cf8"
-    mainBkg: "#eef2ff"
-    actorBkg: "#eef2ff"
-    actorBorder: "#818cf8"
-    actorTextColor: "#1e1b4b"
-    actorLineColor: "#cbd5e1"
-    signalColor: "#334155"
-    signalTextColor: "#334155"
-    labelBoxBkgColor: "#f1f5f9"
-    labelBoxBorderColor: "#cbd5e1"
-    noteBkgColor: "#fef3c7"
-    noteBorderColor: "#fbbf24"
-    noteTextColor: "#78350f"
-    activationBkgColor: "#e0e7ff"
-    activationBorderColor: "#818cf8"
-    cScale0: "#6366f1"
-    cScale1: "#0ea5e9"
-    cScale2: "#10b981"
-    cScale3: "#f59e0b"
-    cScale4: "#ec4899"
-    cScaleLabel0: "#ffffff"
-    cScaleLabel1: "#ffffff"
-    cScaleLabel2: "#ffffff"
-    cScaleLabel3: "#ffffff"
-    cScaleLabel4: "#ffffff"
-    attributeBackgroundColorEven: "#f8fafc"
-    attributeBackgroundColorOdd: "#ffffff"
 ---
 flowchart LR
     WS["STOMP Client<br/>자동 재연결"]
@@ -348,11 +166,6 @@ flowchart LR
     Queue --> NT["알림 패널 · 토스트"]
     Presence["/topic/presence<br/>온 · 오프라인"] --> PR["주소록 · 모달 상태 점"]
     WS --> Presence
-    classDef store fill:#ecfdf5,stroke:#34d399,color:#064e3b
-    classDef focus fill:#4f46e5,stroke:#4338ca,color:#ffffff,font-weight:bold
-    classDef store fill:#ecfdf5,stroke:#34d399,color:#064e3b
-    classDef external fill:#fff7ed,stroke:#fb923c,color:#7c2d12
-    classDef focus fill:#4f46e5,stroke:#4338ca,color:#ffffff,font-weight:bold
 ```
 
 재연결하면 현재 방을 다시 조회해 끊긴 사이의 변화를 메웁니다. Pub/Sub은 저장하지 않기 때문입니다.
@@ -367,50 +180,7 @@ flowchart LR
 ```mermaid
 ---
 config:
-  theme: base
-  fontFamily: "Pretendard, Malgun Gothic, Apple SD Gothic Neo, Noto Sans KR, sans-serif"
   markdownAutoWrap: false
-  themeVariables:
-    fontSize: 14px
-    primaryColor: "#eef2ff"
-    primaryTextColor: "#1e1b4b"
-    primaryBorderColor: "#818cf8"
-    secondaryColor: "#f0f9ff"
-    secondaryBorderColor: "#7dd3fc"
-    tertiaryColor: "#f8fafc"
-    tertiaryBorderColor: "#cbd5e1"
-    lineColor: "#64748b"
-    textColor: "#1e293b"
-    clusterBkg: "#f8fafc"
-    clusterBorder: "#cbd5e1"
-    edgeLabelBackground: "#ffffff"
-    nodeBorder: "#818cf8"
-    mainBkg: "#eef2ff"
-    actorBkg: "#eef2ff"
-    actorBorder: "#818cf8"
-    actorTextColor: "#1e1b4b"
-    actorLineColor: "#cbd5e1"
-    signalColor: "#334155"
-    signalTextColor: "#334155"
-    labelBoxBkgColor: "#f1f5f9"
-    labelBoxBorderColor: "#cbd5e1"
-    noteBkgColor: "#fef3c7"
-    noteBorderColor: "#fbbf24"
-    noteTextColor: "#78350f"
-    activationBkgColor: "#e0e7ff"
-    activationBorderColor: "#818cf8"
-    cScale0: "#6366f1"
-    cScale1: "#0ea5e9"
-    cScale2: "#10b981"
-    cScale3: "#f59e0b"
-    cScale4: "#ec4899"
-    cScaleLabel0: "#ffffff"
-    cScaleLabel1: "#ffffff"
-    cScaleLabel2: "#ffffff"
-    cScaleLabel3: "#ffffff"
-    cScaleLabel4: "#ffffff"
-    attributeBackgroundColorEven: "#f8fafc"
-    attributeBackgroundColorOdd: "#ffffff"
 ---
 stateDiagram-v2
     [*] --> Latest : 방 선택 · 최신 50개
@@ -439,8 +209,6 @@ stateDiagram-v2
 ```mermaid
 ---
 config:
-  theme: base
-  fontFamily: "Pretendard, Malgun Gothic, Apple SD Gothic Neo, Noto Sans KR, sans-serif"
   markdownAutoWrap: false
   flowchart:
     curve: basis
@@ -448,47 +216,6 @@ config:
     nodeSpacing: 36
     rankSpacing: 48
     wrappingWidth: 800
-  themeVariables:
-    fontSize: 14px
-    primaryColor: "#eef2ff"
-    primaryTextColor: "#1e1b4b"
-    primaryBorderColor: "#818cf8"
-    secondaryColor: "#f0f9ff"
-    secondaryBorderColor: "#7dd3fc"
-    tertiaryColor: "#f8fafc"
-    tertiaryBorderColor: "#cbd5e1"
-    lineColor: "#64748b"
-    textColor: "#1e293b"
-    clusterBkg: "#f8fafc"
-    clusterBorder: "#cbd5e1"
-    edgeLabelBackground: "#ffffff"
-    nodeBorder: "#818cf8"
-    mainBkg: "#eef2ff"
-    actorBkg: "#eef2ff"
-    actorBorder: "#818cf8"
-    actorTextColor: "#1e1b4b"
-    actorLineColor: "#cbd5e1"
-    signalColor: "#334155"
-    signalTextColor: "#334155"
-    labelBoxBkgColor: "#f1f5f9"
-    labelBoxBorderColor: "#cbd5e1"
-    noteBkgColor: "#fef3c7"
-    noteBorderColor: "#fbbf24"
-    noteTextColor: "#78350f"
-    activationBkgColor: "#e0e7ff"
-    activationBorderColor: "#818cf8"
-    cScale0: "#6366f1"
-    cScale1: "#0ea5e9"
-    cScale2: "#10b981"
-    cScale3: "#f59e0b"
-    cScale4: "#ec4899"
-    cScaleLabel0: "#ffffff"
-    cScaleLabel1: "#ffffff"
-    cScaleLabel2: "#ffffff"
-    cScaleLabel3: "#ffffff"
-    cScaleLabel4: "#ffffff"
-    attributeBackgroundColorEven: "#f8fafc"
-    attributeBackgroundColorOdd: "#ffffff"
 ---
 flowchart TB
     subgraph Bubble["말풍선"]
@@ -509,11 +236,6 @@ flowchart TB
     end
     Menu -->|"공지로 등록"| Line
     List -->|"본문 클릭"| Jump["원문으로 점프 · 강조"]
-    classDef store fill:#ecfdf5,stroke:#34d399,color:#064e3b
-    classDef focus fill:#4f46e5,stroke:#4338ca,color:#ffffff,font-weight:bold
-    classDef store fill:#ecfdf5,stroke:#34d399,color:#064e3b
-    classDef external fill:#fff7ed,stroke:#fb923c,color:#7c2d12
-    classDef focus fill:#4f46e5,stroke:#4338ca,color:#ffffff,font-weight:bold
 ```
 
 메뉴는 포털로 띄워 스크롤 영역에 가려지지 않고, 화면 아래쪽에서는 위로 접힙니다. 모든 확인은 커스텀 모달이고 브라우저 `confirm`은 쓰지 않습니다.
@@ -528,8 +250,6 @@ flowchart TB
 ```mermaid
 ---
 config:
-  theme: base
-  fontFamily: "Pretendard, Malgun Gothic, Apple SD Gothic Neo, Noto Sans KR, sans-serif"
   markdownAutoWrap: false
   flowchart:
     curve: basis
@@ -537,47 +257,6 @@ config:
     nodeSpacing: 36
     rankSpacing: 48
     wrappingWidth: 800
-  themeVariables:
-    fontSize: 14px
-    primaryColor: "#eef2ff"
-    primaryTextColor: "#1e1b4b"
-    primaryBorderColor: "#818cf8"
-    secondaryColor: "#f0f9ff"
-    secondaryBorderColor: "#7dd3fc"
-    tertiaryColor: "#f8fafc"
-    tertiaryBorderColor: "#cbd5e1"
-    lineColor: "#64748b"
-    textColor: "#1e293b"
-    clusterBkg: "#f8fafc"
-    clusterBorder: "#cbd5e1"
-    edgeLabelBackground: "#ffffff"
-    nodeBorder: "#818cf8"
-    mainBkg: "#eef2ff"
-    actorBkg: "#eef2ff"
-    actorBorder: "#818cf8"
-    actorTextColor: "#1e1b4b"
-    actorLineColor: "#cbd5e1"
-    signalColor: "#334155"
-    signalTextColor: "#334155"
-    labelBoxBkgColor: "#f1f5f9"
-    labelBoxBorderColor: "#cbd5e1"
-    noteBkgColor: "#fef3c7"
-    noteBorderColor: "#fbbf24"
-    noteTextColor: "#78350f"
-    activationBkgColor: "#e0e7ff"
-    activationBorderColor: "#818cf8"
-    cScale0: "#6366f1"
-    cScale1: "#0ea5e9"
-    cScale2: "#10b981"
-    cScale3: "#f59e0b"
-    cScale4: "#ec4899"
-    cScaleLabel0: "#ffffff"
-    cScaleLabel1: "#ffffff"
-    cScaleLabel2: "#ffffff"
-    cScaleLabel3: "#ffffff"
-    cScaleLabel4: "#ffffff"
-    attributeBackgroundColorEven: "#f8fafc"
-    attributeBackgroundColorOdd: "#ffffff"
 ---
 flowchart TB
     Page["MessagePage"]
@@ -594,11 +273,6 @@ flowchart TB
     Page --> Modals["모달들<br/>읽음 · 리액션 · 전달 · 삭제 · 프로필"]
     Modals --> Shell["MessageDialogShell<br/>포커스 트랩 · Esc"]
     Page --> Common["common<br/>Tooltip · Spinner · LoadingInline · LoadingState · Toast"]
-    classDef store fill:#ecfdf5,stroke:#34d399,color:#064e3b
-    classDef focus fill:#4f46e5,stroke:#4338ca,color:#ffffff,font-weight:bold
-    classDef store fill:#ecfdf5,stroke:#34d399,color:#064e3b
-    classDef external fill:#fff7ed,stroke:#fb923c,color:#7c2d12
-    classDef focus fill:#4f46e5,stroke:#4338ca,color:#ffffff,font-weight:bold
 ```
 
 공통 UI는 한 곳에 두고 어디서든 붙입니다. 로딩 표시 세 가지(아이콘만 · 한 줄 · 영역 전체)를 상황에 맞게 고릅니다.
@@ -613,8 +287,6 @@ flowchart TB
 ```mermaid
 ---
 config:
-  theme: base
-  fontFamily: "Pretendard, Malgun Gothic, Apple SD Gothic Neo, Noto Sans KR, sans-serif"
   markdownAutoWrap: false
   flowchart:
     curve: basis
@@ -622,47 +294,6 @@ config:
     nodeSpacing: 36
     rankSpacing: 48
     wrappingWidth: 800
-  themeVariables:
-    fontSize: 14px
-    primaryColor: "#eef2ff"
-    primaryTextColor: "#1e1b4b"
-    primaryBorderColor: "#818cf8"
-    secondaryColor: "#f0f9ff"
-    secondaryBorderColor: "#7dd3fc"
-    tertiaryColor: "#f8fafc"
-    tertiaryBorderColor: "#cbd5e1"
-    lineColor: "#64748b"
-    textColor: "#1e293b"
-    clusterBkg: "#f8fafc"
-    clusterBorder: "#cbd5e1"
-    edgeLabelBackground: "#ffffff"
-    nodeBorder: "#818cf8"
-    mainBkg: "#eef2ff"
-    actorBkg: "#eef2ff"
-    actorBorder: "#818cf8"
-    actorTextColor: "#1e1b4b"
-    actorLineColor: "#cbd5e1"
-    signalColor: "#334155"
-    signalTextColor: "#334155"
-    labelBoxBkgColor: "#f1f5f9"
-    labelBoxBorderColor: "#cbd5e1"
-    noteBkgColor: "#fef3c7"
-    noteBorderColor: "#fbbf24"
-    noteTextColor: "#78350f"
-    activationBkgColor: "#e0e7ff"
-    activationBorderColor: "#818cf8"
-    cScale0: "#6366f1"
-    cScale1: "#0ea5e9"
-    cScale2: "#10b981"
-    cScale3: "#f59e0b"
-    cScale4: "#ec4899"
-    cScaleLabel0: "#ffffff"
-    cScaleLabel1: "#ffffff"
-    cScaleLabel2: "#ffffff"
-    cScaleLabel3: "#ffffff"
-    cScaleLabel4: "#ffffff"
-    attributeBackgroundColorEven: "#f8fafc"
-    attributeBackgroundColorOdd: "#ffffff"
 ---
 flowchart LR
     subgraph Feedback["피드백"]
@@ -682,11 +313,6 @@ flowchart LR
     Style["Tailwind 4 · Pretendard<br/>Prettier printWidth 100"] --> Feedback
     Style --> Overlay
     Style --> Form
-    classDef store fill:#ecfdf5,stroke:#34d399,color:#064e3b
-    classDef focus fill:#4f46e5,stroke:#4338ca,color:#ffffff,font-weight:bold
-    classDef store fill:#ecfdf5,stroke:#34d399,color:#064e3b
-    classDef external fill:#fff7ed,stroke:#fb923c,color:#7c2d12
-    classDef focus fill:#4f46e5,stroke:#4338ca,color:#ffffff,font-weight:bold
 ```
 
 접근성 속성(`aria-*`, `role`)을 모든 상호작용 요소에 붙이고, 키보드만으로 메뉴와 모달을 다룰 수 있게 합니다.
@@ -701,8 +327,6 @@ flowchart LR
 ```mermaid
 ---
 config:
-  theme: base
-  fontFamily: "Pretendard, Malgun Gothic, Apple SD Gothic Neo, Noto Sans KR, sans-serif"
   markdownAutoWrap: false
   flowchart:
     curve: basis
@@ -710,47 +334,6 @@ config:
     nodeSpacing: 36
     rankSpacing: 48
     wrappingWidth: 800
-  themeVariables:
-    fontSize: 14px
-    primaryColor: "#eef2ff"
-    primaryTextColor: "#1e1b4b"
-    primaryBorderColor: "#818cf8"
-    secondaryColor: "#f0f9ff"
-    secondaryBorderColor: "#7dd3fc"
-    tertiaryColor: "#f8fafc"
-    tertiaryBorderColor: "#cbd5e1"
-    lineColor: "#64748b"
-    textColor: "#1e293b"
-    clusterBkg: "#f8fafc"
-    clusterBorder: "#cbd5e1"
-    edgeLabelBackground: "#ffffff"
-    nodeBorder: "#818cf8"
-    mainBkg: "#eef2ff"
-    actorBkg: "#eef2ff"
-    actorBorder: "#818cf8"
-    actorTextColor: "#1e1b4b"
-    actorLineColor: "#cbd5e1"
-    signalColor: "#334155"
-    signalTextColor: "#334155"
-    labelBoxBkgColor: "#f1f5f9"
-    labelBoxBorderColor: "#cbd5e1"
-    noteBkgColor: "#fef3c7"
-    noteBorderColor: "#fbbf24"
-    noteTextColor: "#78350f"
-    activationBkgColor: "#e0e7ff"
-    activationBorderColor: "#818cf8"
-    cScale0: "#6366f1"
-    cScale1: "#0ea5e9"
-    cScale2: "#10b981"
-    cScale3: "#f59e0b"
-    cScale4: "#ec4899"
-    cScaleLabel0: "#ffffff"
-    cScaleLabel1: "#ffffff"
-    cScaleLabel2: "#ffffff"
-    cScaleLabel3: "#ffffff"
-    cScaleLabel4: "#ffffff"
-    attributeBackgroundColorEven: "#f8fafc"
-    attributeBackgroundColorOdd: "#ffffff"
 ---
 flowchart LR
     Dev["git push main"] --> Vercel["Vercel 빌드 · 배포<br/>nwclone.duckdns.org"]
@@ -758,11 +341,6 @@ flowchart LR
     Browser -->|"REST · WebSocket<br/>credentials: include"| API["nwclone-api.duckdns.org<br/>nginx → Spring Boot"]
     Env["NEXT_PUBLIC_API_BASE_URL"] -.-> Vercel
     Guide["프로젝트 소개 모달"] -.->|"docs/diagrams/*.svg<br/>GitHub raw"| Browser
-    classDef store fill:#ecfdf5,stroke:#34d399,color:#064e3b
-    classDef focus fill:#4f46e5,stroke:#4338ca,color:#ffffff,font-weight:bold
-    classDef store fill:#ecfdf5,stroke:#34d399,color:#064e3b
-    classDef external fill:#fff7ed,stroke:#fb923c,color:#7c2d12
-    classDef focus fill:#4f46e5,stroke:#4338ca,color:#ffffff,font-weight:bold
 ```
 
 앱 안의 "프로젝트 소개" 모달은 두 저장소의 README 다이어그램을 그대로 보여 줍니다. README를 고치면 모달도 같이 바뀝니다.
@@ -775,50 +353,7 @@ flowchart LR
 ```mermaid
 ---
 config:
-  theme: base
-  fontFamily: "Pretendard, Malgun Gothic, Apple SD Gothic Neo, Noto Sans KR, sans-serif"
   markdownAutoWrap: false
-  themeVariables:
-    fontSize: 14px
-    primaryColor: "#eef2ff"
-    primaryTextColor: "#1e1b4b"
-    primaryBorderColor: "#818cf8"
-    secondaryColor: "#f0f9ff"
-    secondaryBorderColor: "#7dd3fc"
-    tertiaryColor: "#f8fafc"
-    tertiaryBorderColor: "#cbd5e1"
-    lineColor: "#64748b"
-    textColor: "#1e293b"
-    clusterBkg: "#f8fafc"
-    clusterBorder: "#cbd5e1"
-    edgeLabelBackground: "#ffffff"
-    nodeBorder: "#818cf8"
-    mainBkg: "#eef2ff"
-    actorBkg: "#eef2ff"
-    actorBorder: "#818cf8"
-    actorTextColor: "#1e1b4b"
-    actorLineColor: "#cbd5e1"
-    signalColor: "#334155"
-    signalTextColor: "#334155"
-    labelBoxBkgColor: "#f1f5f9"
-    labelBoxBorderColor: "#cbd5e1"
-    noteBkgColor: "#fef3c7"
-    noteBorderColor: "#fbbf24"
-    noteTextColor: "#78350f"
-    activationBkgColor: "#e0e7ff"
-    activationBorderColor: "#818cf8"
-    cScale0: "#6366f1"
-    cScale1: "#0ea5e9"
-    cScale2: "#10b981"
-    cScale3: "#f59e0b"
-    cScale4: "#ec4899"
-    cScaleLabel0: "#ffffff"
-    cScaleLabel1: "#ffffff"
-    cScaleLabel2: "#ffffff"
-    cScaleLabel3: "#ffffff"
-    cScaleLabel4: "#ffffff"
-    attributeBackgroundColorEven: "#f8fafc"
-    attributeBackgroundColorOdd: "#ffffff"
 ---
 timeline
     title 화면 기준 개발 순서
