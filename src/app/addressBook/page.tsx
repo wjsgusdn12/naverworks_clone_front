@@ -65,6 +65,8 @@ export default function AddressBookPage() {
   const [isOrganizationExpanded, setIsOrganizationExpanded] = useState(true);
   const [expandedCompanyIds, setExpandedCompanyIds] = useState<number[]>([]);
   const [members, setMembers] = useState<AddressBookMember[]>([]);
+  // 제목 옆 인원수. 50명씩 끊어 받으므로 목록 길이 대신 서버의 전체 건수를 사용.
+  const [memberTotal, setMemberTotal] = useState(0);
   const [selectedMember, setSelectedMember] = useState<AddressBookMemberDetail | null>(null);
   const [keyword, setKeyword] = useState("");
   const [executedKeyword, setExecutedKeyword] = useState("");
@@ -116,6 +118,7 @@ export default function AddressBookPage() {
     if (view === "favorite") parameters.set("favoriteOnly", "true");
     const result = await addressBookApi.member(accessToken, parameters);
     setMembers(result.content);
+    setMemberTotal(result.totalElements);
   }, [accessToken, companyId, departmentId, direction, executedKeyword, sort, view]);
 
   useEffect(() => {
@@ -601,10 +604,9 @@ export default function AddressBookPage() {
           <div className="mb-5 flex items-center justify-between gap-4">
             <h1 className="flex items-baseline gap-2 text-xl font-bold">
               {sectionTitle}
-              {view === "company" && selectedCompany && (
-                <span className="text-base font-bold text-blue-600">
-                  {selectedCompany.memberCount}
-                </span>
+              {/* 그룹 탭은 패널 안에 개수가 있어 제외. 나머지는 현재 목록의 전체 인원수. */}
+              {view !== "group" && (
+                <span className="text-base font-bold text-blue-600">{memberTotal}</span>
               )}
             </h1>
           </div>
