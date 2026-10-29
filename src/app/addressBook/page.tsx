@@ -745,39 +745,6 @@ export default function AddressBookPage() {
                       표시할 구성원이 없습니다.
                     </p>
                   )}
-                  {memberTotal > 0 && (
-                    <nav
-                      aria-label="구성원 목록 페이지"
-                      className="flex items-center justify-center gap-1 py-5 text-sm"
-                    >
-                      <button
-                        disabled={page === 0}
-                        aria-label="이전 페이지"
-                        className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition enabled:cursor-pointer enabled:hover:bg-slate-100 enabled:hover:text-slate-900 disabled:opacity-30"
-                        onClick={() => changePage(page - 1)}
-                      >
-                        <ChevronLeft size={16} aria-hidden="true" />
-                      </button>
-                      {visiblePages(page, totalPages).map((target) => (
-                        <button
-                          key={target}
-                          aria-current={target === page ? "page" : undefined}
-                          className={`h-8 min-w-8 cursor-pointer rounded-md px-2 font-medium transition ${target === page ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"}`}
-                          onClick={() => changePage(target)}
-                        >
-                          {target + 1}
-                        </button>
-                      ))}
-                      <button
-                        disabled={page >= totalPages - 1}
-                        aria-label="다음 페이지"
-                        className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition enabled:cursor-pointer enabled:hover:bg-slate-100 enabled:hover:text-slate-900 disabled:opacity-30"
-                        onClick={() => changePage(page + 1)}
-                      >
-                        <ChevronRight size={16} aria-hidden="true" />
-                      </button>
-                    </nav>
-                  )}
                 </div>
                 {selectedMember && (
                   <MemberPanel
@@ -789,6 +756,42 @@ export default function AddressBookPage() {
                   />
                 )}
               </div>
+              {/* 표 아래 선 밑의 고정 영역. 목록 길이와 상관없이 항상 같은 자리에 둠. */}
+              <nav
+                aria-label="구성원 목록 페이지"
+                className="flex h-16 items-center justify-center gap-1.5 text-sm"
+              >
+                {memberTotal > 0 && (
+                  <>
+                    <button
+                      disabled={page === 0}
+                      aria-label="이전 페이지"
+                      className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition enabled:cursor-pointer enabled:hover:bg-slate-100 enabled:hover:text-slate-900 disabled:opacity-30"
+                      onClick={() => changePage(page - 1)}
+                    >
+                      <ChevronLeft size={16} aria-hidden="true" />
+                    </button>
+                    {visiblePages(page, totalPages).map((target) => (
+                      <button
+                        key={target}
+                        aria-current={target === page ? "page" : undefined}
+                        className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded-full font-medium transition ${target === page ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"}`}
+                        onClick={() => changePage(target)}
+                      >
+                        {target + 1}
+                      </button>
+                    ))}
+                    <button
+                      disabled={page >= totalPages - 1}
+                      aria-label="다음 페이지"
+                      className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition enabled:cursor-pointer enabled:hover:bg-slate-100 enabled:hover:text-slate-900 disabled:opacity-30"
+                      onClick={() => changePage(page + 1)}
+                    >
+                      <ChevronRight size={16} aria-hidden="true" />
+                    </button>
+                  </>
+                )}
+              </nav>
             </>
           )}
         </section>
