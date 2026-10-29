@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { GlobalHeader } from "@/components/common/global-header";
 import { AddressBookSearch } from "@/components/address-book/address-book-search";

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { GroupAvatar } from "@/components/chat/group-avatar";
 import { CustomCheckbox } from "@/components/common/custom-checkbox";
