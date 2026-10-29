@@ -630,7 +630,8 @@ export default function AddressBookPage() {
             </>
           )}
         </aside>
-        <section className="min-w-0 flex-1 p-6">
+        {/* 세로 flex로 두어 표가 남은 높이를 채우고 페이지 영역이 바닥에 붙음. 아래 여백은 0. */}
+        <section className="flex min-w-0 flex-1 flex-col p-6 pb-0">
           <div className="mb-5 flex items-center justify-between gap-4">
             <h1 className="flex items-baseline gap-2 text-xl font-bold">
               {sectionTitle}
@@ -671,8 +672,7 @@ export default function AddressBookPage() {
                   메시지
                 </button>
               </div>
-              {/* 헤더·제목·툴바·아래 페이지 영역(4rem)·여백을 뺀 높이. 넘치면 세로 스크롤이 생김. */}
-              <div className="flex min-h-[calc(100vh-17rem)] border-y border-slate-200">
+              <div className="flex flex-1 border-y border-slate-200">
                 <div className="min-w-0 flex-1 overflow-auto">
                   <table className="w-full min-w-[900px] border-collapse text-left text-sm">
                     <thead className="border-b border-slate-200 bg-white text-slate-700">
@@ -760,7 +760,7 @@ export default function AddressBookPage() {
               {/* 표 아래 선 밑의 고정 영역. 목록 길이와 상관없이 항상 같은 자리에 둠. */}
               <nav
                 aria-label="구성원 목록 페이지"
-                className="flex h-16 items-center justify-center gap-1.5 text-sm"
+                className="flex h-16 shrink-0 items-center justify-center gap-1.5 text-sm"
               >
                 {memberTotal > 0 && (
                   <>
