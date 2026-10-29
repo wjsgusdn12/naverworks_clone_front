@@ -1,5 +1,6 @@
 "use client";
 
+import { CompanyMoveDialog } from "@/components/common/company-move-dialog";
 import { GlobalHeader } from "@/components/common/global-header";
 import { AddressBookSearch } from "@/components/address-book/address-book-search";
 import { CustomCheckbox } from "@/components/common/custom-checkbox";
@@ -29,7 +30,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export default function AddressBookPage() {
   const router = useRouter();
-  const { accessToken, member, status, logout } = useAuth();
+  const { accessToken, member, status, applySession, logout } = useAuth();
   const { presenceByMembershipId } = useChatNotification();
   const { toast, showToast, dismissToast, resetToast } = useToast();
   const [view, setView] = useState<AddressBookView>("company");
@@ -59,6 +60,8 @@ export default function AddressBookPage() {
   const [saveSearchEnabled, setSaveSearchEnabled] = useState(true);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  // 사이드바 "회사 만들기"로 여는 회사 옮기기 대화상자.
+  const [isCompanyMoveOpen, setIsCompanyMoveOpen] = useState(false);
   const [showPreviewProfileImage, setShowPreviewProfileImage] = useState(true);
   const [previewMembers, setPreviewMembers] = useState<AddressBookMember[]>([]);
   const [previewPage, setPreviewPage] = useState(0);
@@ -490,7 +493,8 @@ export default function AddressBookPage() {
           departmentId={departmentId}
           isOrganizationExpanded={isOrganizationExpanded}
           expandedCompanyIds={expandedCompanyIds}
-          showToast={showToast}
+          onCreateCompany={() => setIsCompanyMoveOpen(true)}
+          onCreateGroupRoom={() => router.push("/message?create=group")}
           onSelectView={(nextView) => {
             setView(nextView);
             setDepartmentId(null);
@@ -590,6 +594,20 @@ export default function AddressBookPage() {
           )}
         </section>
       </main>
+      {isCompanyMoveOpen && accessToken && (
+        <CompanyMoveDialog
+          accessToken={accessToken}
+          currentCompanyName={member.companyName}
+          initialJoinType="NEW_COMPANY"
+          onMoved={(session) => {
+            setIsCompanyMoveOpen(false);
+            applySession(session);
+            showToast(`${session.member.companyName} 소속으로 옮겼습니다.`);
+          }}
+          onToast={showToast}
+          onClose={() => setIsCompanyMoveOpen(false)}
+        />
+      )}
       {toast && (
         <Toast key={toast.id} message={toast.message} phase={toast.phase} onClose={dismissToast} />
       )}

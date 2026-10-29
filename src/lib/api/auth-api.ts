@@ -52,6 +52,15 @@ export type SignupInput = {
   inviteCode?: string;
 };
 
+// 회사 옮기기 입력. 가입의 소속 선택과 같은 세 갈래.
+export type CompanyMoveInput = {
+  joinType: SignupJoinType;
+  departmentId?: number;
+  jobGradeId?: number;
+  companyName?: string;
+  inviteCode?: string;
+};
+
 export type SignupOption = { id: number; name: string };
 
 // 가입 화면이 미리 보여 줄 체험 회사 정보.
@@ -162,6 +171,14 @@ export const authApi = {
     request<{ recoveryCode: string }>("/api/v1/auth/recover/reset", {
       method: "POST",
       body: JSON.stringify({ recoveryCode, newPassword }),
+    }),
+
+  // 회사 옮기기. 회사 ID가 바뀌어 새 세션이 옴. 이전 회사의 채팅방·즐겨찾기는 정리됨.
+  moveCompany: (accessToken: string, input: CompanyMoveInput) =>
+    request<AuthTokenResponse>("/api/v1/auth/company/move", {
+      method: "POST",
+      headers: bearer(accessToken),
+      body: JSON.stringify(input),
     }),
 
   // 복구 코드 재발급(내 프로필). 이전 코드는 즉시 무효.

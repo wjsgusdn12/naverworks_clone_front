@@ -1,5 +1,6 @@
 "use client";
 
+import { CompanyMoveDialog } from "@/components/common/company-move-dialog";
 import { GlobalHeader } from "@/components/common/global-header";
 import { RecoveryCodeDialog } from "@/components/common/recovery-code-dialog";
 import { Toast } from "@/components/common/toast";
@@ -14,13 +15,14 @@ import { useEffect, useState } from "react";
 export default function HomePage() {
   const router = useRouter();
   const { toast, showToast, dismissToast, resetToast } = useToast();
-  const { status, member, accessToken, logout } = useAuth();
+  const { status, member, accessToken, applySession, logout } = useAuth();
   // 프로필 아이콘 아래 메뉴의 열림 상태.
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   // 프로필 메뉴에서 연 복구 코드·초대 코드 대화상자.
   const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
   const [inviteCode, setInviteCode] = useState<InviteCodeResponse | null>(null);
+  const [isCompanyMoveOpen, setIsCompanyMoveOpen] = useState(false);
 
   // 복구 코드는 해시만 저장돼 다시 볼 수 없으므로 "보기"가 곧 재발급.
   const regenerateRecoveryCode = async () => {
@@ -83,6 +85,13 @@ export default function HomePage() {
         onLogout={() => void handleLogout()}
         profileMenuItems={[
           { label: "복구 코드 재발급", onClick: () => void regenerateRecoveryCode() },
+          {
+            label: "회사 옮기기",
+            onClick: () => {
+              setIsProfileMenuOpen(false);
+              setIsCompanyMoveOpen(true);
+            },
+          },
           ...(member.role === "ADMIN"
             ? [{ label: "회사 초대 코드", onClick: () => void loadInviteCode(false) }]
             : []),
@@ -97,6 +106,19 @@ export default function HomePage() {
         membershipId={member.membershipId}
         showToast={showToast}
       />
+      {isCompanyMoveOpen && (
+        <CompanyMoveDialog
+          accessToken={accessToken}
+          currentCompanyName={member.companyName}
+          onMoved={(session) => {
+            setIsCompanyMoveOpen(false);
+            applySession(session);
+            showToast(`${session.member.companyName} 소속으로 옮겼습니다.`);
+          }}
+          onToast={showToast}
+          onClose={() => setIsCompanyMoveOpen(false)}
+        />
+      )}
       {recoveryCode && (
         <RecoveryCodeDialog
           code={recoveryCode}
