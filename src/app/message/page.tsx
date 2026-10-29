@@ -7,6 +7,8 @@ import {
   DELETE_EXPIRED_MESSAGE,
   EDIT_EXPIRED_MESSAGE,
   EDIT_WINDOW_HOURS,
+  MENU_HEIGHT_MINE,
+  MENU_HEIGHT_OTHERS,
   MessageActionMenu,
   REACTION_EXPIRED_MESSAGE,
   type MessageMenuPosition,
@@ -17,6 +19,8 @@ import { ReactionEmoji } from "@/components/chat/reaction-emoji";
 import { ReactionPicker } from "@/components/chat/reaction-picker";
 import { MessageQuote } from "@/components/chat/message-quote";
 import { MessageDeleteDialog } from "@/components/chat/message-change-dialog";
+import { ForwardMessageModal } from "@/components/chat/forward-message-modal";
+import { NoticeBanner } from "@/components/chat/notice-banner";
 import {
   applyMessageChange,
   applyReactionChange,
@@ -31,6 +35,7 @@ import {
   chatApi,
   type ChatMemberProfile,
   type ChatMessage,
+  type ChatNotice,
   type ChatReadMember,
   type ChatRoom,
 } from "@/lib/api/chat-api";
@@ -292,6 +297,9 @@ function MessageContent() {
   const [notificationRoom, setNotificationRoom] = useState<ChatRoom | null>(null);
   const [selectedRoomProfile, setSelectedRoomProfile] = useState<ChatMemberProfile | null>(null);
   const [roomMentionMembers, setRoomMentionMembers] = useState<ChatMemberProfile[]>([]);
+  // 현재 방의 공지(없으면 null)와 전달 모달에 올린 메시지.
+  const [notice, setNotice] = useState<ChatNotice | null>(null);
+  const [forwardTarget, setForwardTarget] = useState<ChatMessage | null>(null);
   const [profileMemberId, setProfileMemberId] = useState<number | null>(null);
   const [profileMember, setProfileMember] = useState<AddressBookMemberDetail | null>(null);
   const [scrollDateLabel, setScrollDateLabel] = useState<string | null>(null);
@@ -554,6 +562,7 @@ function MessageContent() {
     const detail = await chatApi.detail(accessToken, roomId);
     if (selectedRoomIdRef.current !== roomId) return;
     setRoomMentionMembers(detail.members);
+    setNotice(detail.notice);
     const read = readStateRef.current;
     const cursors = read.roomId === roomId ? { ...read.state.cursors } : {};
     // 상세 응답보다 먼저 도착한 실시간 읽음 이벤트가 있으면 더 앞선 위치를 유지.
@@ -870,6 +879,8 @@ function MessageContent() {
             .catch(() => undefined);
         }
       },
+      // 공지 등록·교체·해제는 모든 참여자 화면의 띠를 바로 갱신.
+      onNoticeChanged: (event) => setNotice(event.notice),
       onReadUpdated: (event) => {
         if (event.chatRoomId !== selectedRoomId) return;
         const read = readStateRef.current;
@@ -1037,7 +1048,10 @@ function MessageContent() {
 
   useEffect(() => {
     if (!accessToken || !selectedRoomId) {
-      void Promise.resolve().then(() => setRoomMentionMembers([]));
+      void Promise.resolve().then(() => {
+        setRoomMentionMembers([]);
+        setNotice(null);
+      });
       return;
     }
     // 방 전환 중 이전 방 참여자가 자동완성에 잠깐 남지 않게 새 상세 정보(구성원·읽은 위치)로 교체.
@@ -1296,6 +1310,63 @@ function MessageContent() {
       showToast("메시지를 복사했습니다.");
     } catch {
       showToast("메시지를 복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요.");
+    }
+  };
+
+  // 전달 모달에서 고른 방마다 복사해 보냄. 성공하면 true를 돌려 모달이 닫히게 함.
+  const submitForward = async (targetRoomIds: number[]) => {
+    if (!accessToken || !selectedRoomId || !forwardTarget) return false;
+    try {
+      const copies = await chatApi.forwardMessage(
+        accessToken,
+        selectedRoomId,
+        forwardTarget.id,
+        targetRoomIds,
+      );
+      // 현재 방으로 전달한 복사본은 실시간 이벤트를 기다리지 않고 바로 붙임.
+      const toThisRoom = copies.find(() => targetRoomIds.includes(selectedRoomId));
+      if (toThisRoom) {
+        shouldScrollToLatestRef.current = true;
+        setMessages((current) =>
+          current.some((item) => item.id === toThisRoom.id)
+            ? current
+            : withReadCounts([...current, toThisRoom]),
+        );
+      }
+      showToast(`${copies.length}개 메시지방에 전달했습니다.`);
+      void loadRooms().catch(() => undefined);
+      return true;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "메시지를 전달하지 못했습니다.");
+      return false;
+    }
+  };
+
+  // 메뉴의 "공지로 등록"/"공지 해제". 이미 공지인 메시지면 해제, 아니면 등록(기존 공지 교체).
+  const toggleNotice = async (message: ChatMessage) => {
+    if (!accessToken || !selectedRoomId || message.deletedAt || message.type !== "TEXT") return;
+    try {
+      if (notice?.messageId === message.id) {
+        await chatApi.removeNotice(accessToken, selectedRoomId);
+        setNotice(null);
+        showToast("공지를 해제했습니다.");
+      } else {
+        setNotice(await chatApi.updateNotice(accessToken, selectedRoomId, message.id));
+        showToast("공지로 등록했습니다.");
+      }
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "공지를 변경하지 못했습니다.");
+    }
+  };
+
+  const removeNotice = async () => {
+    if (!accessToken || !selectedRoomId) return;
+    try {
+      await chatApi.removeNotice(accessToken, selectedRoomId);
+      setNotice(null);
+      showToast("공지를 해제했습니다.");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "공지를 해제하지 못했습니다.");
     }
   };
 
@@ -1860,6 +1931,11 @@ function MessageContent() {
   const stableOpenReactionMembers = useStableCallback(
     (message: ChatMessage) => void openReactionMembers(message),
   );
+  const stableStartForward = useStableCallback((message: ChatMessage) => setForwardTarget(message));
+  const stableToggleNotice = useStableCallback(
+    (message: ChatMessage) => void toggleNotice(message),
+  );
+  const stableDisplayRoomName = useStableCallback(displayRoomName);
 
   return (
     <div className="min-h-screen bg-white text-slate-900">
@@ -2079,6 +2155,15 @@ function MessageContent() {
               )}
             </div>
           </header>
+          {notice && selectedRoomId && (
+            <NoticeBanner
+              key={`${selectedRoomId}:${notice.messageId}`}
+              roomId={selectedRoomId}
+              notice={notice}
+              onOpen={stableJumpToOriginal}
+              onRemove={() => void removeNotice()}
+            />
+          )}
           <div className="flex min-h-0 flex-1">
             <div className="relative flex min-w-0 flex-1 flex-col">
               {scrollDateLabel && (
@@ -2136,6 +2221,9 @@ function MessageContent() {
                   onOpenOriginal={stableJumpToOriginal}
                   onToggleReaction={stableToggleReaction}
                   onOpenReactionMembers={stableOpenReactionMembers}
+                  onForward={stableStartForward}
+                  onToggleNotice={stableToggleNotice}
+                  noticeMessageId={notice?.messageId ?? null}
                 />
                 {newerCursor === null && typingMembers.length > 0 && (
                   <TypingBubble
@@ -2661,6 +2749,15 @@ function MessageContent() {
           onTab={(read) => setReadModal((current) => current && { ...current, read })}
         />
       )}
+      {forwardTarget && (
+        <ForwardMessageModal
+          message={forwardTarget}
+          rooms={rooms}
+          roomName={stableDisplayRoomName}
+          onClose={() => setForwardTarget(null)}
+          onSubmit={submitForward}
+        />
+      )}
       {reactionModal && (
         <ReactionMemberModal
           modal={reactionModal}
@@ -3061,6 +3158,9 @@ const MessageList = memo(function MessageList({
   onOpenOriginal,
   onToggleReaction,
   onOpenReactionMembers,
+  onForward,
+  onToggleNotice,
+  noticeMessageId,
 }: {
   messages: ChatMessage[];
   highlightedMessageId: number | null;
@@ -3076,6 +3176,10 @@ const MessageList = memo(function MessageList({
   onOpenOriginal: (messageId: number) => void;
   onToggleReaction: (message: ChatMessage, emoji: string) => void;
   onOpenReactionMembers: (message: ChatMessage) => void;
+  onForward: (message: ChatMessage) => void;
+  onToggleNotice: (message: ChatMessage) => void;
+  // 현재 방 공지 메시지 ID. 해당 말풍선 메뉴가 "공지 해제"로 바뀜.
+  noticeMessageId: number | null;
 }) {
   return (
     <>
@@ -3133,6 +3237,9 @@ const MessageList = memo(function MessageList({
                   onOpenOriginal={onOpenOriginal}
                   onToggleReaction={onToggleReaction}
                   onOpenReactionMembers={onOpenReactionMembers}
+                  onForward={onForward}
+                  onToggleNotice={onToggleNotice}
+                  isNotice={noticeMessageId === message.id}
                 />
               )}
             </div>
@@ -3163,6 +3270,9 @@ const MessageBubble = memo(function MessageBubble({
   onOpenOriginal,
   onToggleReaction,
   onOpenReactionMembers,
+  onForward,
+  onToggleNotice,
+  isNotice,
 }: {
   message: ChatMessage;
   isOriginalHighlighted: boolean;
@@ -3182,6 +3292,9 @@ const MessageBubble = memo(function MessageBubble({
   onOpenOriginal: (messageId: number) => void;
   onToggleReaction: (message: ChatMessage, emoji: string) => void;
   onOpenReactionMembers: (message: ChatMessage) => void;
+  onForward: (message: ChatMessage) => void;
+  onToggleNotice: (message: ChatMessage) => void;
+  isNotice: boolean;
 }) {
   // ⋮ 클릭과 말풍선 우클릭이 같은 메뉴·닫기 동작을 공유.
   const [menuPosition, setMenuPosition] = useState<MessageMenuPosition | null>(null);
@@ -3238,10 +3351,13 @@ const MessageBubble = memo(function MessageBubble({
     <MessageActionMenu
       isMine={isMine}
       canEdit={isMessageEditable(message)}
+      isNotice={isNotice}
       position={menuPosition}
       onPositionChange={setMenuPosition}
       onCopy={() => onCopy(message)}
       onReply={() => onReply(message)}
+      onForward={() => onForward(message)}
+      onToggleNotice={() => onToggleNotice(message)}
       onEdit={() => onEdit(message)}
       onDelete={() => onDelete(message)}
     />
@@ -3316,7 +3432,13 @@ const MessageBubble = memo(function MessageBubble({
         if (message.deletedAt) return;
         setMenuPosition({
           left: Math.max(8, Math.min(event.clientX, window.innerWidth - 152)),
-          top: Math.max(8, Math.min(event.clientY, window.innerHeight - (isMine ? 184 : 100))),
+          top: Math.max(
+            8,
+            Math.min(
+              event.clientY,
+              window.innerHeight - (isMine ? MENU_HEIGHT_MINE : MENU_HEIGHT_OTHERS),
+            ),
+          ),
         });
       }}
       className={`relative min-w-0 ${isGroup && !isMine ? "max-w-full" : "max-w-[70%]"} whitespace-pre-wrap break-words ${reply ? "w-[380px]" : "px-4 py-3"} text-sm leading-6 ${isMine ? "rounded-2xl bg-blue-100" : "rounded-2xl bg-slate-100"} ${showTail ? (isMine ? "after:absolute after:-right-2 after:top-3 after:h-3 after:w-3 after:bg-blue-100 after:[clip-path:polygon(0_0,0_100%,100%_0)]" : "after:absolute after:-left-2 after:top-3 after:h-3 after:w-3 after:bg-slate-100 after:[clip-path:polygon(100%_0,100%_100%,0_0)]") : ""}`}
@@ -3337,6 +3459,13 @@ const MessageBubble = memo(function MessageBubble({
         />
       )}
       {reply && <MessageQuote reply={reply} onOpen={() => onOpenOriginal(reply.messageId)} />}
+      {/* 다른 방에서 전달해 온 메시지는 본문 위에 작은 라벨로 표시. */}
+      {message.forwarded && !message.deletedAt && (
+        <span className="mb-1 flex items-center gap-1 text-[11px] font-medium text-slate-500">
+          <Forward size={12} aria-hidden="true" />
+          전달된 메시지
+        </span>
+      )}
       {reply ? (
         <div className="px-3 py-2">
           <MentionText content={message.content} />
