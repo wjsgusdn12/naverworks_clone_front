@@ -74,6 +74,9 @@ export default function AddressBookPage() {
   const [totalPages, setTotalPages] = useState(1);
   // 페이지 번호를 당시 필터 키와 함께 저장해, 보기·정렬·검색이 바뀌면 자동으로 1페이지로 돌아감.
   const [pageState, setPageState] = useState({ key: "", page: 0 });
+  // 그룹 탭 상태. 제목 옆에 현재 탭의 그룹 수를 보여 주기 위해 페이지에서 관리.
+  const [groupTab, setGroupTab] = useState<GroupTab>("joined");
+  const [groups, setGroups] = useState<ChatGroupSummary[] | null>(null);
   const [selectedMember, setSelectedMember] = useState<AddressBookMemberDetail | null>(null);
   const [keyword, setKeyword] = useState("");
   const [executedKeyword, setExecutedKeyword] = useState("");
@@ -179,6 +182,25 @@ export default function AddressBookPage() {
         showToast(error instanceof Error ? error.message : "주소록을 불러오지 못했습니다.");
       });
   }, [accessToken, loadMembers, showToast, status, view]);
+
+  // 그룹 탭에 들어올 때 회사의 그룹 채팅방 목록을 조회.
+  useEffect(() => {
+    if (status !== "authenticated" || !accessToken || view !== "group") return;
+    let cancelled = false;
+    chatApi
+      .groupRooms(accessToken)
+      .then((result) => {
+        if (!cancelled) setGroups(result);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setGroups([]);
+        showToast(error instanceof Error ? error.message : "그룹 목록을 불러오지 못했습니다.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, showToast, status, view]);
 
   useEffect(() => {
     const closeSearchPreview = (event: MouseEvent) => {
@@ -628,15 +650,23 @@ export default function AddressBookPage() {
           <div className="mb-5 flex items-center justify-between gap-4">
             <h1 className="flex items-baseline gap-2 text-xl font-bold">
               {sectionTitle}
-              {/* 그룹 탭은 패널 안에 개수가 있어 제외. 나머지는 현재 목록의 전체 인원수. */}
-              {view !== "group" && (
-                <span className="text-base font-bold text-blue-600">{memberTotal}</span>
+              {/* 그룹 탭은 현재 탭의 그룹 수, 나머지는 현재 목록의 전체 인원수. 제목과 같은 크기. */}
+              {view === "group" ? (
+                groups !== null && (
+                  <span className="font-bold text-blue-600">
+                    {filterGroups(groups, groupTab).length}
+                  </span>
+                )
+              ) : (
+                <span className="font-bold text-blue-600">{memberTotal}</span>
               )}
             </h1>
           </div>
           {view === "group" ? (
             <GroupPanel
-              accessToken={accessToken}
+              groups={groups}
+              tab={groupTab}
+              onTabChange={setGroupTab}
               showToast={showToast}
               onOpenRoom={(roomId) => router.push(`/message?roomId=${roomId}`)}
             />
@@ -1106,12 +1136,16 @@ const compareGroups = (a: ChatGroupSummary, b: ChatGroupSummary, key: GroupSortK
   return left < right ? -1 : left > right ? 1 : 0;
 };
 
-const formatDate = (value: string) =>
-  new Date(value).toLocaleDateString("ko-KR", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
+const filterGroups = (groups: ChatGroupSummary[], tab: GroupTab) =>
+  groups.filter((group) => (tab === "all" ? true : tab === "joined" ? group.joined : group.owner));
+
+// 2024.11.14 형식.
+const formatDate = (value: string) => {
+  const date = new Date(value);
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}.${month}.${day}`;
+};
 
 const formatGroupDate = (value: string | null) => {
   if (!value) return "대화 없음";
@@ -1127,34 +1161,20 @@ const formatGroupDate = (value: string | null) => {
 };
 
 function GroupPanel({
-  accessToken,
+  groups,
+  tab,
+  onTabChange,
   showToast,
   onOpenRoom,
 }: {
-  accessToken: string | null;
+  groups: ChatGroupSummary[] | null;
+  tab: GroupTab;
+  onTabChange: (tab: GroupTab) => void;
   showToast: (message: string) => void;
   onOpenRoom: (roomId: number) => void;
 }) {
-  const [tab, setTab] = useState<GroupTab>("joined");
-  const [groups, setGroups] = useState<ChatGroupSummary[] | null>(null);
-
-  useEffect(() => {
-    if (!accessToken) return;
-    let cancelled = false;
-    chatApi
-      .groupRooms(accessToken)
-      .then((result) => {
-        if (!cancelled) setGroups(result);
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        setGroups([]);
-        showToast(error instanceof Error ? error.message : "그룹 목록을 불러오지 못했습니다.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [accessToken, showToast]);
+  // 체크한 그룹. 메시지 버튼은 참여 중인 그룹 하나를 골랐을 때만 그 방을 엶.
+  const [selectedGroupIds, setSelectedGroupIds] = useState<number[]>([]);
 
   // 정렬 상태. 이름은 가나다순, 나머지는 큰 값이 먼저 보이도록 기본 방향을 둠.
   const [sortKey, setSortKey] = useState<GroupSortKey>("name");
@@ -1172,47 +1192,72 @@ function GroupPanel({
     }
   };
 
-  const visible = (groups ?? [])
-    .filter((group) => (tab === "all" ? true : tab === "joined" ? group.joined : group.owner))
-    .sort((a, b) => compareGroups(a, b, sortKey) * (sortDirection === "asc" ? 1 : -1));
+  const visible = filterGroups(groups ?? [], tab).sort(
+    (a, b) => compareGroups(a, b, sortKey) * (sortDirection === "asc" ? 1 : -1),
+  );
   const totalPages = Math.max(Math.ceil(visible.length / MEMBER_PAGE_SIZE), 1);
   const pageGroups = visible.slice(page * MEMBER_PAGE_SIZE, (page + 1) * MEMBER_PAGE_SIZE);
+  const allPageSelected =
+    pageGroups.length > 0 && pageGroups.every((group) => selectedGroupIds.includes(group.id));
 
   const openGroup = (group: ChatGroupSummary) =>
     group.joined
       ? onOpenRoom(group.id)
       : showToast("참여 중인 그룹만 열 수 있습니다. 방장에게 초대를 요청해 주세요.");
 
+  const toggleGroupSelection = (groupId: number) =>
+    setSelectedGroupIds((current) =>
+      current.includes(groupId) ? current.filter((id) => id !== groupId) : [...current, groupId],
+    );
+
+  const toggleAllGroupSelection = () =>
+    setSelectedGroupIds(allPageSelected ? [] : pageGroups.map((group) => group.id));
+
+  const openSelectedGroup = () => {
+    const selected = (groups ?? []).filter((group) => selectedGroupIds.includes(group.id));
+    if (selected.length !== 1) {
+      showToast("메시지는 그룹을 하나만 선택했을 때 열 수 있습니다.");
+      return;
+    }
+    openGroup(selected[0]);
+  };
+
   return (
     <>
-      <div className="mb-4 flex h-9 items-end gap-5" role="tablist">
-        {groupTabs.map(({ key, label }) => {
-          const count =
-            groups === null
-              ? null
-              : groups.filter((group) =>
-                  key === "all" ? true : key === "joined" ? group.joined : group.owner,
-                ).length;
-          return (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={tab === key}
-              className={`flex cursor-pointer items-center gap-1.5 border-b-2 px-1 pb-2 text-sm transition ${tab === key ? "border-blue-600 font-semibold text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
-              onClick={() => setTab(key)}
-            >
-              {label}
-              {count !== null && (
-                <span
-                  className={`text-xs font-bold ${tab === key ? "text-blue-600" : "text-slate-400"}`}
-                >
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
+      <div className="mb-4 flex h-9 items-center gap-2">
+        <CustomCheckbox
+          label="전체 그룹 선택"
+          checked={allPageSelected}
+          onChange={toggleAllGroupSelection}
+        />
+        <button
+          disabled={selectedGroupIds.length === 0}
+          className="h-9 rounded-md border border-slate-200 px-4 text-sm text-slate-600 transition enabled:cursor-pointer enabled:hover:border-blue-300 enabled:hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={() => showToast("메일 기능은 준비 중입니다.")}
+        >
+          메일
+        </button>
+        <button
+          disabled={selectedGroupIds.length === 0}
+          className="h-9 rounded-md border border-slate-200 px-4 text-sm text-slate-600 transition enabled:cursor-pointer enabled:hover:border-blue-300 enabled:hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={openSelectedGroup}
+        >
+          메시지
+        </button>
+      </div>
+      <div className="flex gap-5" role="tablist">
+        {groupTabs.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
+            className={`cursor-pointer border-b-2 px-1 pb-2.5 text-sm transition ${tab === key ? "border-blue-600 font-semibold text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+            onClick={() => onTabChange(key)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
       {/* 구성원 목록과 같은 틀: 위쪽 선이 있는 표 + 바닥 고정 페이지 영역. */}
       <div className="flex flex-1 border-t border-slate-200">
@@ -1220,7 +1265,7 @@ function GroupPanel({
           <table className="w-full min-w-[720px] border-collapse text-left text-sm">
             <thead className="border-b border-slate-200 bg-white text-slate-700">
               <tr>
-                <th className="w-16 px-4 py-3 font-semibold">프로필</th>
+                <th className="w-11 px-3 py-3" />
                 {groupColumns.map(([key, label]) => (
                   <th key={key} className="px-4 py-3 font-semibold">
                     <button
@@ -1241,13 +1286,20 @@ function GroupPanel({
                   className={`border-b border-slate-100 transition ${group.joined ? "cursor-pointer hover:bg-blue-50" : "cursor-default text-slate-500"}`}
                   onClick={() => openGroup(group)}
                 >
-                  <td className="px-4 py-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-blue-600">
-                      <UsersRound size={16} aria-hidden="true" />
+                  <td className="px-3 py-3">
+                    <span onClick={(event) => event.stopPropagation()}>
+                      <CustomCheckbox
+                        label={`${group.name || "이름 없는 그룹"} 선택`}
+                        checked={selectedGroupIds.includes(group.id)}
+                        onChange={() => toggleGroupSelection(group.id)}
+                      />
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+                        <UsersRound size={16} aria-hidden="true" />
+                      </span>
                       <b className={group.joined ? "text-slate-900" : ""}>
                         {group.name || "이름 없는 그룹"}
                       </b>
