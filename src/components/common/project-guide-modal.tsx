@@ -1,6 +1,15 @@
 "use client";
 
-import { ExternalLink, Server, MonitorSmartphone, X } from "lucide-react";
+import {
+  ExternalLink,
+  Minus,
+  MonitorSmartphone,
+  Plus,
+  RotateCcw,
+  Server,
+  X,
+  ZoomIn,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { LoadingState } from "@/components/common/loading";
@@ -45,7 +54,46 @@ export function ProjectGuideModal({ onClose }: ProjectGuideModalProps) {
   });
   // 좁은 화면에서는 두 열을 탭으로 전환.
   const [activeTab, setActiveTab] = useState<GuideSource["key"]>("backend");
+  // 확대 보기 중인 그림. view는 배율(1 = 화면에 맞춤)과 드래그로 옮긴 위치(px).
+  const [zoomed, setZoomed] = useState<{ src: string; alt: string } | null>(null);
+  const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
+  // 드래그 중에는 transform 전환 효과를 꺼서 손에 바로 따라오게 함.
+  const [dragging, setDragging] = useState(false);
   const dialogRef = useRef<HTMLElement>(null);
+  const zoomAreaRef = useRef<HTMLDivElement>(null);
+  // 드래그 중 마지막 포인터 위치. 렌더링과 무관하므로 ref.
+  const dragRef = useRef<{ x: number; y: number } | null>(null);
+
+  const openZoom = (target: { src: string; alt: string } | null) => {
+    setZoomed(target);
+    setView({ scale: 1, x: 0, y: 0 });
+  };
+
+  const clampScale = (value: number) => Math.min(5, Math.max(0.5, value));
+
+  // 휠: 위로 굴리면 확대, 아래로 굴리면 축소. 커서가 가리키는 지점이 제자리에 머물도록 위치를 보정.
+  // 페이지 스크롤을 막아야 해서 passive: false 로 직접 등록.
+  useEffect(() => {
+    const area = zoomAreaRef.current;
+    if (!zoomed || !area) return;
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const rect = area.getBoundingClientRect();
+      const pointX = event.clientX - rect.left - rect.width / 2;
+      const pointY = event.clientY - rect.top - rect.height / 2;
+      setView((current) => {
+        const next = clampScale(current.scale * (event.deltaY < 0 ? 1.12 : 1 / 1.12));
+        const ratio = next / current.scale;
+        return {
+          scale: next,
+          x: pointX - (pointX - current.x) * ratio,
+          y: pointY - (pointY - current.y) * ratio,
+        };
+      });
+    };
+    area.addEventListener("wheel", handleWheel, { passive: false });
+    return () => area.removeEventListener("wheel", handleWheel);
+  }, [zoomed]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -69,23 +117,27 @@ export function ProjectGuideModal({ onClose }: ProjectGuideModalProps) {
     const frame = requestAnimationFrame(() =>
       dialogRef.current?.querySelector<HTMLElement>("[data-dialog-initial-focus]")?.focus(),
     );
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-      }
-    };
-    document.addEventListener("keydown", handleKey);
     // 뒤 화면 스크롤 잠금.
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       cancelAnimationFrame(frame);
-      document.removeEventListener("keydown", handleKey);
       document.body.style.overflow = previousOverflow;
       if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
     };
-  }, [onClose]);
+  }, []);
+
+  // Esc: 확대 보기가 열려 있으면 그것부터 닫고, 아니면 모달을 닫음.
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      if (zoomed) setZoomed(null);
+      else onClose();
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [zoomed, onClose]);
 
   const column = (source: GuideSource) => {
     const state = guides[source.key];
@@ -135,7 +187,15 @@ export function ProjectGuideModal({ onClose }: ProjectGuideModalProps) {
                     </span>
                     {section.title.replace(/^\d+\.\s*/, "")}
                   </h4>
-                  <div className="overflow-x-auto rounded-xl border border-slate-100 bg-white p-3">
+                  {/* 그림을 누르면 전체 화면 확대 보기. */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openZoom({ src: `${rawBase(source.repo)}${section.svg}`, alt: section.title })
+                    }
+                    aria-label={`${section.title} 그림 확대`}
+                    className="group/figure block w-full cursor-zoom-in overflow-x-auto rounded-xl border border-slate-100 bg-white p-3 text-left transition hover:border-blue-200 hover:shadow-md"
+                  >
                     {/* SVG는 GitHub raw에서 직접 읽어 README와 같은 파일을 보여 줌.
                         외부 SVG라 next/image 최적화 대상이 아니어서 일반 img를 사용. */}
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -145,7 +205,10 @@ export function ProjectGuideModal({ onClose }: ProjectGuideModalProps) {
                       loading="lazy"
                       className="mx-auto h-auto max-w-full"
                     />
-                  </div>
+                    <span className="mt-2 flex items-center justify-end gap-1 text-[11px] text-slate-400 opacity-0 transition group-hover/figure:opacity-100">
+                      <ZoomIn size={12} aria-hidden="true" /> 클릭해서 크게 보기
+                    </span>
+                  </button>
                   {section.description.split("\n").map((paragraph, paragraphIndex) => (
                     <p
                       key={paragraphIndex}
@@ -175,7 +238,7 @@ export function ProjectGuideModal({ onClose }: ProjectGuideModalProps) {
         role="dialog"
         aria-modal="true"
         aria-label="프로젝트 소개"
-        className="message-action-menu flex h-full w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+        className="message-action-menu flex h-full w-full max-w-[1440px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
       >
         <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-3">
           <div>
@@ -222,6 +285,112 @@ export function ProjectGuideModal({ onClose }: ProjectGuideModalProps) {
           ))}
         </div>
       </section>
+      {/* 그림 확대 보기: 어두운 배경 위에 크게, +·− 로 배율 조절, 바깥 클릭·Esc로 닫음. */}
+      {zoomed && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={`${zoomed.alt} 확대 보기`}
+          className="fixed inset-0 z-[120] flex flex-col bg-slate-950/85 animate-in fade-in duration-150"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) openZoom(null);
+          }}
+        >
+          <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3 text-white">
+            <span className="truncate text-sm font-semibold">{zoomed.alt}</span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                aria-label="축소"
+                onClick={() =>
+                  setView((current) => ({ ...current, scale: clampScale(current.scale - 0.25) }))
+                }
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-white/80 transition hover:bg-white/15 active:scale-90"
+              >
+                <Minus size={16} />
+              </button>
+              <span className="w-12 text-center text-xs tabular-nums text-white/80">
+                {Math.round(view.scale * 100)}%
+              </span>
+              <button
+                type="button"
+                aria-label="확대"
+                onClick={() =>
+                  setView((current) => ({ ...current, scale: clampScale(current.scale + 0.25) }))
+                }
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-white/80 transition hover:bg-white/15 active:scale-90"
+              >
+                <Plus size={16} />
+              </button>
+              <button
+                type="button"
+                aria-label="원래 크기"
+                onClick={() => setView({ scale: 1, x: 0, y: 0 })}
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-white/80 transition hover:bg-white/15 active:scale-90"
+              >
+                <RotateCcw size={15} />
+              </button>
+              <button
+                data-zoom-close
+                type="button"
+                aria-label="확대 보기 닫기"
+                onClick={() => openZoom(null)}
+                className="ml-2 flex h-8 w-8 cursor-pointer items-center justify-center rounded text-white/80 transition hover:bg-white/15 active:scale-90"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          </div>
+          {/* 그림 영역: 휠로 확대·축소, 누른 채 끌어서 이동. 그림 밖 빈 곳을 누르면 닫힘. */}
+          <div
+            ref={zoomAreaRef}
+            className="relative min-h-0 flex-1 touch-none overflow-hidden"
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              if (event.target === event.currentTarget) {
+                openZoom(null);
+                return;
+              }
+              dragRef.current = { x: event.clientX, y: event.clientY };
+              setDragging(true);
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              const last = dragRef.current;
+              if (!last) return;
+              const dx = event.clientX - last.x;
+              const dy = event.clientY - last.y;
+              dragRef.current = { x: event.clientX, y: event.clientY };
+              setView((current) => ({ ...current, x: current.x + dx, y: current.y + dy }));
+            }}
+            onPointerUp={(event) => {
+              dragRef.current = null;
+              setDragging(false);
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            }}
+            onPointerCancel={() => {
+              dragRef.current = null;
+              setDragging(false);
+            }}
+          >
+            <div
+              className="pointer-events-none absolute inset-0 flex items-center justify-center p-4"
+              style={{
+                transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
+                transition: dragging ? "none" : "transform 80ms ease-out",
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={zoomed.src}
+                alt={zoomed.alt}
+                draggable={false}
+                className="pointer-events-auto max-h-full max-w-full cursor-grab select-none rounded-lg bg-white p-4 shadow-2xl active:cursor-grabbing"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>,
     document.body,
   );
