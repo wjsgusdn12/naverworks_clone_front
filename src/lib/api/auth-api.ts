@@ -78,6 +78,13 @@ export type SignupResult = {
 
 export type InviteCodeResponse = { companyName: string; inviteCode: string };
 
+// 계정 찾기 1단계 결과. 아이디는 일부가 가려져 옴.
+export type RecoverLookupResult = {
+  maskedLoginId: string;
+  displayName: string;
+  canReset: boolean;
+};
+
 // HTTP 상태와 백엔드 오류 코드를 함께 보관해 화면별 안내 문구를 결정.
 export class ApiClientError extends Error {
   constructor(
@@ -159,18 +166,19 @@ export const authApi = {
       body: JSON.stringify(input),
     }),
 
-  // 계정 찾기 1단계: 아이디(또는 이메일)와 복구 코드가 함께 맞으면 계정 확인.
-  recoverLookup: (loginId: string, recoveryCode: string) =>
-    request<{ maskedLoginId: string; displayName: string }>("/api/v1/auth/recover/lookup", {
+  // 계정 찾기 1단계: 아이디(또는 이메일) 아니면 복구 코드, 둘 중 하나로 계정 확인.
+  // 아이디로 찾으면 가린 아이디·이름만 오고(canReset=false), 복구 코드로 찾으면 비밀번호 재설정까지 가능.
+  recoverLookup: (input: { loginId?: string; recoveryCode?: string }) =>
+    request<RecoverLookupResult>("/api/v1/auth/recover/lookup", {
       method: "POST",
-      body: JSON.stringify({ loginId, recoveryCode }),
+      body: JSON.stringify(input),
     }),
 
-  // 계정 찾기 2단계: 비밀번호 재설정. 쓴 코드는 버려지고 새 복구 코드가 옴.
-  recoverReset: (loginId: string, recoveryCode: string, newPassword: string) =>
+  // 계정 찾기 2단계: 복구 코드로 비밀번호 재설정. 쓴 코드는 버려지고 새 복구 코드가 옴.
+  recoverReset: (recoveryCode: string, newPassword: string) =>
     request<{ recoveryCode: string }>("/api/v1/auth/recover/reset", {
       method: "POST",
-      body: JSON.stringify({ loginId, recoveryCode, newPassword }),
+      body: JSON.stringify({ recoveryCode, newPassword }),
     }),
 
   // 회사 옮기기. 회사 ID가 바뀌어 새 세션이 옴. 이전 회사의 채팅방·즐겨찾기는 정리됨.
