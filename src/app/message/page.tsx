@@ -331,6 +331,18 @@ function MessageContent() {
   // 사용자가 최신 메시지를 보고 있을 때만 새 대화를 따라간다.
   const isMessageListAtBottomRef = useRef(true);
   const preservedScrollRef = useRef<{ top: number; height: number } | null>(null);
+  // 공지 카드 래퍼. 높이를 재서 날짜 칩·안내문을 그만큼 아래로 내림(아이콘 상태면 0).
+  const noticePanelRef = useRef<HTMLDivElement>(null);
+  const [noticePanelHeight, setNoticePanelHeight] = useState(0);
+  useEffect(() => {
+    const wrapper = noticePanelRef.current;
+    if (!wrapper) return;
+    const observer = new ResizeObserver(([entry]) =>
+      setNoticePanelHeight(Math.round(entry.contentRect.height)),
+    );
+    observer.observe(wrapper);
+    return () => observer.disconnect();
+  }, []);
   const activeDateKeyRef = useRef<string | null>(null);
   const scrollDateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollDateFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2160,18 +2172,25 @@ function MessageContent() {
           </header>
           <div className="flex min-h-0 flex-1">
             <div className="relative flex min-w-0 flex-1 flex-col">
-              {notices.length > 0 && selectedRoomId && (
-                <NoticePanel
-                  key={selectedRoomId}
-                  roomId={selectedRoomId}
-                  notices={notices}
-                  onOpen={stableJumpToOriginal}
-                  onRemove={(messageId) => void removeNotice(messageId)}
-                />
-              )}
+              {/* 공지 카드가 떠 있는 동안 날짜 칩·안내문이 가려지지 않게 카드 높이만큼 아래로 내림. */}
+              <div
+                ref={noticePanelRef}
+                className="pointer-events-none absolute inset-x-0 top-0 z-30"
+              >
+                {notices.length > 0 && selectedRoomId && (
+                  <NoticePanel
+                    key={selectedRoomId}
+                    roomId={selectedRoomId}
+                    notices={notices}
+                    onOpen={stableJumpToOriginal}
+                    onRemove={(messageId) => void removeNotice(messageId)}
+                  />
+                )}
+              </div>
               {scrollDateLabel && (
                 <div
-                  className={`pointer-events-none absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 shadow-sm transition-all duration-300 ${scrollDatePhase === "visible" ? "animate-in fade-in zoom-in-95 opacity-100" : "scale-95 opacity-0"}`}
+                  style={{ top: 16 + noticePanelHeight }}
+                  className={`pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-600 shadow-sm transition-all duration-300 ${scrollDatePhase === "visible" ? "animate-in fade-in zoom-in-95 opacity-100" : "scale-95 opacity-0"}`}
                 >
                   {scrollDateLabel}
                 </div>
@@ -2185,7 +2204,8 @@ function MessageContent() {
                         ? "다음 메시지를 불러오는 중입니다."
                         : "이전 메시지를 불러오는 중입니다."
                   }
-                  className="pointer-events-none absolute left-1/2 top-14 z-20 -translate-x-1/2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500 shadow-sm animate-in fade-in slide-in-from-top-1"
+                  style={{ top: 56 + noticePanelHeight }}
+                  className="pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500 shadow-sm animate-in fade-in slide-in-from-top-1"
                 />
               )}
               <div

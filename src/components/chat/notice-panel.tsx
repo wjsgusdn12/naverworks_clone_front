@@ -46,6 +46,8 @@ const firstLine = (content: string) => content.replace(/[\r\n]+/g, " ").trim();
 //  - 목록: 공지 전체(각 줄 ⋮ 메뉴), 아래에 "다시 보지 않기 · 접기"와 ∧
 //  - 아이콘: "접기"를 누르면 오른쪽 위 확성이 아이콘만 남김(날짜 칩과 같은 줄)
 // 부모가 방마다 key로 새로 마운트하므로 저장된 상태는 처음 한 번만 읽음.
+// 카드는 부모 래퍼 안에서 보통 흐름(relative)으로 그려져 래퍼 높이가 곧 카드 높이가 되고,
+// 부모는 그 높이만큼 날짜 칩·안내문을 아래로 내림. 아이콘 상태는 absolute라 래퍼 높이가 0.
 export function NoticePanel({ roomId, notices, onOpen, onRemove }: NoticePanelProps) {
   const [expanded, setExpanded] = useState(false);
   // "다시 보지 않기"로 내 화면에서만 숨긴 공지 ID. 브라우저에 기억.
@@ -166,7 +168,7 @@ export function NoticePanel({ roomId, notices, onOpen, onRemove }: NoticePanelPr
     <div
       role="region"
       aria-label="공지"
-      className="absolute left-1/2 top-3 z-30 w-[calc(100%-3rem)] max-w-3xl -translate-x-1/2 rounded-xl border border-slate-200 bg-white shadow-md"
+      className="pointer-events-auto relative mx-auto mt-3 w-[calc(100%-3rem)] max-w-3xl rounded-xl border border-slate-200 bg-white shadow-md"
     >
       {expanded ? (
         <>
