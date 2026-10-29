@@ -5,6 +5,7 @@ import { GroupAvatar } from "@/components/chat/group-avatar";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import { LoadingInline } from "@/components/common/loading";
 import { MeBadge } from "@/components/common/me-badge";
+import { UserAvatar } from "@/components/common/user-avatar";
 import { addressBookApi, type AddressBookMember } from "@/lib/api/address-book-api";
 import { chatApi, type ChatRoom } from "@/lib/api/chat-api";
 import type { NotificationItem } from "@/lib/api/notification-api";
@@ -107,7 +108,7 @@ export function HomeDashboard({
 
   const unreadTotal = (rooms ?? []).reduce((sum, room) => sum + room.unreadCount, 0);
   const onlineCount = Object.entries(presenceByMembershipId).filter(
-    ([id, online]) => online && Number(id) !== membershipId,
+    ([id, status]) => status === "ONLINE" && Number(id) !== membershipId,
   ).length;
   const recentRooms = [...(rooms ?? [])]
     .filter((room) => room.lastMessageAt !== null)
@@ -222,17 +223,19 @@ export function HomeDashboard({
                       {room.type === "GROUP" ? (
                         <GroupAvatar name={room.name ?? "그룹"} />
                       ) : (
-                        <InitialAvatar
+                        <UserAvatar
+                          size="md"
                           name={
                             room.type === "SELF"
                               ? displayName
                               : (room.directDisplayName ?? "사용자")
                           }
-                          online={
+                          presenceStatus={
                             room.type === "SELF"
-                              ? true
-                              : room.directMembershipId !== null &&
-                                (presenceByMembershipId[room.directMembershipId] ?? false)
+                              ? "ONLINE"
+                              : room.directMembershipId !== null
+                                ? (presenceByMembershipId[room.directMembershipId] ?? "OFFLINE")
+                                : "OFFLINE"
                           }
                         />
                       )}
@@ -321,12 +324,17 @@ export function HomeDashboard({
               ) : (
                 <ul className="divide-y divide-slate-100">
                   {favorites.map((target) => {
-                    const online =
-                      presenceByMembershipId[target.membershipId] ??
-                      target.presenceStatus === "ONLINE";
+                    const presenceStatus =
+                      target.presenceStatus === "INACTIVE"
+                        ? target.presenceStatus
+                        : (presenceByMembershipId[target.membershipId] ?? target.presenceStatus);
                     return (
                       <li key={target.membershipId} className="flex items-center gap-3 px-2 py-2.5">
-                        <InitialAvatar name={target.displayName} online={online} />
+                        <UserAvatar
+                          size="md"
+                          name={target.displayName}
+                          presenceStatus={presenceStatus}
+                        />
                         <span className="min-w-0 flex-1">
                           <span className="flex items-center gap-1.5">
                             {target.membershipId === membershipId && <MeBadge />}
@@ -484,13 +492,3 @@ function Empty({
 }
 
 // 이름 앞 세 글자 아바타. 우하단 점으로 접속 상태를 표시.
-function InitialAvatar({ name, online }: { name: string; online: boolean }) {
-  return (
-    <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-[11px] font-bold text-slate-800">
-      {name.slice(0, 3)}
-      <span
-        className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full ring-2 ring-white ${online ? "bg-emerald-500" : "bg-slate-300"}`}
-      />
-    </span>
-  );
-}
