@@ -13,7 +13,7 @@ import {
   type AddressBookMemberDetail,
   type AddressBookSearchHistory,
 } from "@/lib/api/address-book-api";
-import { chatApi, type ChatGroupSummary } from "@/lib/api/chat-api";
+import { chatApi, type ChatGroupMember, type ChatGroupSummary } from "@/lib/api/chat-api";
 import { markAuthenticationRequired } from "@/lib/auth-required-notice";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -664,6 +664,7 @@ export default function AddressBookPage() {
           </div>
           {view === "group" ? (
             <GroupPanel
+              accessToken={accessToken}
               groups={groups}
               tab={groupTab}
               onTabChange={setGroupTab}
@@ -1161,12 +1162,14 @@ const formatGroupDate = (value: string | null) => {
 };
 
 function GroupPanel({
+  accessToken,
   groups,
   tab,
   onTabChange,
   showToast,
   onOpenRoom,
 }: {
+  accessToken: string | null;
   groups: ChatGroupSummary[] | null;
   tab: GroupTab;
   onTabChange: (tab: GroupTab) => void;
@@ -1175,6 +1178,92 @@ function GroupPanel({
 }) {
   // 체크한 그룹. 메시지 버튼은 참여 중인 그룹 하나를 골랐을 때만 그 방을 엶.
   const [selectedGroupIds, setSelectedGroupIds] = useState<number[]>([]);
+  // 오른쪽 상세 패널. 그룹을 누르면 그룹 상세, 그 안에서 구성원을 누르면 구성원 상세로 바뀜.
+  const [selectedGroup, setSelectedGroup] = useState<ChatGroupSummary | null>(null);
+  const [groupMembers, setGroupMembers] = useState<ChatGroupMember[] | null>(null);
+  const [selectedMember, setSelectedMember] = useState<AddressBookMemberDetail | null>(null);
+
+  // 그룹을 고르면 구성원 목록을 조회. 다른 그룹을 고르면 이전 응답은 버림.
+  useEffect(() => {
+    if (!accessToken || !selectedGroup) return;
+    let cancelled = false;
+    chatApi
+      .groupMembers(accessToken, selectedGroup.id)
+      .then((result) => {
+        if (!cancelled) setGroupMembers(result);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setGroupMembers([]);
+        showToast(error instanceof Error ? error.message : "그룹 구성원을 불러오지 못했습니다.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken, selectedGroup, showToast]);
+
+  const selectGroup = (group: ChatGroupSummary) => {
+    setSelectedMember(null);
+    setGroupMembers(null);
+    setSelectedGroup(group);
+  };
+
+  // 패널 전체를 닫음(그룹·구성원 상세 모두).
+  const closePanel = () => {
+    setSelectedMember(null);
+    setSelectedGroup(null);
+    setGroupMembers(null);
+  };
+
+  const selectGroupMember = async (target: ChatGroupMember) => {
+    if (!accessToken) return;
+    try {
+      setSelectedMember(await addressBookApi.memberDetail(accessToken, target.membershipId));
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "구성원 정보를 불러오지 못했습니다.");
+    }
+  };
+
+  // 구성원 상세의 별표 토글. 그룹 구성원 목록의 즐겨찾기 딱지도 함께 갱신.
+  const toggleMemberFavorite = async () => {
+    if (!accessToken || !selectedMember) return;
+    const target = selectedMember;
+    const nextFavorite = !target.favorite;
+    setSelectedMember({ ...target, favorite: nextFavorite });
+    setGroupMembers(
+      (current) =>
+        current?.map((member) =>
+          member.membershipId === target.membershipId
+            ? { ...member, favorite: nextFavorite }
+            : member,
+        ) ?? null,
+    );
+    try {
+      if (target.favorite) await addressBookApi.deleteFavorite(accessToken, target.membershipId);
+      else await addressBookApi.createFavorite(accessToken, target.membershipId);
+    } catch (error) {
+      setSelectedMember(target);
+      setGroupMembers(
+        (current) =>
+          current?.map((member) =>
+            member.membershipId === target.membershipId
+              ? { ...member, favorite: target.favorite }
+              : member,
+          ) ?? null,
+      );
+      showToast(error instanceof Error ? error.message : "즐겨찾기를 변경하지 못했습니다.");
+    }
+  };
+
+  const openDirectMessage = async (targetMembershipId: number) => {
+    if (!accessToken) return;
+    try {
+      const room = await chatApi.createDirect(accessToken, targetMembershipId);
+      onOpenRoom(room.id);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "메시지방을 열지 못했습니다.");
+    }
+  };
 
   // 정렬 상태. 이름은 가나다순, 나머지는 큰 값이 먼저 보이도록 기본 방향을 둠.
   const [sortKey, setSortKey] = useState<GroupSortKey>("name");
@@ -1283,8 +1372,8 @@ function GroupPanel({
               {pageGroups.map((group) => (
                 <tr
                   key={group.id}
-                  className={`border-b border-slate-100 transition ${group.joined ? "cursor-pointer hover:bg-blue-50" : "cursor-default text-slate-500"}`}
-                  onClick={() => openGroup(group)}
+                  className={`cursor-pointer border-b border-slate-100 transition hover:bg-blue-50 ${selectedGroup?.id === group.id ? "bg-blue-50" : ""} ${group.joined ? "" : "text-slate-500"}`}
+                  onClick={() => selectGroup(group)}
                 >
                   <td className="px-3 py-3">
                     <span onClick={(event) => event.stopPropagation()}>
@@ -1336,6 +1425,26 @@ function GroupPanel({
             )
           )}
         </div>
+        {selectedMember ? (
+          <MemberPanel
+            member={selectedMember}
+            onClose={closePanel}
+            onToggleFavorite={() => void toggleMemberFavorite()}
+            onMessage={() => void openDirectMessage(selectedMember.membershipId)}
+            showToast={showToast}
+          />
+        ) : (
+          selectedGroup && (
+            <GroupDetailPanel
+              group={selectedGroup}
+              members={groupMembers}
+              onClose={closePanel}
+              onSelectMember={(target) => void selectGroupMember(target)}
+              onMessage={() => openGroup(selectedGroup)}
+              showToast={showToast}
+            />
+          )
+        )}
       </div>
       <div className="-mx-6 flex h-12 shrink-0 items-center justify-center border-t border-slate-200">
         {visible.length > 0 && (
@@ -1448,6 +1557,155 @@ function MemberPanel({
         <Info label="이메일" value={member.email} />
         <Info label="입사일" value={member.hiredAt ?? "-"} />
       </dl>
+    </aside>
+  );
+}
+
+// 그룹 상세 패널. 구성원 상세와 같은 틀에 그룹 이름·인원수, 그룹멤버/그룹마스터 탭을 둠.
+type GroupDetailTab = "member" | "owner";
+const GROUP_MEMBER_STEP = 5;
+
+function GroupDetailPanel({
+  group,
+  members,
+  onClose,
+  onSelectMember,
+  onMessage,
+  showToast,
+}: {
+  group: ChatGroupSummary;
+  members: ChatGroupMember[] | null;
+  onClose: () => void;
+  onSelectMember: (member: ChatGroupMember) => void;
+  onMessage: () => void;
+  showToast: (message: string) => void;
+}) {
+  const [tab, setTab] = useState<GroupDetailTab>("member");
+  // "더 보기"를 누른 횟수. 그룹이 바뀌면 처음 5명부터 다시 보이도록 그룹 ID와 함께 저장.
+  const [expandState, setExpandState] = useState({ groupId: 0, steps: 1 });
+  const steps = expandState.groupId === group.id ? expandState.steps : 1;
+
+  const list = (members ?? []).filter((member) => (tab === "owner" ? member.owner : true));
+  const shown = tab === "member" ? list.slice(0, steps * GROUP_MEMBER_STEP) : list;
+
+  return (
+    <aside className="relative w-80 shrink-0 overflow-y-auto border-l border-slate-200 bg-white p-4">
+      <div className="flex justify-end">
+        <button
+          aria-label="상세 패널 닫기"
+          className="cursor-pointer rounded-md p-0 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 active:scale-90"
+          onClick={onClose}
+        >
+          <X />
+        </button>
+      </div>
+      <div className="mt-4 flex items-center gap-3">
+        <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+          <UsersRound size={28} aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-xl font-bold">{group.name || "이름 없는 그룹"}</h2>
+          <p className="text-sm text-slate-500">멤버 {group.memberCount}명</p>
+        </div>
+      </div>
+      <div className="mt-6 grid grid-cols-3 gap-2 text-center text-xs text-blue-600">
+        <button
+          className="cursor-pointer rounded-lg p-2 transition hover:bg-blue-50 active:scale-95"
+          onClick={onMessage}
+        >
+          <MessageCircle className="mx-auto mb-1" size={20} />
+          메시지
+        </button>
+        <button
+          className="cursor-pointer rounded-lg p-2 transition hover:bg-blue-50 active:scale-95"
+          onClick={() => showToast("메일 기능은 준비 중입니다.")}
+        >
+          <Mail className="mx-auto mb-1" size={20} />
+          메일
+        </button>
+        <button
+          className="cursor-pointer rounded-lg p-2 transition hover:bg-blue-50 active:scale-95"
+          onClick={() => showToast("캘린더 기능은 준비 중입니다.")}
+        >
+          <CalendarDays className="mx-auto mb-1" size={20} />
+          캘린더
+        </button>
+      </div>
+      <div className="mt-6 flex gap-4 border-b border-slate-200" role="tablist">
+        {(
+          [
+            ["member", "그룹멤버"],
+            ["owner", "그룹마스터"],
+          ] as [GroupDetailTab, string][]
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
+            className={`cursor-pointer border-b-2 px-1 pb-2 text-sm transition ${tab === key ? "border-blue-600 font-semibold text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
+            onClick={() => setTab(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {members === null ? (
+        <LoadingInline message="구성원을 불러오는 중입니다." className="py-8 text-sm" />
+      ) : list.length === 0 ? (
+        <p className="py-8 text-center text-sm text-slate-500">
+          {tab === "owner" ? "방장이 없는 그룹입니다." : "구성원이 없습니다."}
+        </p>
+      ) : (
+        <ul className="mt-2">
+          {shown.map((member) => (
+            <li key={member.membershipId}>
+              <button
+                type="button"
+                className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-left transition hover:bg-slate-50"
+                onClick={() => onSelectMember(member)}
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-[11px] font-bold text-slate-800">
+                  {member.displayName.slice(0, 3)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5">
+                    <b className="truncate text-sm text-slate-900">{member.displayName}</b>
+                    {member.favorite && (
+                      <span
+                        aria-label="즐겨찾기"
+                        className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white"
+                      >
+                        <Star size={9} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+                      </span>
+                    )}
+                  </span>
+                  <span className="block truncate text-xs text-slate-500">
+                    {[
+                      member.jobGradeName ?? member.jobTitle,
+                      member.departmentName,
+                      member.companyName,
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                  </span>
+                </span>
+              </button>
+            </li>
+          ))}
+          {tab === "member" && shown.length < list.length && (
+            <li>
+              <button
+                type="button"
+                className="mt-1 w-full cursor-pointer rounded-lg py-2 text-center text-sm text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+                onClick={() => setExpandState({ groupId: group.id, steps: steps + 1 })}
+              >
+                더 보기 ({shown.length}/{list.length})
+              </button>
+            </li>
+          )}
+        </ul>
+      )}
     </aside>
   );
 }
