@@ -11,7 +11,7 @@ type DialogShellProps = {
   widthClassName?: string;
 };
 
-function MessageDialogShell({
+export function MessageDialogShell({
   title,
   onClose,
   children,

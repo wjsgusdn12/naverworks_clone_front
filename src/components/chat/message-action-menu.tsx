@@ -1,6 +1,15 @@
 "use client";
 
-import { Copy, MoreVertical, Pencil, Reply, Trash2 } from "lucide-react";
+import {
+  Copy,
+  Forward,
+  Megaphone,
+  MegaphoneOff,
+  MoreVertical,
+  Pencil,
+  Reply,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Tooltip } from "@/components/common/tooltip";
@@ -17,22 +26,34 @@ type MessageActionMenuProps = {
   isMine: boolean;
   // 본인 메시지라도 24시간이 지나면 false. 메뉴의 "수정"·"삭제"를 비활성화하고 안내 툴팁을 띄움.
   canEdit: boolean;
+  // 이 메시지가 현재 방 공지면 "공지 해제"로 바뀜.
+  isNotice: boolean;
   position: MessageMenuPosition | null;
   onPositionChange: (position: MessageMenuPosition | null) => void;
   onCopy: () => void;
   onReply: () => void;
+  onForward: () => void;
+  onToggleNotice: () => void;
   onEdit: () => void;
   onDelete: () => void;
 };
+
+// 메뉴 높이(항목 수에 따라). 화면 아래에 가려지지 않게 위치를 잡을 때 사용.
+export const MENU_HEIGHT_MINE = 248;
+export const MENU_HEIGHT_OTHERS = 172;
+const MENU_WIDTH = 152;
 
 // 목록의 overflow 영역 밖에 메뉴를 띄워 말풍선·스크롤 경계에 가려지는 현상 방지.
 export function MessageActionMenu({
   isMine,
   canEdit,
+  isNotice,
   position,
   onPositionChange,
   onCopy,
   onReply,
+  onForward,
+  onToggleNotice,
   onEdit,
   onDelete,
 }: MessageActionMenuProps) {
@@ -93,8 +114,11 @@ export function MessageActionMenu({
             event.detail === 0 ? (isMine ? rect.left - 148 : rect.right + 4) : event.clientX;
           const top = event.detail === 0 ? rect.bottom + 4 : event.clientY;
           onPositionChange({
-            left: Math.max(8, Math.min(left, window.innerWidth - 152)),
-            top: Math.max(8, Math.min(top, window.innerHeight - (isMine ? 184 : 100))),
+            left: Math.max(8, Math.min(left, window.innerWidth - MENU_WIDTH)),
+            top: Math.max(
+              8,
+              Math.min(top, window.innerHeight - (isMine ? MENU_HEIGHT_MINE : MENU_HEIGHT_OTHERS)),
+            ),
           });
         }}
         className={`flex h-5 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-slate-500 transition duration-150 hover:bg-slate-100 hover:text-slate-900 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-blue-500 active:scale-95 [@media(hover:none)]:opacity-100 ${position ? "bg-slate-100 opacity-100" : "opacity-0 group-hover/message:opacity-100 group-focus-within/message:opacity-100"}`}
@@ -131,6 +155,32 @@ export function MessageActionMenu({
             >
               <Reply size={15} aria-hidden="true" />
               답장
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onPositionChange(null);
+                onForward();
+              }}
+              className="flex w-full cursor-pointer items-center gap-2 rounded px-3 py-2 text-left transition hover:bg-slate-100 focus-visible:bg-slate-100 active:scale-[0.98]"
+            >
+              <Forward size={15} aria-hidden="true" />
+              전달
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onPositionChange(null);
+                onToggleNotice();
+              }}
+              className="flex w-full cursor-pointer items-center gap-2 rounded px-3 py-2 text-left transition hover:bg-slate-100 focus-visible:bg-slate-100 active:scale-[0.98]"
+            >
+              {isNotice ? (
+                <MegaphoneOff size={15} aria-hidden="true" />
+              ) : (
+                <Megaphone size={15} aria-hidden="true" />
+              )}
+              {isNotice ? "공지 해제" : "공지로 등록"}
             </button>
             {isMine && (
               <>
