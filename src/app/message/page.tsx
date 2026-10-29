@@ -1953,7 +1953,7 @@ function MessageContent() {
   const stableDisplayRoomName = useStableCallback(displayRoomName);
 
   return (
-    <div className="min-h-screen bg-white text-slate-900">
+    <div className="flex h-screen flex-col overflow-hidden bg-white text-slate-900">
       {member && (
         <GlobalHeader
           role={member.role}
@@ -1991,7 +1991,7 @@ function MessageContent() {
           }
         />
       )}
-      <main className="flex h-[calc(100vh-3.5rem)] min-h-[620px]">
+      <main className="flex min-h-0 flex-1">
         <aside
           className={`relative z-50 flex shrink-0 flex-col overflow-visible border-r border-slate-200 bg-slate-50 transition-[width] duration-300 ${isSidebarCollapsed ? "w-20" : "w-[360px]"}`}
         >

@@ -462,7 +462,7 @@ export default function AddressBookPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white text-slate-900">
+    <div className="flex h-screen flex-col overflow-hidden bg-white text-slate-900">
       <GlobalHeader
         role={member.role}
         pageTitle="주소록"
@@ -510,7 +510,7 @@ export default function AddressBookPage() {
           />
         }
       />
-      <main className="flex min-h-[calc(100vh-3.5rem)]">
+      <main className="flex min-h-0 flex-1 overflow-y-auto">
         <aside
           className={`shrink-0 overflow-hidden border-r border-slate-200 bg-slate-50 transition-[width] duration-300 ease-out ${isSidebarCollapsed ? "w-20 p-2" : "w-64 p-3"}`}
         >

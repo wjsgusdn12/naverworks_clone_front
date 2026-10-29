@@ -46,15 +46,16 @@ export default function Home() {
     }
   };
 
+  // 헤더는 고정, 스크롤은 헤더 아래 영역에서만 생기도록 화면 높이를 고정.
   return (
-    <div className="flex min-h-screen flex-col bg-slate-100">
+    <div className="flex h-screen flex-col overflow-hidden bg-slate-100">
       <GlobalHeader
         role="USER"
         onHomeAction={() => showToast("로그인이 필요합니다. 로그인 후 이용해 주세요.")}
         onServiceAction={() => showToast("로그인이 필요합니다. 로그인 후 이용해 주세요.")}
         onProfileAction={() => showToast("로그인이 필요합니다. 로그인 후 이용해 주세요.")}
       />
-      <main className="flex flex-1 items-center justify-center px-5 py-12 sm:px-8">
+      <main className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto px-5 py-12 sm:px-8">
         <LoginForm onToast={showToast} onLogin={handleLogin} />
       </main>
       {toast && (

@@ -145,152 +145,117 @@ export function HomeDashboard({
   };
 
   return (
-    <main className="mx-auto w-full max-w-7xl px-5 py-8 sm:px-8 lg:px-10">
-      <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm text-slate-500">{today}</p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-            {displayName}님, 안녕하세요.
-          </h1>
-        </div>
-        <div className="flex gap-2">
-          <QuickButton icon={MessageCircleMore} onClick={() => router.push("/message")}>
-            메시지
-          </QuickButton>
-          <QuickButton icon={BookUser} onClick={() => router.push("/addressBook")}>
-            주소록
-          </QuickButton>
-          <QuickButton icon={NotebookPen} onClick={() => void openSelf()}>
-            내 메모
-          </QuickButton>
-        </div>
-      </section>
+    <main className="min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto w-full max-w-7xl px-5 py-8 sm:px-8 lg:px-10">
+        <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-sm text-slate-500">{today}</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+              {displayName}님, 안녕하세요.
+            </h1>
+          </div>
+          <div className="flex gap-2">
+            <QuickButton icon={MessageCircleMore} onClick={() => router.push("/message")}>
+              메시지
+            </QuickButton>
+            <QuickButton icon={BookUser} onClick={() => router.push("/addressBook")}>
+              주소록
+            </QuickButton>
+            <QuickButton icon={NotebookPen} onClick={() => void openSelf()}>
+              내 메모
+            </QuickButton>
+          </div>
+        </section>
 
-      <section className="mt-6 grid gap-4 sm:grid-cols-3">
-        <StatTile
-          label="안 읽은 메시지"
-          value={rooms === null ? null : unreadTotal}
-          suffix="건"
-          icon={MessageCircleMore}
-          accent="bg-blue-50 text-blue-600"
-          onClick={() => router.push("/message")}
-        />
-        <StatTile
-          label="온라인 구성원"
-          value={onlineCount}
-          suffix="명"
-          icon={UsersRound}
-          accent="bg-emerald-50 text-emerald-600"
-          onClick={() => router.push("/addressBook")}
-        />
-        <StatTile
-          label="읽지 않은 알림"
-          value={notificationsLoaded ? notificationCount : null}
-          suffix="건"
-          icon={Bell}
-          accent="bg-amber-50 text-amber-600"
-        />
-      </section>
+        <section className="mt-6 grid gap-4 sm:grid-cols-3">
+          <StatTile
+            label="안 읽은 메시지"
+            value={rooms === null ? null : unreadTotal}
+            suffix="건"
+            icon={MessageCircleMore}
+            accent="bg-blue-50 text-blue-600"
+            onClick={() => router.push("/message")}
+          />
+          <StatTile
+            label="온라인 구성원"
+            value={onlineCount}
+            suffix="명"
+            icon={UsersRound}
+            accent="bg-emerald-50 text-emerald-600"
+            onClick={() => router.push("/addressBook")}
+          />
+          <StatTile
+            label="읽지 않은 알림"
+            value={notificationsLoaded ? notificationCount : null}
+            suffix="건"
+            icon={Bell}
+            accent="bg-amber-50 text-amber-600"
+          />
+        </section>
 
-      <section className="mt-5 grid gap-5 xl:grid-cols-12">
-        <Card
-          className="xl:col-span-7"
-          title="최근 대화"
-          description="마지막 메시지가 최근인 순서입니다."
-          action={<LinkButton onClick={() => router.push("/message")}>전체보기</LinkButton>}
-        >
-          {rooms === null ? (
-            <LoadingInline message="대화 목록을 불러오는 중입니다." className="py-10 text-sm" />
-          ) : recentRooms.length === 0 ? (
-            <Empty
-              message="아직 대화가 없습니다."
-              actionLabel="주소록에서 시작하기"
-              onAction={() => router.push("/addressBook")}
-            />
-          ) : (
-            <ul className="divide-y divide-slate-100">
-              {recentRooms.map((room) => (
-                <li key={room.id}>
-                  <button
-                    type="button"
-                    className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-3 text-left transition hover:bg-slate-50"
-                    onClick={() => router.push(`/message?roomId=${room.id}`)}
-                  >
-                    {room.type === "GROUP" ? (
-                      <GroupAvatar name={room.name ?? "그룹"} />
-                    ) : (
-                      <InitialAvatar
-                        name={
-                          room.type === "SELF" ? displayName : (room.directDisplayName ?? "사용자")
-                        }
-                        online={
-                          room.type === "SELF"
-                            ? true
-                            : room.directMembershipId !== null &&
-                              (presenceByMembershipId[room.directMembershipId] ?? false)
-                        }
-                      />
-                    )}
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-2">
-                        <b className="truncate text-sm text-slate-900">{roomName(room)}</b>
-                        {room.type === "GROUP" && (
-                          <span className="shrink-0 text-xs font-bold text-blue-600">
-                            {room.memberCount}
-                          </span>
-                        )}
-                      </span>
-                      <span className="mt-0.5 block truncate text-xs text-slate-500">
-                        {room.lastMessage ?? ""}
-                      </span>
-                    </span>
-                    <span className="flex shrink-0 flex-col items-end gap-1">
-                      <span className="text-xs text-slate-400">
-                        {formatRelative(room.lastMessageAt)}
-                      </span>
-                      {room.unreadCount > 0 && (
-                        <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-none text-white">
-                          {room.unreadCount > 99 ? "99+" : room.unreadCount}
-                        </span>
-                      )}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <div className="flex flex-col gap-5 xl:col-span-5">
-          <Card title="알림" description="최근 30일 알림입니다.">
-            {!notificationsLoaded ? (
-              <LoadingInline message="알림을 불러오는 중입니다." className="py-8 text-sm" />
-            ) : recentNotifications.length === 0 ? (
-              <Empty message="새 알림이 없습니다." />
+        <section className="mt-5 grid gap-5 xl:grid-cols-12">
+          <Card
+            className="xl:col-span-7"
+            title="최근 대화"
+            description="마지막 메시지가 최근인 순서입니다."
+            action={<LinkButton onClick={() => router.push("/message")}>전체보기</LinkButton>}
+          >
+            {rooms === null ? (
+              <LoadingInline message="대화 목록을 불러오는 중입니다." className="py-10 text-sm" />
+            ) : recentRooms.length === 0 ? (
+              <Empty
+                message="아직 대화가 없습니다."
+                actionLabel="주소록에서 시작하기"
+                onAction={() => router.push("/addressBook")}
+              />
             ) : (
               <ul className="divide-y divide-slate-100">
-                {recentNotifications.map((item) => (
-                  <li key={item.id}>
+                {recentRooms.map((room) => (
+                  <li key={room.id}>
                     <button
                       type="button"
-                      className="flex w-full cursor-pointer items-start gap-3 rounded-lg px-2 py-3 text-left transition hover:bg-slate-50"
-                      onClick={() => openNotification(item)}
+                      className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-3 text-left transition hover:bg-slate-50"
+                      onClick={() => router.push(`/message?roomId=${room.id}`)}
                     >
-                      <span
-                        className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${item.read ? "bg-slate-200" : "bg-blue-500"}`}
-                      />
+                      {room.type === "GROUP" ? (
+                        <GroupAvatar name={room.name ?? "그룹"} />
+                      ) : (
+                        <InitialAvatar
+                          name={
+                            room.type === "SELF"
+                              ? displayName
+                              : (room.directDisplayName ?? "사용자")
+                          }
+                          online={
+                            room.type === "SELF"
+                              ? true
+                              : room.directMembershipId !== null &&
+                                (presenceByMembershipId[room.directMembershipId] ?? false)
+                          }
+                        />
+                      )}
                       <span className="min-w-0 flex-1">
-                        <span
-                          className={`block truncate text-sm ${item.read ? "text-slate-600" : "font-semibold text-slate-900"}`}
-                        >
-                          {item.title}
+                        <span className="flex items-center gap-2">
+                          <b className="truncate text-sm text-slate-900">{roomName(room)}</b>
+                          {room.type === "GROUP" && (
+                            <span className="shrink-0 text-xs font-bold text-blue-600">
+                              {room.memberCount}
+                            </span>
+                          )}
                         </span>
                         <span className="mt-0.5 block truncate text-xs text-slate-500">
-                          {item.body}
+                          {room.lastMessage ?? ""}
                         </span>
                       </span>
-                      <span className="shrink-0 text-xs text-slate-400">
-                        {formatRelative(item.createdAt)}
+                      <span className="flex shrink-0 flex-col items-end gap-1">
+                        <span className="text-xs text-slate-400">
+                          {formatRelative(room.lastMessageAt)}
+                        </span>
+                        {room.unreadCount > 0 && (
+                          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-none text-white">
+                            {room.unreadCount > 99 ? "99+" : room.unreadCount}
+                          </span>
+                        )}
                       </span>
                     </button>
                   </li>
@@ -299,59 +264,98 @@ export function HomeDashboard({
             )}
           </Card>
 
-          <Card
-            title="즐겨찾기 구성원"
-            description="주소록에서 별표한 구성원입니다."
-            action={<LinkButton onClick={() => router.push("/addressBook")}>주소록</LinkButton>}
-          >
-            {favorites === null ? (
-              <LoadingInline message="즐겨찾기를 불러오는 중입니다." className="py-8 text-sm" />
-            ) : favorites.length === 0 ? (
-              <Empty
-                message="즐겨찾기한 구성원이 없습니다."
-                actionLabel="주소록에서 별표하기"
-                onAction={() => router.push("/addressBook")}
-              />
-            ) : (
-              <ul className="divide-y divide-slate-100">
-                {favorites.map((target) => {
-                  const online =
-                    presenceByMembershipId[target.membershipId] ??
-                    target.presenceStatus === "ONLINE";
-                  return (
-                    <li key={target.membershipId} className="flex items-center gap-3 px-2 py-2.5">
-                      <InitialAvatar name={target.displayName} online={online} />
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-1.5">
-                          <b className="truncate text-sm text-slate-900">{target.displayName}</b>
-                          <Star
-                            size={12}
-                            className="shrink-0 fill-amber-400 text-amber-400"
-                            aria-label="즐겨찾기"
-                          />
-                        </span>
-                        <span className="block truncate text-xs text-slate-500">
-                          {[target.jobGradeName ?? target.jobTitle, target.departmentName]
-                            .filter(Boolean)
-                            .join(" · ") || target.companyName}
-                        </span>
-                      </span>
+          <div className="flex flex-col gap-5 xl:col-span-5">
+            <Card title="알림" description="최근 30일 알림입니다.">
+              {!notificationsLoaded ? (
+                <LoadingInline message="알림을 불러오는 중입니다." className="py-8 text-sm" />
+              ) : recentNotifications.length === 0 ? (
+                <Empty message="새 알림이 없습니다." />
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {recentNotifications.map((item) => (
+                    <li key={item.id}>
                       <button
                         type="button"
-                        aria-label={`${target.displayName}에게 메시지 보내기`}
-                        className="cursor-pointer rounded-md p-1.5 text-blue-600 transition hover:bg-blue-50"
-                        onClick={() => void openDirect(target)}
+                        className="flex w-full cursor-pointer items-start gap-3 rounded-lg px-2 py-3 text-left transition hover:bg-slate-50"
+                        onClick={() => openNotification(item)}
                       >
-                        <MessageCircleMore size={17} />
+                        <span
+                          className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${item.read ? "bg-slate-200" : "bg-blue-500"}`}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span
+                            className={`block truncate text-sm ${item.read ? "text-slate-600" : "font-semibold text-slate-900"}`}
+                          >
+                            {item.title}
+                          </span>
+                          <span className="mt-0.5 block truncate text-xs text-slate-500">
+                            {item.body}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-xs text-slate-400">
+                          {formatRelative(item.createdAt)}
+                        </span>
                       </button>
                     </li>
-                  );
-                })}
-              </ul>
-            )}
-          </Card>
-        </div>
-      </section>
+                  ))}
+                </ul>
+              )}
+            </Card>
+
+            <Card
+              title="즐겨찾기 구성원"
+              description="주소록에서 별표한 구성원입니다."
+              action={<LinkButton onClick={() => router.push("/addressBook")}>주소록</LinkButton>}
+            >
+              {favorites === null ? (
+                <LoadingInline message="즐겨찾기를 불러오는 중입니다." className="py-8 text-sm" />
+              ) : favorites.length === 0 ? (
+                <Empty
+                  message="즐겨찾기한 구성원이 없습니다."
+                  actionLabel="주소록에서 별표하기"
+                  onAction={() => router.push("/addressBook")}
+                />
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {favorites.map((target) => {
+                    const online =
+                      presenceByMembershipId[target.membershipId] ??
+                      target.presenceStatus === "ONLINE";
+                    return (
+                      <li key={target.membershipId} className="flex items-center gap-3 px-2 py-2.5">
+                        <InitialAvatar name={target.displayName} online={online} />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-1.5">
+                            <b className="truncate text-sm text-slate-900">{target.displayName}</b>
+                            <Star
+                              size={12}
+                              className="shrink-0 fill-amber-400 text-amber-400"
+                              aria-label="즐겨찾기"
+                            />
+                          </span>
+                          <span className="block truncate text-xs text-slate-500">
+                            {[target.jobGradeName ?? target.jobTitle, target.departmentName]
+                              .filter(Boolean)
+                              .join(" · ") || target.companyName}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          aria-label={`${target.displayName}에게 메시지 보내기`}
+                          className="cursor-pointer rounded-md p-1.5 text-blue-600 transition hover:bg-blue-50"
+                          onClick={() => void openDirect(target)}
+                        >
+                          <MessageCircleMore size={17} />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </Card>
+          </div>
+        </section>
+      </div>
     </main>
   );
 }
