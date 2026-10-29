@@ -98,7 +98,11 @@ export function ProjectGuideModal({ onClose }: ProjectGuideModalProps) {
   useEffect(() => {
     const controller = new AbortController();
     for (const source of sources) {
-      fetch(`${rawBase(source.repo)}docs/guide.json`, { signal: controller.signal })
+      // 브라우저 캐시를 쓰지 않아 README를 고쳐 푸시하면 바로 반영(GitHub raw 자체 캐시는 몇 분 남을 수 있음).
+      fetch(`${rawBase(source.repo)}docs/guide.json`, {
+        signal: controller.signal,
+        cache: "no-store",
+      })
         .then((response) => (response.ok ? response.json() : Promise.reject(response.status)))
         .then((sections: GuideSection[]) =>
           setGuides((current) => ({ ...current, [source.key]: { status: "ready", sections } })),
