@@ -1,5 +1,6 @@
 "use client";
 
+import { FavoriteBadge } from "@/components/address-book/favorite-badge";
 import { GroupAvatar } from "@/components/chat/group-avatar";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import { LoadingInline } from "@/components/common/loading";
@@ -12,7 +13,6 @@ import {
   BookUser,
   MessageCircleMore,
   NotebookPen,
-  Star,
   UsersRound,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -114,9 +114,10 @@ export function HomeDashboard({
     .slice(0, RECENT_ROOM_LIMIT);
   const recentNotifications = notifications.slice(0, NOTIFICATION_LIMIT);
 
+  // 나와의 채팅은 내 이름을 쓰고 옆에 "나" 딱지를 붙임.
   const roomName = (room: ChatRoom) =>
     room.type === "SELF"
-      ? `[나] ${displayName}`
+      ? displayName
       : room.type === "DIRECT"
         ? (room.directDisplayName ?? "사용자")
         : (room.name ?? "그룹 메시지");
@@ -237,6 +238,11 @@ export function HomeDashboard({
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-2">
                           <b className="truncate text-sm text-slate-900">{roomName(room)}</b>
+                          {room.type === "SELF" && (
+                            <span className="shrink-0 rounded bg-slate-900 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                              나
+                            </span>
+                          )}
                           {room.type === "GROUP" && (
                             <span className="shrink-0 text-xs font-bold text-blue-600">
                               {room.memberCount}
@@ -253,7 +259,7 @@ export function HomeDashboard({
                         </span>
                         {room.unreadCount > 0 && (
                           <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-none text-white">
-                            {room.unreadCount > 99 ? "99+" : room.unreadCount}
+                            {room.unreadCount > 999 ? "999+" : room.unreadCount}
                           </span>
                         )}
                       </span>
@@ -327,11 +333,7 @@ export function HomeDashboard({
                         <span className="min-w-0 flex-1">
                           <span className="flex items-center gap-1.5">
                             <b className="truncate text-sm text-slate-900">{target.displayName}</b>
-                            <Star
-                              size={12}
-                              className="shrink-0 fill-amber-400 text-amber-400"
-                              aria-label="즐겨찾기"
-                            />
+                            <FavoriteBadge />
                           </span>
                           <span className="block truncate text-xs text-slate-500">
                             {[target.jobGradeName ?? target.jobTitle, target.departmentName]
