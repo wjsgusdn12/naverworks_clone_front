@@ -4,14 +4,23 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { LoadingState, Spinner } from "@/components/common/loading";
 import { Tooltip } from "@/components/common/tooltip";
 import { useDownloadButton } from "@/hooks/use-attachment";
+import { CodePreview } from "@/components/chat/file-preview/code-preview";
+import { DocxPreview } from "@/components/chat/file-preview/docx-preview";
+import { MarkdownPreview } from "@/components/chat/file-preview/markdown-preview";
+import { SheetPreview } from "@/components/chat/file-preview/sheet-preview";
+import { ZipPreview } from "@/components/chat/file-preview/zip-preview";
+import { ApiClientError } from "@/lib/api/auth-api";
 import { chatApi, type ChatAttachment } from "@/lib/api/chat-api";
 import {
+  codeLanguages,
   extensionOf,
   fileIconOf,
   filePreviewOf,
   formatFileSize,
+  isTextualPreview,
   TEXT_PREVIEW_MAX,
 } from "@/lib/attachment-files";
+import { loadXlsxSheets, parseCsvSheet, type GridSheet } from "@/lib/sheet-preview";
 import { Download, FileQuestion, MessageSquareText, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
@@ -29,7 +38,9 @@ type Content =
   | { status: "failed"; message: string }
   | { status: "unsupported"; reason: string }
   | { status: "text"; text: string }
-  | { status: "url"; url: string };
+  | { status: "url"; url: string }
+  | { status: "buffer"; data: ArrayBuffer }
+  | { status: "sheets"; sheets: GridSheet[] };
 
 // UTF-8로 먼저 읽고, 깨지면 한글 윈도우 형식(EUC-KR)으로 다시 읽음.
 const decodeText = (buffer: ArrayBuffer) => {
@@ -40,7 +51,8 @@ const decodeText = (buffer: ArrayBuffer) => {
   }
 };
 
-// 파일 미리보기 모달. PDF·글자·동영상·음성은 화면에서 바로 열고, 그 밖의 형식은 안내와 내려받기만.
+// 파일 미리보기 모달. Word·엑셀·CSV·PDF·마크다운·코드·글자·압축 목록·동영상·음성을 형식에 맞게 보여 주고,
+// 그 밖의 형식(ppt·hwp·옛 doc/xls 등)은 안내와 내려받기만.
 export function FilePreviewModal({
   file,
   onClose,
@@ -55,7 +67,8 @@ export function FilePreviewModal({
   const { accessToken } = useAuth();
   const { attachment } = file;
   const preview = filePreviewOf(attachment.name);
-  const tooLargeText = preview?.kind === "text" && attachment.size > TEXT_PREVIEW_MAX;
+  const tooLargeText =
+    !!preview && isTextualPreview(preview.kind) && attachment.size > TEXT_PREVIEW_MAX;
   const [content, setContent] = useState<Content>(
     !preview
       ? {
@@ -63,7 +76,7 @@ export function FilePreviewModal({
           reason: `[미리보기 미지원] 형식 ${extensionOf(attachment.name).toUpperCase() || "알 수 없음"}`,
         }
       : tooLargeText
-        ? { status: "unsupported", reason: "[미리보기 불가] 글자 파일 2MB 초과" }
+        ? { status: "unsupported", reason: "[미리보기 불가] 글자 형식 파일 2MB 초과" }
         : { status: "loading" },
   );
   const download = useCallback(() => onDownload(attachment), [attachment, onDownload]);
@@ -76,17 +89,31 @@ export function FilePreviewModal({
     chatApi
       .attachmentBlob(accessToken, attachment.id, false)
       .then(async (blob) => {
-        if (preview.kind === "text") {
+        const { kind } = preview;
+        if (kind === "csv") {
+          const sheet = parseCsvSheet(decodeText(await blob.arrayBuffer()), attachment.name);
+          if (alive) setContent({ status: "sheets", sheets: [sheet] });
+        } else if (isTextualPreview(kind)) {
           const text = decodeText(await blob.arrayBuffer());
           if (alive) setContent({ status: "text", text });
-          return;
+        } else if (kind === "sheet") {
+          // 시트 변환까지 끝나야 격자를 그릴 수 있으므로 그동안 로딩 표시를 유지.
+          const sheets = await loadXlsxSheets(await blob.arrayBuffer());
+          if (alive) setContent({ status: "sheets", sheets });
+        } else if (kind === "docx" || kind === "zip") {
+          const data = await blob.arrayBuffer();
+          if (alive) setContent({ status: "buffer", data });
+        } else {
+          // 서버는 다운로드 형식으로 주므로 확장자에 맞는 형식을 붙여야 브라우저가 열 수 있음.
+          objectUrl = URL.createObjectURL(new Blob([blob], { type: preview.mime }));
+          if (alive) setContent({ status: "url", url: objectUrl });
         }
-        // 서버는 다운로드 형식으로 주므로 확장자에 맞는 형식을 붙여야 브라우저가 열 수 있음.
-        objectUrl = URL.createObjectURL(new Blob([blob], { type: preview.mime }));
-        if (alive) setContent({ status: "url", url: objectUrl });
       })
-      .catch((error: Error) => {
-        if (alive) setContent({ status: "failed", message: error.message });
+      .catch((error: unknown) => {
+        // 서버 오류는 서버 문구를, 파일 해석 오류는 형식 문제로 안내.
+        const message =
+          error instanceof ApiClientError ? error.message : "파일 형식을 읽을 수 없음";
+        if (alive) setContent({ status: "failed", message });
       });
     return () => {
       alive = false;
@@ -195,11 +222,28 @@ export function FilePreviewModal({
                 내려받아 확인
               </button>
             </div>
+          ) : content.status === "sheets" ? (
+            <SheetPreview sheets={content.sheets} />
+          ) : content.status === "buffer" ? (
+            preview?.kind === "docx" ? (
+              <DocxPreview data={content.data} />
+            ) : (
+              <ZipPreview data={content.data} />
+            )
           ) : content.status === "text" ? (
-            // React가 글자를 그대로 넣으므로 HTML 파일이어도 실행되지 않음.
-            <pre className="h-full overflow-auto whitespace-pre-wrap break-words p-5 font-mono text-[13px] leading-6 text-slate-800">
-              {content.text}
-            </pre>
+            preview?.kind === "markdown" ? (
+              <MarkdownPreview text={content.text} />
+            ) : preview?.kind === "code" ? (
+              <CodePreview
+                text={content.text}
+                language={codeLanguages[extensionOf(attachment.name)] ?? "plaintext"}
+              />
+            ) : (
+              // React가 글자를 그대로 넣으므로 어떤 내용이어도 실행되지 않음.
+              <pre className="h-full overflow-auto whitespace-pre-wrap break-words bg-white p-5 font-mono text-[13px] leading-6 text-slate-800">
+                {content.text}
+              </pre>
+            )
           ) : preview?.kind === "pdf" ? (
             <iframe src={content.url} title={attachment.name} className="h-full w-full" />
           ) : preview?.kind === "video" ? (

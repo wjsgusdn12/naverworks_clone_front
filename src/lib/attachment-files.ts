@@ -58,39 +58,39 @@ export const fileIconOf = (name: string): { Icon: LucideIcon; className: string 
     : { Icon: FileIcon, className: "text-slate-500 bg-slate-100" };
 };
 
-// 브라우저 기본 기능만으로 열어 볼 수 있는 형식. 서버는 파일을 항상 다운로드 형식으로 주므로
-// 화면에서 확장자에 맞는 형식을 다시 붙여 보여 줌. HTML·SVG는 실행되지 않게 글자로만 보여 줌.
-export type FilePreviewKind = "pdf" | "text" | "video" | "audio";
-const textExtensions = [
-  "txt",
-  "md",
-  "csv",
-  "log",
-  "json",
-  "xml",
-  "yml",
-  "yaml",
-  "js",
-  "jsx",
-  "ts",
-  "tsx",
-  "java",
-  "py",
-  "sql",
-  "css",
-  "html",
-  "htm",
-  "svg",
-  "sh",
-  "properties",
-  "ini",
-  "env",
-  "kt",
-  "c",
-  "cpp",
-  "h",
-];
-const mediaTypes: Record<string, [FilePreviewKind, string]> = {
+// 화면에서 바로 열어 볼 수 있는 형식과 보여 주는 방식.
+// - pdf·video·audio: 브라우저 기본 뷰어/플레이어(서버는 다운로드 형식으로 주므로 형식을 다시 붙임)
+// - docx: Word처럼 쪽 단위로, sheet: 엑셀처럼 시트 탭과 격자로, csv: 같은 격자로
+// - markdown: 서식을 입혀서, code: 문법 색칠, text: 글자 그대로, zip: 안에 든 파일 목록
+// HTML·SVG는 실행되지 않게 코드(글자)로만 보여 줌.
+export type FilePreviewKind =
+  "pdf" | "video" | "audio" | "docx" | "sheet" | "csv" | "markdown" | "code" | "text" | "zip";
+// 코드 확장자 → 문법 색칠에 쓸 언어 이름(highlight.js 기준).
+export const codeLanguages: Record<string, string> = {
+  js: "javascript",
+  jsx: "javascript",
+  ts: "typescript",
+  tsx: "typescript",
+  java: "java",
+  kt: "kotlin",
+  py: "python",
+  sql: "sql",
+  json: "json",
+  xml: "xml",
+  html: "xml",
+  htm: "xml",
+  svg: "xml",
+  css: "css",
+  yml: "yaml",
+  yaml: "yaml",
+  sh: "bash",
+  properties: "properties",
+  ini: "ini",
+  c: "c",
+  h: "c",
+  cpp: "cpp",
+};
+const kindByExtension: Record<string, [FilePreviewKind, string]> = {
   pdf: ["pdf", "application/pdf"],
   mp4: ["video", "video/mp4"],
   webm: ["video", "video/webm"],
@@ -98,19 +98,29 @@ const mediaTypes: Record<string, [FilePreviewKind, string]> = {
   wav: ["audio", "audio/wav"],
   ogg: ["audio", "audio/ogg"],
   m4a: ["audio", "audio/mp4"],
+  docx: ["docx", ""],
+  xlsx: ["sheet", ""],
+  csv: ["csv", ""],
+  md: ["markdown", ""],
+  txt: ["text", ""],
+  log: ["text", ""],
+  env: ["text", ""],
+  zip: ["zip", ""],
 };
-// 글자 미리보기는 너무 큰 파일이면 화면이 멈출 수 있어 2MB까지만.
+// 글자로 읽어 그리는 형식은 너무 크면 화면이 멈출 수 있어 2MB까지만.
 export const TEXT_PREVIEW_MAX = 2 * 1024 * 1024;
+export const isTextualPreview = (kind: FilePreviewKind) =>
+  kind === "csv" || kind === "markdown" || kind === "code" || kind === "text";
 
 export const extensionOf = (name: string) =>
   name.includes(".") ? name.split(".").pop()!.toLowerCase() : "";
 
-// 미리보기 방식과 붙일 형식. 지원하지 않으면 null.
+// 미리보기 방식과(필요하면) 붙일 형식. 지원하지 않으면 null.
 export const filePreviewOf = (name: string): { kind: FilePreviewKind; mime: string } | null => {
   const extension = extensionOf(name);
-  if (textExtensions.includes(extension)) return { kind: "text", mime: "text/plain" };
-  const media = mediaTypes[extension];
-  return media ? { kind: media[0], mime: media[1] } : null;
+  if (codeLanguages[extension]) return { kind: "code", mime: "" };
+  const found = kindByExtension[extension];
+  return found ? { kind: found[0], mime: found[1] } : null;
 };
 
 // 받은 Blob을 원래 파일 이름으로 내 컴퓨터에 저장.
