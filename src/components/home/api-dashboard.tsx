@@ -28,13 +28,26 @@ import { useCallback, useEffect, useState } from "react";
 
 // 이 주기마다 숫자를 새로 받음.
 const REFRESH_MS = 30_000;
-// 그래프 색. 두 쌍 모두 색약 구분·대비 검사를 통과한 조합이고, 둘째 계열은 점선으로도 구분.
+// 그래프 색. 파랑·주황은 색약 구분·대비 검사를 통과한 조합이고, 둘째 계열(오류·p95)은 점선으로도 구분.
 const REQUEST_COLOR = "#3b82f6";
-const ERROR_COLOR = "#ef4444";
+const ERROR_COLOR = "#d97706";
 const AVG_COLOR = "#3b82f6";
 const P95_COLOR = "#d97706";
 
-type Range = "HOUR" | "DAY";
+type Range = "HOUR" | "DAY" | "WEEK";
+// 기간별 탭 글자, 점 간격(분), 아래쪽 글자를 몇 칸마다 보일지.
+const RANGES: Record<
+  Range,
+  { tab: string; name: string; stepMinutes: number; labelEvery: number }
+> = {
+  HOUR: { tab: "최근 1시간 · 5분 단위", name: "최근 1시간", stepMinutes: 5, labelEvery: 2 },
+  DAY: { tab: "최근 24시간 · 1시간 단위", name: "최근 24시간", stepMinutes: 60, labelEvery: 4 },
+  WEEK: { tab: "최근 7일 · 1시간 단위", name: "최근 7일", stepMinutes: 60, labelEvery: 24 },
+};
+const monthDay = (value: string) => {
+  const date = new Date(value);
+  return `${date.getMonth() + 1}/${date.getDate()}`;
+};
 
 const formatNumber = (value: number) => value.toLocaleString("ko-KR");
 const formatMs = (value: number) => `${formatNumber(Math.round(value))}ms`;
@@ -131,9 +144,11 @@ export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
               [갱신 실패] {error} · 마지막으로 받은 숫자를 보여 주는 중
             </p>
           )}
-          <KpiRow lastHour={data.lastHour} lastDay={data.lastDay} />
+          <KpiRow lastHour={data.lastHour} lastDay={data.lastDay} lastWeek={data.lastWeek} />
           <TrendSection
-            points={range === "HOUR" ? data.recentTrend : data.trend}
+            points={
+              range === "HOUR" ? data.recentTrend : range === "WEEK" ? data.weekTrend : data.trend
+            }
             range={range}
             onRangeChange={setRange}
           />
@@ -193,9 +208,11 @@ function DatabaseBadge({ status }: { status: ApiDashboard["database"] }) {
 function KpiRow({
   lastHour,
   lastDay,
+  lastWeek,
 }: {
   lastHour: ApiDashboardSummary;
   lastDay: ApiDashboardSummary;
+  lastWeek: ApiDashboardSummary;
 }) {
   const tiles: {
     label: string;
@@ -209,7 +226,7 @@ function KpiRow({
       label: "요청 수",
       icon: Activity,
       value: `${formatNumber(lastHour.requests)}건`,
-      sub: `24시간 ${formatNumber(lastDay.requests)}건`,
+      sub: `24시간 ${formatNumber(lastDay.requests)}건 · 7일 ${formatNumber(lastWeek.requests)}건`,
       help: "API가 처리한 요청 개수",
     },
     {
@@ -270,13 +287,13 @@ function TrendSection({
   onRangeChange: (range: Range) => void;
 }) {
   const [showTable, setShowTable] = useState(false);
-  const hourly = range === "DAY";
-  const labels = points.map((point) => clock(point.startAt));
-  const step = hourly ? 60 : 5;
+  const config = RANGES[range];
+  const week = range === "WEEK";
+  // 일주일은 아래쪽에 날짜(10/24), 나머지는 시각(13:00)을 보여 줌.
+  const labels = points.map((point) => (week ? monthDay(point.startAt) : clock(point.startAt)));
   const titles = points.map((point) => {
-    const start = new Date(point.startAt);
-    const end = new Date(start.getTime() + step * 60_000);
-    return `${clock(point.startAt)} ~ ${clock(end.toISOString())}`;
+    const end = new Date(new Date(point.startAt).getTime() + config.stepMinutes * 60_000);
+    return `${week ? `${monthDay(point.startAt)} ` : ""}${clock(point.startAt)} ~ ${clock(end.toISOString())}`;
   });
   const hasData = points.some((point) => point.requests > 0);
   // 요청이 없던 구간의 응답 시간은 0이 아니라 "기록 없음"이라 선을 끊음.
@@ -318,12 +335,7 @@ function TrendSection({
       {/* 기간 선택과 표 보기는 그래프 위 한 줄에 모음. */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div role="tablist" aria-label="기간" className="flex gap-1 rounded-lg bg-slate-100 p-1">
-          {(
-            [
-              ["HOUR", "최근 1시간 · 5분 단위"],
-              ["DAY", "최근 24시간 · 1시간 단위"],
-            ] as const
-          ).map(([value, label]) => (
+          {(Object.keys(RANGES) as Range[]).map((value) => (
             <button
               key={value}
               type="button"
@@ -332,7 +344,7 @@ function TrendSection({
               onClick={() => onRangeChange(value)}
               className={`cursor-pointer rounded-md px-3 py-1.5 text-xs font-semibold transition ${range === value ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
             >
-              {label}
+              {RANGES[value].tab}
             </button>
           ))}
         </div>
@@ -361,8 +373,9 @@ function TrendSection({
               tooltipTitles={titles}
               series={requestSeries}
               formatValue={(value) => `${formatNumber(Math.round(value))}`}
-              labelEvery={hourly ? 4 : 2}
-              ariaLabel={`${hourly ? "최근 24시간" : "최근 1시간"} 요청과 오류 추이`}
+              labelEvery={config.labelEvery}
+              showMarkers={!week}
+              ariaLabel={`${config.name} 요청과 오류 추이`}
             />
           </ChartCard>
           <ChartCard title="응답 시간" unit="ms" series={responseSeries}>
@@ -371,8 +384,9 @@ function TrendSection({
               tooltipTitles={titles}
               series={responseSeries}
               formatValue={formatMs}
-              labelEvery={hourly ? 4 : 2}
-              ariaLabel={`${hourly ? "최근 24시간" : "최근 1시간"} 평균·p95 응답 시간 추이`}
+              labelEvery={config.labelEvery}
+              showMarkers={!week}
+              ariaLabel={`${config.name} 평균·p95 응답 시간 추이`}
             />
           </ChartCard>
         </div>

@@ -47,10 +47,13 @@ export type ApiDashboard = {
   servers: ApiDashboardServer[];
   lastHour: ApiDashboardSummary;
   lastDay: ApiDashboardSummary;
+  lastWeek: ApiDashboardSummary;
   // 최근 24시간 1시간 단위 24점
   trend: ApiDashboardTrendPoint[];
   // 최근 1시간 5분 단위 12점
   recentTrend: ApiDashboardTrendPoint[];
+  // 최근 7일 1시간 단위 168점(DB의 1시간 요약)
+  weekTrend: ApiDashboardTrendPoint[];
   topEndpoints: ApiDashboardEndpoint[];
   slowEndpoints: ApiDashboardEndpoint[];
 };

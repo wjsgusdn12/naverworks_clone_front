@@ -45,6 +45,7 @@ export function LineChart({
   formatValue,
   labelEvery,
   ariaLabel,
+  showMarkers = true,
 }: {
   // 아래쪽 시간 글자(점마다 하나)
   labels: string[];
@@ -55,6 +56,8 @@ export function LineChart({
   // 아래쪽 글자를 몇 칸마다 보여 줄지
   labelEvery: number;
   ariaLabel: string;
+  // false면 점을 숨기고 마우스가 올라간 시점만 점을 보여 줌(일주일 168점처럼 촘촘할 때).
+  showMarkers?: boolean;
 }) {
   const { ref, width } = useElementWidth();
   const [hovered, setHovered] = useState<number | null>(null);
@@ -148,17 +151,17 @@ export function LineChart({
                 strokeLinecap="round"
                 strokeDasharray={item.dashed ? "6 5" : undefined}
               />
-              {/* 각 시점의 점. 흰 테두리로 선·다른 점과 겹쳐도 구분되게 함. */}
+              {/* 각 시점의 점(모든 계열 같은 모양: 채운 점 + 흰 테두리). 점이 너무 촘촘하면 마우스 위치만 표시. */}
               {item.values.map((value, index) =>
-                value === null ? null : (
+                value === null || (!showMarkers && hovered !== index) ? null : (
                   <circle
                     key={index}
                     cx={x(index)}
                     cy={y(value)}
-                    r={hovered === index ? 5.5 : 4}
-                    fill={item.dashed ? "#fff" : item.color}
-                    stroke={item.dashed ? item.color : "#fff"}
-                    strokeWidth={2}
+                    r={hovered === index ? 5 : 4}
+                    fill={item.color}
+                    stroke="#fff"
+                    strokeWidth={1.5}
                   />
                 ),
               )}
@@ -218,14 +221,7 @@ export function LegendSwatch({ color, dashed }: { color: string; dashed?: boolea
         strokeDasharray={dashed ? "4 3" : undefined}
         strokeLinecap="round"
       />
-      <circle
-        cx="9"
-        cy="4"
-        r="2.5"
-        fill={dashed ? "#fff" : color}
-        stroke={color}
-        strokeWidth="1.5"
-      />
+      <circle cx="9" cy="4" r="2.5" fill={color} stroke="#fff" strokeWidth="1" />
     </svg>
   );
 }
