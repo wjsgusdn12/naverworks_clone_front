@@ -40,14 +40,20 @@ const RANGES: Record<
   Range,
   { tab: string; name: string; stepMinutes: number; labelEvery: number }
 > = {
-  HOUR: { tab: "최근 1시간 · 5분 단위", name: "최근 1시간", stepMinutes: 5, labelEvery: 2 },
-  DAY: { tab: "최근 24시간 · 1시간 단위", name: "최근 24시간", stepMinutes: 60, labelEvery: 4 },
-  WEEK: { tab: "최근 7일 · 1시간 단위", name: "최근 7일", stepMinutes: 60, labelEvery: 24 },
+  HOUR: { tab: "이번 시간 · 5분 단위", name: "이번 시간", stepMinutes: 5, labelEvery: 2 },
+  DAY: { tab: "오늘 · 1시간 단위", name: "오늘", stepMinutes: 60, labelEvery: 3 },
+  WEEK: { tab: "이번 주 · 1시간 단위", name: "이번 주", stepMinutes: 60, labelEvery: 24 },
 };
+const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
+// "10/27(화)"
 const monthDay = (value: string) => {
   const date = new Date(value);
-  return `${date.getMonth() + 1}/${date.getDate()}`;
+  return `${date.getMonth() + 1}/${date.getDate()}(${WEEKDAYS[date.getDay()]})`;
 };
+// 구간의 마지막 분(시작 + 간격 - 1분). 14:00부터 5분이면 14:04, 1시간이면 14:59.
+const lastMinute = (start: string, stepMinutes: number) =>
+  new Date(new Date(start).getTime() + (stepMinutes - 1) * 60_000).toISOString();
+const hourOnly = (value: string) => `${String(new Date(value).getHours()).padStart(2, "0")}시`;
 
 const formatNumber = (value: number) => value.toLocaleString("ko-KR");
 const formatMs = (value: number) => `${formatNumber(Math.round(value))}ms`;
@@ -94,6 +100,13 @@ export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
     return () => window.clearInterval(timer);
   }, [load]);
 
+  // 오늘 중 이미 지난(지금 포함) 시간 수. API 순위 추이선에서 그 뒤 시간은 비움.
+  const pastHours = data
+    ? data.dayTrend.filter(
+        (point) => new Date(point.startAt).getTime() <= new Date(data.generatedAt).getTime(),
+      ).length
+    : 0;
+
   return (
     <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -106,7 +119,7 @@ export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
             </span>
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            모든 API 요청을 5분 단위로 모아 최근 1시간·24시간 흐름을 보여 줍니다.
+            모든 API 요청을 모아 이번 시간·오늘·이번 주(일~토) 흐름을 보여 줍니다.
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-500">
@@ -144,26 +157,29 @@ export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
               [갱신 실패] {error} · 마지막으로 받은 숫자를 보여 주는 중
             </p>
           )}
-          <KpiRow lastHour={data.lastHour} lastDay={data.lastDay} lastWeek={data.lastWeek} />
+          <KpiRow thisHour={data.thisHour} today={data.today} thisWeek={data.thisWeek} />
           <TrendSection
             points={
-              range === "HOUR" ? data.recentTrend : range === "WEEK" ? data.weekTrend : data.trend
+              range === "HOUR" ? data.hourTrend : range === "WEEK" ? data.weekTrend : data.dayTrend
             }
             range={range}
+            generatedAt={data.generatedAt}
             onRangeChange={setRange}
           />
           <div className="mt-6 grid gap-6 lg:grid-cols-2">
             <EndpointList
               title="많이 호출된 API"
-              description="최근 24시간 호출 수 · 오른쪽 점선은 시간별 흐름"
+              description="오늘 00:00~23:59 호출 수 · 오른쪽 점선은 시간별 흐름"
               items={data.topEndpoints}
               metric="requests"
+              pastHours={pastHours}
             />
             <EndpointList
               title="느린 API"
-              description="최근 24시간 평균 응답 시간(5회 이상 호출) · 점선은 시간별 평균"
+              description="오늘 00:00~23:59 평균 응답 시간(5회 이상 호출) · 점선은 시간별 평균"
               items={data.slowEndpoints}
               metric="avgMs"
+              pastHours={pastHours}
             />
           </div>
           <ServerList servers={data.servers} mode={data.mode} />
@@ -204,15 +220,15 @@ function DatabaseBadge({ status }: { status: ApiDashboard["database"] }) {
   );
 }
 
-// 큰 숫자 4개: 요청 수 · 서버 오류율 · 평균 응답 · p95 응답. 큰 글씨는 최근 1시간, 작은 글씨는 24시간.
+// 큰 숫자 4개: 요청 수 · 서버 오류율 · 평균 응답 · p95 응답. 큰 글씨는 이번 시간, 작은 글씨는 오늘·이번 주.
 function KpiRow({
-  lastHour,
-  lastDay,
-  lastWeek,
+  thisHour,
+  today,
+  thisWeek,
 }: {
-  lastHour: ApiDashboardSummary;
-  lastDay: ApiDashboardSummary;
-  lastWeek: ApiDashboardSummary;
+  thisHour: ApiDashboardSummary;
+  today: ApiDashboardSummary;
+  thisWeek: ApiDashboardSummary;
 }) {
   const tiles: {
     label: string;
@@ -225,30 +241,30 @@ function KpiRow({
     {
       label: "요청 수",
       icon: Activity,
-      value: `${formatNumber(lastHour.requests)}건`,
-      sub: `24시간 ${formatNumber(lastDay.requests)}건 · 7일 ${formatNumber(lastWeek.requests)}건`,
+      value: `${formatNumber(thisHour.requests)}건`,
+      sub: `오늘 ${formatNumber(today.requests)}건 · 이번 주 ${formatNumber(thisWeek.requests)}건`,
       help: "API가 처리한 요청 개수",
     },
     {
       label: "서버 오류율",
-      icon: lastHour.serverErrors > 0 ? AlertTriangle : CheckCircle2,
-      value: `${lastHour.errorRate}%`,
-      sub: `5xx ${formatNumber(lastHour.serverErrors)}건 · 4xx ${formatNumber(lastHour.clientErrors)}건`,
+      icon: thisHour.serverErrors > 0 ? AlertTriangle : CheckCircle2,
+      value: `${thisHour.errorRate}%`,
+      sub: `5xx ${formatNumber(thisHour.serverErrors)}건 · 4xx ${formatNumber(thisHour.clientErrors)}건`,
       help: "서버 잘못(5xx)으로 실패한 비율. 4xx는 잘못된 요청·권한 없음처럼 요청 쪽 문제",
-      warn: lastHour.serverErrors > 0,
+      warn: thisHour.serverErrors > 0,
     },
     {
       label: "평균 응답",
       icon: Timer,
-      value: formatMs(lastHour.avgMs),
-      sub: `24시간 ${formatMs(lastDay.avgMs)}`,
+      value: formatMs(thisHour.avgMs),
+      sub: `오늘 ${formatMs(today.avgMs)}`,
       help: "요청 하나를 처리하는 데 걸린 평균 시간",
     },
     {
       label: "p95 응답",
       icon: Gauge,
-      value: formatP95(lastHour.p95Ms),
-      sub: `24시간 ${formatP95(lastDay.p95Ms)}`,
+      value: formatP95(thisHour.p95Ms),
+      sub: `오늘 ${formatP95(today.p95Ms)}`,
       help: "100건 중 95건이 이 시간 안에 끝났다는 뜻. 평균에 묻히는 느린 요청을 잡아내는 숫자",
     },
   ];
@@ -262,7 +278,7 @@ function KpiRow({
               className={tile.warn ? "text-red-500" : "text-slate-400"}
               aria-hidden="true"
             />
-            {tile.label} · 최근 1시간
+            {tile.label} · 이번 시간
             <Tooltip label={tile.help} multiline className="ml-auto">
               <Info size={13} className="text-slate-300" aria-label={tile.help} />
             </Tooltip>
@@ -275,43 +291,70 @@ function KpiRow({
   );
 }
 
-// 추이 영역: 기간 선택(최근 1시간 5분 단위 / 최근 24시간 1시간 단위) + 그래프 2개 + 표로 보기.
+// 추이 영역: 기간 선택(이번 시간 5분 단위 / 오늘 1시간 단위 / 이번 주 1시간 단위) + 그래프 2개 + 표로 보기.
+// 아직 오지 않은 시간은 0이 아니라 빈칸이라 선이 "지금"에서 끊김.
 // 요청 수와 응답 시간은 단위가 달라(건 vs ms) 한 그래프에 섞지 않고 나눠 그림.
 function TrendSection({
   points,
   range,
+  generatedAt,
   onRangeChange,
 }: {
   points: ApiDashboardTrendPoint[];
   range: Range;
+  // 이 시각보다 뒤에 시작하는 점은 아직 오지 않은 시간
+  generatedAt: string;
   onRangeChange: (range: Range) => void;
 }) {
   const [showTable, setShowTable] = useState(false);
   const config = RANGES[range];
   const week = range === "WEEK";
-  // 일주일은 아래쪽에 날짜(10/24), 나머지는 시각(13:00)을 보여 줌.
-  const labels = points.map((point) => (week ? monthDay(point.startAt) : clock(point.startAt)));
-  const titles = points.map((point) => {
-    const end = new Date(new Date(point.startAt).getTime() + config.stepMinutes * 60_000);
-    return `${week ? `${monthDay(point.startAt)} ` : ""}${clock(point.startAt)} ~ ${clock(end.toISOString())}`;
-  });
+  // 아래쪽 글자: 이번 시간은 14:00, 오늘은 03시, 이번 주는 10/27(화)
+  const labels = points.map((point) =>
+    week
+      ? monthDay(point.startAt)
+      : range === "DAY"
+        ? hourOnly(point.startAt)
+        : clock(point.startAt),
+  );
+  // 점마다 "14:05 ~ 14:09" / "13:00 ~ 13:59" / "10/27(화) 13:00 ~ 13:59"
+  const titles = points.map(
+    (point) =>
+      `${week ? `${monthDay(point.startAt)} ` : ""}${clock(point.startAt)} ~ ${clock(lastMinute(point.startAt, config.stepMinutes))}`,
+  );
+  // 화면 위에 보일 전체 구간: 14:00 ~ 14:59 / 10/30(금) 00:00 ~ 23:59 / 10/25(일) 00시 ~ 10/31(토) 23시
+  const first = points[0]?.startAt;
+  const last = points.at(-1)?.startAt;
+  const period =
+    !first || !last
+      ? ""
+      : week
+        ? `${monthDay(first)} ${hourOnly(first)} ~ ${monthDay(last)} ${hourOnly(last)}`
+        : range === "DAY"
+          ? `${monthDay(first)} ${clock(first)} ~ ${clock(lastMinute(last, config.stepMinutes))}`
+          : `${clock(first)} ~ ${clock(lastMinute(last, config.stepMinutes))}`;
+  const now = new Date(generatedAt).getTime();
+  const isFuture = (point: ApiDashboardTrendPoint) => new Date(point.startAt).getTime() > now;
+  const pastPoints = points.filter((point) => !isFuture(point));
   const hasData = points.some((point) => point.requests > 0);
-  // 요청이 없던 구간의 응답 시간은 0이 아니라 "기록 없음"이라 선을 끊음.
+  // 아직 오지 않은 시간은 빈칸. 요청이 없던 구간의 응답 시간도 0이 아니라 "기록 없음"이라 선을 끊음.
+  const countValue = (point: ApiDashboardTrendPoint, value: number) =>
+    isFuture(point) ? null : value;
   const responseValue = (point: ApiDashboardTrendPoint, value: number) =>
-    point.requests === 0 ? null : value < 0 ? 5000 : value;
+    isFuture(point) || point.requests === 0 ? null : value < 0 ? 5000 : value;
   const requestSeries: LineSeries[] = [
     {
       key: "requests",
       label: "요청",
       color: REQUEST_COLOR,
-      values: points.map((point) => point.requests),
+      values: points.map((point) => countValue(point, point.requests)),
     },
     {
       key: "errors",
       label: "오류(4xx·5xx)",
       color: ERROR_COLOR,
       dashed: true,
-      values: points.map((point) => point.errors),
+      values: points.map((point) => countValue(point, point.errors)),
     },
   ];
   const responseSeries: LineSeries[] = [
@@ -348,6 +391,7 @@ function TrendSection({
             </button>
           ))}
         </div>
+        <span className="ml-auto text-xs font-medium text-slate-500">{period}</span>
         <button
           type="button"
           aria-pressed={showTable}
@@ -364,7 +408,7 @@ function TrendSection({
           이 기간에 기록된 요청이 없습니다.
         </p>
       ) : showTable ? (
-        <TrendTable points={points} titles={titles} />
+        <TrendTable points={pastPoints} titles={titles} />
       ) : (
         <div className="mt-4 grid gap-6 xl:grid-cols-2">
           <ChartCard title="요청 · 오류" unit="건" series={requestSeries}>
@@ -483,17 +527,20 @@ function EndpointName({ endpoint }: { endpoint: string }) {
   );
 }
 
-// API 순위. 막대 대신 오른쪽에 24시간 점선 추이선을 붙여 "언제 많이/느리게 불렸는지"를 함께 보여 줌.
+// API 순위(오늘 기준). 막대 대신 오른쪽에 오늘 0~23시 점선 추이선을 붙여 "언제 많이/느리게 불렸는지"를 함께 보여 줌.
 function EndpointList({
   title,
   description,
   items,
   metric,
+  pastHours,
 }: {
   title: string;
   description: string;
   items: ApiDashboardEndpoint[];
   metric: "requests" | "avgMs";
+  // 오늘 중 이미 지난(지금 포함) 시간 수. 그 뒤는 아직 오지 않아 추이선을 비움.
+  pastHours: number;
 }) {
   return (
     <div>
@@ -506,12 +553,12 @@ function EndpointList({
       ) : (
         <ol className="mt-2 divide-y divide-slate-100">
           {items.map((item, index) => {
-            const trend =
-              metric === "requests"
-                ? item.hourlyRequests
-                : item.hourlyAvgMs.map((value, hour) =>
-                    item.hourlyRequests[hour] === 0 ? null : value,
-                  );
+            const trend = (metric === "requests" ? item.hourlyRequests : item.hourlyAvgMs).map(
+              (value, hour) =>
+                hour >= pastHours || (metric === "avgMs" && item.hourlyRequests[hour] === 0)
+                  ? null
+                  : value,
+            );
             return (
               <li key={item.endpoint} className="flex items-center gap-3 py-2">
                 <span className="w-4 shrink-0 text-center text-xs font-semibold text-slate-400">
@@ -523,7 +570,7 @@ function EndpointList({
                 <Sparkline
                   values={trend}
                   color={metric === "requests" ? REQUEST_COLOR : P95_COLOR}
-                  label={`${item.endpoint} 최근 24시간 ${metric === "requests" ? "호출 수" : "평균 응답 시간"} 추이`}
+                  label={`${item.endpoint} 오늘 ${metric === "requests" ? "호출 수" : "평균 응답 시간"} 추이`}
                 />
                 <span className="w-20 shrink-0 text-right text-xs tabular-nums">
                   <span className="font-semibold text-slate-800">

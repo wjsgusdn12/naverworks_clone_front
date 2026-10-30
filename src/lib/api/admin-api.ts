@@ -27,7 +27,7 @@ export type ApiDashboardEndpoint = {
   requests: number;
   errors: number;
   avgMs: number;
-  // 최근 24시간 1시간 단위 값(작은 추이선용)
+  // 오늘 0~23시 1시간 단위 값(작은 추이선용)
   hourlyRequests: number[];
   hourlyAvgMs: number[];
 };
@@ -42,17 +42,19 @@ export type ApiDashboardServer = {
 };
 export type ApiDashboard = {
   generatedAt: string;
+  // 이번 시간·오늘·이번 주를 자르는 기준 시간대(예: Asia/Seoul)
+  zone: string;
   mode: "SHARED" | "LOCAL";
   database: "UP" | "DOWN";
   servers: ApiDashboardServer[];
-  lastHour: ApiDashboardSummary;
-  lastDay: ApiDashboardSummary;
-  lastWeek: ApiDashboardSummary;
-  // 최근 24시간 1시간 단위 24점
-  trend: ApiDashboardTrendPoint[];
-  // 최근 1시간 5분 단위 12점
-  recentTrend: ApiDashboardTrendPoint[];
-  // 최근 7일 1시간 단위 168점(DB의 1시간 요약)
+  thisHour: ApiDashboardSummary;
+  today: ApiDashboardSummary;
+  thisWeek: ApiDashboardSummary;
+  // 이번 시간 ??:00~??:59 5분 단위 12점
+  hourTrend: ApiDashboardTrendPoint[];
+  // 오늘 00:00~23:59 1시간 단위 24점
+  dayTrend: ApiDashboardTrendPoint[];
+  // 이번 주 일 00시~토 23시 1시간 단위 168점(DB의 1시간 요약)
   weekTrend: ApiDashboardTrendPoint[];
   topEndpoints: ApiDashboardEndpoint[];
   slowEndpoints: ApiDashboardEndpoint[];

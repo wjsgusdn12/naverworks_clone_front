@@ -117,7 +117,7 @@ export function LineChart({
           ))}
           {/* 아래쪽 시간 */}
           {labels.map((label, index) =>
-            index % labelEvery === 0 || index === count - 1 ? (
+            index % labelEvery === 0 && label ? (
               <text
                 key={`${label}-${index}`}
                 x={x(index)}
