@@ -85,10 +85,10 @@ export type InviteCodeResponse = { companyName: string; inviteCode: string };
 export type RecoverCredentials =
   { displayName: string; email: string; phoneNumber: string } | { recoveryCode: string };
 
+// 계정 찾기 1단계 결과(아이디 찾기). 일반 아이디는 그대로, 이메일 형식 아이디는 가려서 옴.
 export type RecoverLookupResult = {
-  maskedLoginId: string;
+  loginId: string;
   displayName: string;
-  canReset: boolean;
 };
 
 // HTTP 상태와 백엔드 오류 코드를 함께 보관해 화면별 안내 문구를 결정.

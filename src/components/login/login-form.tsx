@@ -236,7 +236,7 @@ export function LoginForm({
           onClick={onRecover}
           className="cursor-pointer rounded-sm transition hover:text-blue-600 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
         >
-          계정 찾기
+          아이디·비밀번호 찾기
         </button>
         <span aria-hidden="true" className="text-slate-300">
           |

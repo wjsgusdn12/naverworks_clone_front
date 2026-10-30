@@ -362,9 +362,9 @@ export function SignupForm({ onToast, onSignedUp, onBackToLogin }: SignupFormPro
         {/* 이메일·전화번호 쓰임새와 화면 표시 방식 안내. 예시는 가짜 값. */}
         <div className="rounded-lg bg-slate-50 px-3.5 py-3 text-xs leading-5 text-slate-500">
           <p>
-            이메일과 전화번호는 <b className="font-semibold text-slate-700">비밀번호 찾기</b>에
-            쓰입니다. 둘 다 입력해야 이름·이메일·전화번호로 비밀번호를 찾을 수 있고, 하나라도 비우면
-            복구 코드로만 찾을 수 있습니다.
+            이메일과 전화번호는 <b className="font-semibold text-slate-700">아이디·비밀번호 찾기</b>
+            에 쓰입니다. 둘 다 입력해야 이름·이메일·전화번호로 아이디와 비밀번호를 찾을 수 있고,
+            하나라도 비우면 복구 코드로만 찾을 수 있습니다.
           </p>
           <p className="mt-1.5">
             프로젝트 안에서는 가려서 표시됩니다. 이메일은 @ 앞 4자 이상이어야 합니다. 예)

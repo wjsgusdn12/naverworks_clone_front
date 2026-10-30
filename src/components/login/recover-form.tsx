@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, EyeOff, KeyRound, UserRound } from "lucide-react";
+import { Check, Copy, Eye, EyeOff, KeyRound, UserRound } from "lucide-react";
 import { FormEvent, useState } from "react";
 import { CustomSelect } from "@/components/common/custom-select";
 import { LoadingInline } from "@/components/common/loading";
@@ -19,7 +19,8 @@ type RecoverFormProps = {
 };
 
 type Method = "IDENTITY" | "RECOVERY_CODE";
-type Step = "lookup" | "password";
+// lookup: 정보 입력 → found: 찾은 아이디 확인 → password: 새 비밀번호 설정
+type Step = "lookup" | "found" | "password";
 
 const methodOptions: { value: Method; label: string; description: string }[] = [
   {
@@ -49,6 +50,18 @@ export function RecoverForm({ onToast, onReset, onBackToLogin }: RecoverFormProp
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // 찾은 아이디 복사 완료 표시(잠깐 체크 아이콘).
+  const [copied, setCopied] = useState(false);
+
+  const copyLoginId = async (loginId: string) => {
+    try {
+      await navigator.clipboard.writeText(loginId);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      onToast("아이디를 복사하지 못했습니다. 브라우저의 클립보드 권한을 확인해 주세요.");
+    }
+  };
 
   const selectedMethod =
     methodOptions.find((option) => option.value === method) ?? methodOptions[0];
@@ -79,7 +92,7 @@ export function RecoverForm({ onToast, onReset, onBackToLogin }: RecoverFormProp
     try {
       setAccount(await authApi.recoverLookup(input));
       setCredentials(input);
-      setStep("password");
+      setStep("found");
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "계정을 확인하지 못했습니다.";
       setError(message);
@@ -143,11 +156,15 @@ export function RecoverForm({ onToast, onReset, onBackToLogin }: RecoverFormProp
     <section className="w-full max-w-[420px] rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_12px_36px_rgba(15,23,42,0.08)] sm:p-10">
       <div className="mb-7 text-center">
         <p className="text-xs font-semibold tracking-[0.2em] text-blue-600">NAVER WORKS CLONE</p>
-        <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-900">계정 찾기</h1>
+        <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-900">
+          아이디·비밀번호 찾기
+        </h1>
         <p className="mt-2 text-sm text-slate-500">
           {step === "lookup"
             ? "계정을 찾을 방법을 고르고 입력해 주세요."
-            : "확인된 계정의 새 비밀번호를 설정해 주세요."}
+            : step === "found"
+              ? "가입한 아이디를 찾았습니다."
+              : "확인된 계정의 새 비밀번호를 설정해 주세요."}
         </p>
       </div>
 
@@ -232,16 +249,56 @@ export function RecoverForm({ onToast, onReset, onBackToLogin }: RecoverFormProp
         </form>
       )}
 
-      {step === "password" && account && (
-        // 확인된 계정. 아이디는 일부만 보여 줌.
+      {step !== "lookup" && account && (
+        // 찾은 계정. 일반 아이디는 전체, 이메일 형식 아이디는 가려서 옴.
         <div className="mb-4 flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-slate-600 ring-1 ring-slate-200">
             <UserRound size={18} aria-hidden="true" />
           </span>
-          <span className="min-w-0">
+          <span className="min-w-0 flex-1">
             <b className="block truncate text-sm text-slate-900">{account.displayName}</b>
-            <span className="block font-mono text-xs text-slate-500">{account.maskedLoginId}</span>
+            <span className="block truncate font-mono text-sm text-slate-700">
+              {account.loginId}
+            </span>
           </span>
+          {/* 가린 아이디는 복사해도 쓸모가 없어 일반 아이디일 때만 복사 버튼을 둠. */}
+          {!account.loginId.includes("*") && (
+            <button
+              type="button"
+              aria-label="아이디 복사"
+              onClick={() => void copyLoginId(account.loginId)}
+              className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md text-slate-400 transition hover:bg-white hover:text-slate-700"
+            >
+              {copied ? (
+                <Check size={15} aria-hidden="true" className="text-emerald-600" />
+              ) : (
+                <Copy size={15} aria-hidden="true" />
+              )}
+            </button>
+          )}
+        </div>
+      )}
+
+      {step === "found" && (
+        // 아이디만 잊었다면 바로 로그인, 비밀번호도 잊었다면 재설정으로.
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={onBackToLogin}
+            className="flex h-12 cursor-pointer items-center justify-center rounded-lg border border-slate-300 bg-white text-sm font-semibold text-slate-700 transition hover:border-blue-400 hover:text-blue-600"
+          >
+            로그인하러 가기
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setError(null);
+              setStep("password");
+            }}
+            className="flex h-12 cursor-pointer items-center justify-center rounded-lg bg-blue-600 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-md"
+          >
+            비밀번호 재설정
+          </button>
         </div>
       )}
 

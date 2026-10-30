@@ -17,7 +17,7 @@ export default function RecoverPage() {
   const [nextRecoveryCode, setNextRecoveryCode] = useState<string | null>(null);
 
   useEffect(() => {
-    // 로그인 상태면 계정 찾기가 필요 없으니 홈으로.
+    // 로그인 상태면 아이디·비밀번호 찾기가 필요 없으니 홈으로.
     if (status === "authenticated") router.replace("/home");
   }, [router, status]);
 
