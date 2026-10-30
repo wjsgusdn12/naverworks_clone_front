@@ -28,6 +28,7 @@ import type { PendingAttachment } from "@/components/chat/attachment-tray";
 import { FileDropOverlay } from "@/components/chat/file-drop-overlay";
 import { ImageViewer, type ViewerImage } from "@/components/chat/image-viewer";
 import { FilePreviewModal, type PreviewFile } from "@/components/chat/file-preview-modal";
+import { MessageSearchPanel } from "@/components/chat/message-search-panel";
 import { useAttachmentDownload } from "@/hooks/use-attachment";
 import {
   formatFileSize,
@@ -61,6 +62,7 @@ import {
   type ChatMessage,
   type ChatNotice,
   type ChatRoom,
+  type ChatSearchRoom,
 } from "@/lib/api/chat-api";
 import {
   addressBookApi,
@@ -176,13 +178,27 @@ function MessageContent() {
   const [attachmentSending, setAttachmentSending] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   // 사진 크게 보기. 연 방이 바뀌면 보여 주지 않음.
+  // fromSearch: 상단 검색 결과에서 연 경우 그 방(지금 연 방과 달라도 보여 주고, "대화에서 보기"는 그 방으로 이동).
   const [viewer, setViewer] = useState<{
     roomId: number;
     images: ViewerImage[];
     index: number;
+    fromSearch?: ChatSearchRoom;
   } | null>(null);
   // 파일 미리보기 모달. 연 방이 바뀌면 보여 주지 않음.
-  const [filePreview, setFilePreview] = useState<(PreviewFile & { roomId: number }) | null>(null);
+  const [filePreview, setFilePreview] = useState<
+    (PreviewFile & { roomId: number; fromSearch?: ChatSearchRoom }) | null
+  >(null);
+  // 상단 검색 실행 결과. 값이 있으면 오른쪽에 대화 대신 검색 결과를 보여 줌.
+  // id는 같은 키워드로 다시 검색해도 결과를 새로 받도록 매번 바뀌는 번호.
+  const [searchRun, setSearchRun] = useState<{ keyword: string; id: number } | null>(null);
+  // 검색 결과에서 다른 방의 메시지를 누르면, 그 방의 첫 로딩이 끝난 뒤 이 메시지로 이동.
+  // (바로 이동하면 뒤이어 도착한 첫 로딩 결과가 이동한 위치를 덮어씀.)
+  const pendingSearchJumpRef = useRef<{
+    roomId: number;
+    messageId: number;
+    loadingSeen: boolean;
+  } | null>(null);
   // 파일을 대화 영역 위로 끌고 있는지. 안쪽 요소를 지날 때 생기는 들어옴·나감 이벤트를 세어 깜빡임 방지.
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const dragDepthRef = useRef(0);
@@ -1089,18 +1105,16 @@ function MessageContent() {
       .finally(() => setContactsLoaded(true));
   }, [accessToken, member?.membershipId, showToast, status]);
 
-  const filteredRooms = sortRooms(
-    rooms.filter((room) =>
-      `${room.name ?? ""} ${room.directDisplayName ?? ""} ${room.type === "SELF" ? (member?.displayName ?? "") : ""}`
-        .toLowerCase()
-        .includes(search.toLowerCase()),
-    ),
-    roomSort,
-  );
+  // 상단 검색칸은 입력 중에 목록을 거르지 않음(검색 실행 시 오른쪽에 결과를 보여 줌).
+  const filteredRooms = sortRooms(rooms, roomSort);
   const groupRooms = filteredRooms.filter((room) => room.type === "GROUP");
   const generalRooms = filteredRooms.filter((room) => room.type !== "GROUP");
   // 방 항목(memo)에 넘기는 콜백은 방마다 새로 만들지 않고 고정 함수 하나를 공유(방 ID를 인자로 받음).
-  const selectRoom = useCallback((roomId: number) => setSelectedRoomId(roomId), []);
+  // 왼쪽 목록에서 방을 고르면 검색 결과는 닫고 그 방을 보여 줌.
+  const selectRoom = useCallback((roomId: number) => {
+    setSearchRun(null);
+    setSelectedRoomId(roomId);
+  }, []);
   const toggleRoomMenu = useCallback(
     (roomId: number) => setRoomMenuId((current) => (current === roomId ? null : roomId)),
     [],
@@ -1995,6 +2009,51 @@ function MessageContent() {
   const stableJumpToOriginal = useStableCallback(
     (messageId: number) => void jumpToOriginal(messageId),
   );
+
+  // 검색 결과의 메시지로 이동. 숨긴 방이면 먼저 숨김을 풀어 왼쪽 목록에 다시 띄움.
+  const openSearchResult = async (room: ChatSearchRoom, messageId: number) => {
+    if (!accessToken) return;
+    if (room.hidden) {
+      try {
+        await chatApi.unhide(accessToken, room.id);
+        await loadRooms();
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "숨긴 방을 열지 못했습니다.");
+        return;
+      }
+    }
+    setSearchRun(null);
+    if (room.id === selectedRoomId) {
+      void jumpToOriginal(messageId);
+      return;
+    }
+    pendingSearchJumpRef.current = { roomId: room.id, messageId, loadingSeen: false };
+    setSelectedRoomId(room.id);
+  };
+  const stableOpenSearchResult = useStableCallback(
+    (room: ChatSearchRoom, messageId: number) => void openSearchResult(room, messageId),
+  );
+  // 검색 결과로 다른 방을 열었으면, 그 방의 첫 로딩이 시작됐다가 끝난 뒤 메시지 위치로 이동.
+  useEffect(() => {
+    const jump = pendingSearchJumpRef.current;
+    if (!jump || jump.roomId !== selectedRoomId) return;
+    if (isLoadingMessages) {
+      jump.loadingSeen = true;
+      return;
+    }
+    if (!jump.loadingSeen) return;
+    pendingSearchJumpRef.current = null;
+    void Promise.resolve().then(() => stableJumpToOriginal(jump.messageId));
+  }, [isLoadingMessages, selectedRoomId, stableJumpToOriginal]);
+
+  // 검색 실행(Enter 또는 돋보기). 입력 중에는 아무것도 하지 않음.
+  const runSearch = () => {
+    const keyword = search.trim();
+    if (!keyword) return;
+    setGalleryOpen(false);
+    setSearchRun((current) => ({ keyword, id: (current?.id ?? 0) + 1 }));
+  };
+  const closeSearch = useCallback(() => setSearchRun(null), []);
   const stableToggleReaction = useStableCallback(
     (message: ChatMessage, emoji: string) => void toggleReaction(message, emoji),
   );
@@ -2036,15 +2095,30 @@ function MessageContent() {
           onSidebarToggle={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
           isSidebarCollapsed={isSidebarCollapsed}
           headerContent={
-            <label className="flex h-10 w-full max-w-[500px] items-center gap-2 rounded-full bg-slate-100 px-4 text-slate-500">
-              <Search size={18} />
+            <form
+              role="search"
+              onSubmit={(event) => {
+                event.preventDefault();
+                runSearch();
+              }}
+              className="flex h-10 w-full max-w-[500px] items-center gap-2 rounded-full bg-slate-100 px-4 text-slate-500"
+            >
+              <button
+                type="submit"
+                aria-label="검색 실행"
+                className="cursor-pointer rounded-full transition hover:text-blue-600"
+              >
+                <Search size={18} aria-hidden="true" />
+              </button>
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="채팅방, 대화 상대 검색"
+                maxLength={100}
+                placeholder="메시지·파일 이름 검색 (Enter)"
+                aria-label="메시지·파일 이름 검색"
                 className="w-full bg-transparent text-sm outline-none"
               />
-            </label>
+            </form>
           }
         />
       )}
@@ -2077,7 +2151,38 @@ function MessageContent() {
             setHiddenRoomIds(new Set());
           }}
         />
-        <section className={`min-w-0 flex-1 flex-col ${selectedRoom ? "flex" : "hidden"}`}>
+        {searchRun && accessToken && (
+          <MessageSearchPanel
+            key={searchRun.id}
+            accessToken={accessToken}
+            keyword={searchRun.keyword}
+            onClose={closeSearch}
+            onOpenMessage={(item) => stableOpenSearchResult(item.room, item.messageId)}
+            onOpenFile={(item) => {
+              const file = {
+                roomId: item.room.id,
+                attachment: item.attachment,
+                messageId: item.messageId,
+                senderName: item.senderName,
+                createdAt: item.createdAt,
+                fromSearch: item.room,
+              };
+              // 사진은 사진 뷰어로, 그 밖의 파일은 미리보기 모달로.
+              if (item.attachment.kind === "IMAGE")
+                setViewer({
+                  roomId: item.room.id,
+                  images: [file],
+                  index: 0,
+                  fromSearch: item.room,
+                });
+              else setFilePreview(file);
+            }}
+            onDownload={downloadAttachment}
+          />
+        )}
+        <section
+          className={`min-w-0 flex-1 flex-col ${selectedRoom && !searchRun ? "flex" : "hidden"}`}
+        >
           <MessageRoomHeader
             selectedRoom={selectedRoom}
             roomManageOpen={roomManageOpen}
@@ -2354,7 +2459,7 @@ function MessageContent() {
           </div>
         </section>
         {/* 아직 방을 고르지 않았을 때 오른쪽 영역 안내: 목록 로딩 중 → 방 없음 → 방 선택 순으로 구분. */}
-        {!selectedRoom && (
+        {!selectedRoom && !searchRun && (
           <section className="flex min-w-0 flex-1 flex-col items-center justify-center gap-3 text-center text-slate-500">
             {!hasLoadedRooms ? (
               <LoadingState size="md" message="메시지방을 불러오는 중입니다..." />
@@ -2577,23 +2682,31 @@ function MessageContent() {
           showToast={showToast}
         />
       )}
-      {viewer && viewer.roomId === selectedRoomId && (
+      {viewer && (viewer.fromSearch || viewer.roomId === selectedRoomId) && (
         <ImageViewer
           images={viewer.images}
           index={viewer.index}
           onIndexChange={(index) => setViewer((current) => current && { ...current, index })}
           onClose={closeViewer}
           onDownload={downloadAttachment}
-          onOpenMessage={stableJumpToOriginal}
+          onOpenMessage={(messageId) =>
+            viewer.fromSearch
+              ? stableOpenSearchResult(viewer.fromSearch, messageId)
+              : stableJumpToOriginal(messageId)
+          }
         />
       )}
-      {filePreview && filePreview.roomId === selectedRoomId && (
+      {filePreview && (filePreview.fromSearch || filePreview.roomId === selectedRoomId) && (
         <FilePreviewModal
           key={filePreview.attachment.id}
           file={filePreview}
           onClose={closeFilePreview}
           onDownload={downloadAttachment}
-          onOpenMessage={stableJumpToOriginal}
+          onOpenMessage={(messageId) =>
+            filePreview.fromSearch
+              ? stableOpenSearchResult(filePreview.fromSearch, messageId)
+              : stableJumpToOriginal(messageId)
+          }
         />
       )}
       {toast && (

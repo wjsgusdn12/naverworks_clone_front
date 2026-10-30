@@ -73,6 +73,32 @@ export type ChatAttachmentItem = {
 };
 export type ChatAttachmentPage = { items: ChatAttachmentItem[]; nextCursor: number | null };
 
+// 상단 검색 결과가 속한 방. name은 화면에 보일 이름, hidden은 내가 목록에서 숨긴 방인지.
+export type ChatSearchRoom = {
+  id: number;
+  type: "SELF" | "DIRECT" | "GROUP";
+  name: string;
+  hidden: boolean;
+};
+// 상단 검색 [메시지] 한 줄.
+export type ChatMessageSearchItem = {
+  messageId: number;
+  room: ChatSearchRoom;
+  senderMembershipId: number;
+  senderName: string;
+  content: string;
+  createdAt: string;
+};
+// 상단 검색 [파일] 한 줄.
+export type ChatFileSearchItem = {
+  attachment: ChatAttachment;
+  messageId: number;
+  room: ChatSearchRoom;
+  senderName: string;
+  createdAt: string;
+};
+export type ChatSearchPage<T> = { items: T[]; nextCursor: number | null };
+
 // 주소록 "그룹" 탭의 그룹 채팅방 요약. joined는 내가 참여 중, owner는 내가 방장.
 export type ChatGroupSummary = {
   id: number;
@@ -307,6 +333,20 @@ export const chatApi = {
     request<void>(`/api/v1/chatRoom/leave?chatRoomId=${roomId}`, token, { method: "POST" }),
   hide: (token: string, roomId: number) =>
     request<void>(`/api/v1/chatRoom/hide?chatRoomId=${roomId}`, token, { method: "POST" }),
+  // 숨긴 방을 목록에 다시 보이게 함(검색 결과에서 숨긴 방을 열 때).
+  unhide: (token: string, roomId: number) =>
+    request<void>(`/api/v1/chatRoom/unhide?chatRoomId=${roomId}`, token, { method: "POST" }),
+  // 상단 검색: 참여 중인 모든 방에서 키워드가 들어간 메시지 / 파일 이름. 30개씩, cursor는 이전 nextCursor.
+  searchMessages: (token: string, keyword: string, cursor?: number) =>
+    request<ChatSearchPage<ChatMessageSearchItem>>(
+      `/api/v1/chatRoom/search/message?keyword=${encodeURIComponent(keyword)}${cursor ? `&cursor=${cursor}` : ""}`,
+      token,
+    ),
+  searchFiles: (token: string, keyword: string, cursor?: number) =>
+    request<ChatSearchPage<ChatFileSearchItem>>(
+      `/api/v1/chatRoom/search/file?keyword=${encodeURIComponent(keyword)}${cursor ? `&cursor=${cursor}` : ""}`,
+      token,
+    ),
   togglePin: (token: string, roomId: number) =>
     request<void>(`/api/v1/chatRoom/pin/update?chatRoomId=${roomId}`, token, { method: "POST" }),
   updateNotification: (token: string, roomId: number, mode: "ALL" | "MENTION" | "NONE") =>
