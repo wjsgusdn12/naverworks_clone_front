@@ -16,6 +16,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import { CompanyMoveDialog } from "@/components/common/company-move-dialog";
 import { RecoveryCodeDialog } from "@/components/common/recovery-code-dialog";
+import { LoadingInline } from "@/components/common/loading";
 import { StatusSetting } from "@/components/common/status-setting";
 import { UserAvatar } from "@/components/common/user-avatar";
 import { addressBookApi, type MemberStatus } from "@/lib/api/address-book-api";
@@ -259,7 +260,11 @@ export function ProfileMenu({
                   <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" />
                 )}
                 <span className="min-w-0 flex-1 truncate text-slate-500">
-                  {formatMemberStatus(statusType, statusUntil) ?? "설정 안 함"}
+                  {savedStatus === null && liveStatus === undefined ? (
+                    <LoadingInline message="상태를 불러오는 중" size={12} />
+                  ) : (
+                    (formatMemberStatus(statusType, statusUntil) ?? "설정 안 함")
+                  )}
                 </span>
                 <ChevronDown
                   size={16}
