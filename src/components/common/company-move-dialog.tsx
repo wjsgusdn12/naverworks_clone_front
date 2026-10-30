@@ -20,6 +20,12 @@ import {
   type SignupOptions,
 } from "@/lib/api/auth-api";
 
+import {
+  dialogCardClass,
+  dialogOverlayClass,
+  type DialogPlacement,
+} from "@/components/common/dialog-placement";
+
 // 회사 옮기기·회사 만들기 대화상자. 가입의 소속 선택과 같은 세 갈래.
 // 옮기면 이전 회사의 채팅방·즐겨찾기·주소록 그룹에서 모두 빠지므로 경고를 함께 보여 줌.
 type CompanyMoveDialogProps = {
@@ -30,6 +36,8 @@ type CompanyMoveDialogProps = {
   onMoved: (session: AuthTokenResponse) => void;
   onToast: (message: string) => void;
   onClose: () => void;
+  // 프로필 패널에서 열면 beside-profile(패널 옆), 주소록 사이드바에서 열면 화면 가운데.
+  placement?: DialogPlacement;
 };
 
 const joinTypes: JoinTypeChoice[] = [
@@ -57,6 +65,7 @@ export function CompanyMoveDialog({
   onMoved,
   onToast,
   onClose,
+  placement = "center",
 }: CompanyMoveDialogProps) {
   const [joinType, setJoinType] = useState<SignupJoinType>(initialJoinType);
   const [companyName, setCompanyName] = useState("");
@@ -132,13 +141,13 @@ export function CompanyMoveDialog({
       role="dialog"
       aria-modal="true"
       aria-labelledby="company-move-title"
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      className={dialogOverlayClass(placement)}
       onClick={onClose}
     >
       <form
         onSubmit={submit}
         noValidate
-        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+        className={`w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl ${dialogCardClass(placement)}`}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">

@@ -2,6 +2,11 @@
 
 import { Check, Copy, KeyRound, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import {
+  dialogCardClass,
+  dialogOverlayClass,
+  type DialogPlacement,
+} from "@/components/common/dialog-placement";
 
 // 복구 코드를 한 번 보여 주는 대화상자. 가입 직후와 내 프로필의 재발급에서 함께 사용.
 type RecoveryCodeDialogProps = {
@@ -14,6 +19,8 @@ type RecoveryCodeDialogProps = {
   // 있으면 "새로 발급" 버튼을 보여 줌(초대 코드·복구 코드 재발급).
   onRegenerate?: () => void;
   onClose: () => void;
+  // 프로필 패널에서 열면 beside-profile(패널 옆), 그 밖에는 화면 가운데.
+  placement?: DialogPlacement;
 };
 
 export function RecoveryCodeDialog({
@@ -24,6 +31,7 @@ export function RecoveryCodeDialog({
   note = "이 코드는 지금만 보입니다. 잃어버리면 로그인 후 내 프로필에서 새로 발급할 수 있습니다.",
   onRegenerate,
   onClose,
+  placement = "center",
 }: RecoveryCodeDialogProps) {
   const [copied, setCopied] = useState(false);
 
@@ -51,11 +59,11 @@ export function RecoveryCodeDialog({
       role="dialog"
       aria-modal="true"
       aria-labelledby="recovery-code-title"
-      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      className={dialogOverlayClass(placement)}
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+        className={`w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl ${dialogCardClass(placement)}`}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">

@@ -28,7 +28,7 @@ import {
 } from "@/lib/status-options";
 
 // 상단바 프로필 아이콘 아래 열리는 내 프로필 패널. 알림 패널과 같은 폭·위치, 꾸밈 없이 정보와 메뉴만.
-// 대화상자(복구 코드·회사 옮기기·초대 코드)는 패널 위에 겹쳐 열리고, 닫으면 패널이 그대로 남음.
+// 대화상자(복구 코드·회사 옮기기·초대 코드)는 패널 왼쪽에 붙어 열리고, 닫으면 패널이 그대로 남음.
 type ProfileMenuProps = {
   open: boolean;
   onLogout: () => void;
@@ -378,6 +378,7 @@ export function ProfileMenu({
           }}
           onToast={toast}
           onClose={() => setIsCompanyMoveOpen(false)}
+          placement="beside-profile"
         />
       )}
       {recoveryCode && (
@@ -387,6 +388,7 @@ export function ProfileMenu({
           description="비밀번호를 잊었을 때 쓰는 복구 코드입니다. 이전 코드는 더 이상 쓸 수 없습니다."
           confirmLabel="확인"
           onClose={() => setRecoveryCode(null)}
+          placement="beside-profile"
         />
       )}
       {inviteCode && (
@@ -398,6 +400,7 @@ export function ProfileMenu({
           confirmLabel="닫기"
           onRegenerate={() => void loadInviteCode(true)}
           onClose={() => setInviteCode(null)}
+          placement="beside-profile"
         />
       )}
     </>
