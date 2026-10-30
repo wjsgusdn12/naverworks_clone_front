@@ -3,6 +3,7 @@
 import { MessageMemberAvatar } from "@/components/chat/message-member-avatar";
 import { CheckboxControl } from "@/components/common/custom-checkbox";
 import { LoadingState } from "@/components/common/loading";
+import { Tabs } from "@/components/common/tabs";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import { withLiveStatus } from "@/lib/live-status";
 import type { AddressBookMember } from "@/lib/api/address-book-api";
@@ -89,7 +90,8 @@ export function NewRoomModal({
   };
   return (
     <div ref={ref} className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      <section className="w-full max-w-lg animate-in fade-in zoom-in-95 rounded-2xl bg-white p-6 shadow-2xl">
+      {/* 높이 고정: 탭을 바꾸거나 구성원 수가 달라도 모달 크기는 그대로, 구성원 목록만 안에서 스크롤. */}
+      <section className="flex h-[min(680px,calc(100dvh-2rem))] w-full max-w-lg animate-in fade-in zoom-in-95 flex-col rounded-2xl bg-white p-6 shadow-2xl">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold">새 메시지</h2>
           <button
@@ -106,26 +108,19 @@ export function NewRoomModal({
         >
           나와의 채팅
         </button>
-        <div className="mt-5 flex border-b border-slate-200">
-          <button
-            onClick={() => {
-              setType("DIRECT");
-              setSelectedIds([]);
-            }}
-            className={`cursor-pointer px-4 py-2 text-sm ${type === "DIRECT" ? "border-b-2 border-blue-600 font-bold text-blue-600" : "text-slate-500"}`}
-          >
-            1:1 메시지
-          </button>
-          <button
-            onClick={() => {
-              setType("GROUP");
-              setSelectedIds([]);
-            }}
-            className={`cursor-pointer px-4 py-2 text-sm ${type === "GROUP" ? "border-b-2 border-blue-600 font-bold text-blue-600" : "text-slate-500"}`}
-          >
-            그룹 메시지
-          </button>
-        </div>
+        <Tabs
+          className="mt-5"
+          items={[
+            { key: "DIRECT" as const, label: "1:1 메시지" },
+            { key: "GROUP" as const, label: "그룹 메시지" },
+          ]}
+          value={type}
+          onChange={(next) => {
+            setType(next);
+            setSelectedIds([]);
+          }}
+          ariaLabel="메시지방 종류"
+        />
         {type === "GROUP" && (
           <label className="mt-4 block text-sm font-medium">
             그룹명
@@ -147,7 +142,7 @@ export function NewRoomModal({
             placeholder="구성원 검색"
           />
         </label>
-        <div className="mt-3 max-h-64 overflow-y-auto rounded-lg border border-slate-200">
+        <div className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-lg border border-slate-200">
           {!membersLoaded && (
             <LoadingState message="구성원을 불러오는 중입니다." className="py-8" />
           )}
@@ -194,7 +189,7 @@ export function NewRoomModal({
         </p>
         <button
           onClick={() => void submit()}
-          className="mt-5 h-11 w-full cursor-pointer rounded-lg bg-blue-600 text-sm font-bold text-white transition hover:bg-blue-700 active:scale-[.98]"
+          className="mt-5 h-11 w-full shrink-0 cursor-pointer rounded-lg bg-blue-600 text-sm font-bold text-white transition hover:bg-blue-700 active:scale-[.98]"
         >
           메시지방 만들기
         </button>
