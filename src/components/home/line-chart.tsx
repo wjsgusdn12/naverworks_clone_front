@@ -26,7 +26,7 @@ const niceCeil = (value: number) => {
 };
 
 // 부모 폭에 맞춰 그리기 위해 실제 폭을 잼(창 크기를 바꾸면 다시 잼).
-export function useElementWidth() {
+function useElementWidth() {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   useEffect(() => {
@@ -265,13 +265,11 @@ export function Sparkline({
     x: 3 + index * step,
     y: height - 3 - (value / max) * (height - 6),
   });
+  // 값 없는 칸은 건너뛰고 앞뒤 점을 바로 이어 선이 끊기지 않게 함.
   let path = "";
   let drawing = false;
   values.forEach((value, index) => {
-    if (value === null) {
-      drawing = false;
-      return;
-    }
+    if (value === null) return;
     const { x, y } = point(value, index);
     path += `${drawing ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`;
     drawing = true;

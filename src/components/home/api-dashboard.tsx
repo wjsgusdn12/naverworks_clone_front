@@ -1,6 +1,5 @@
 "use client";
 
-import { LatencyHeatmap } from "@/components/home/latency-heatmap";
 import { LegendSwatch, LineChart, Sparkline, type LineSeries } from "@/components/home/line-chart";
 import { LoadingState, Spinner } from "@/components/common/loading";
 import { Tabs } from "@/components/common/tabs";
@@ -36,6 +35,20 @@ const REQUEST_COLOR = "#3b82f6";
 const ERROR_COLOR = "#d97706";
 const AVG_COLOR = "#3b82f6";
 const P95_COLOR = "#d97706";
+// 응답 시간 분포(빠름·보통·느림·매우 느림) 선 색. 색약 구분·대비 검사를 통과한 4색이고,
+// 느린 두 계열은 점선으로도 구분(청록은 바탕 대비가 낮아 범례 이름·표로 보기를 함께 둠).
+const SPEED_GROUPS: {
+  key: string;
+  label: string;
+  color: string;
+  dashed?: boolean;
+  bins: number[];
+}[] = [
+  { key: "fast", label: "빠름 ≤200ms", color: "#2a78d6", bins: [0, 1, 2] },
+  { key: "normal", label: "보통 ≤1초", color: "#1baf7a", bins: [3, 4, 5] },
+  { key: "slow", label: "느림 ≤5초", color: "#6250d6", dashed: true, bins: [6, 7] },
+  { key: "verySlow", label: "매우 느림 >5초", color: "#eb6834", dashed: true, bins: [8] },
+];
 
 type Range = "HOUR" | "DAY" | "WEEK" | "MONTH";
 // 기간별 탭 글자, 이름, 점 하나의 길이(분). 모두 달력 기준(이번 시간·오늘·이번 주 일~토·이번 달 1일~말일).
@@ -369,6 +382,7 @@ function TrendSection({
     .filter((index) => !isFuture(points[index]) && !isMerged(points[index]));
   const hasData = points.some((point) => point.requests > 0);
   // 아직 오지 않은 시간·묶음에 포함된 칸은 빈칸.
+  // 값 없는 칸(묶음에 포함)은 건너뛰고 앞뒤 점을 바로 이어 선이 끊기지 않게 함.
   const countValue = (point: ApiDashboardTrendPoint, value: number) =>
     isFuture(point) || isMerged(point) ? null : value;
   // 요청이 없던 구간의 응답 시간은 0이 아니라 "기록 없음". 응답 시간 선은 그 칸을 건너뛰고 앞뒤 점을 바로 이음.
@@ -379,6 +393,7 @@ function TrendSection({
       key: "requests",
       label: "요청",
       color: REQUEST_COLOR,
+      connectGaps: true,
       values: points.map((point) => countValue(point, point.requests)),
     },
     {
@@ -386,6 +401,7 @@ function TrendSection({
       label: "오류(4xx·5xx)",
       color: ERROR_COLOR,
       dashed: true,
+      connectGaps: true,
       values: points.map((point) => countValue(point, point.errors)),
     },
   ];
@@ -406,6 +422,21 @@ function TrendSection({
       values: points.map((point) => responseValue(point, point.p95Ms)),
     },
   ];
+
+  // 빠르기 묶음별 요청 수(응답 시간 구간 9칸을 4묶음으로 더함)
+  const speedSeries: LineSeries[] = SPEED_GROUPS.map((group) => ({
+    key: group.key,
+    label: group.label,
+    color: group.color,
+    dashed: group.dashed,
+    connectGaps: true,
+    values: points.map((point) =>
+      countValue(
+        point,
+        group.bins.reduce((sum, bin) => sum + (point.latency[bin] ?? 0), 0),
+      ),
+    ),
+  }));
 
   return (
     <div className="mt-6">
@@ -453,23 +484,22 @@ function TrendSection({
               ariaLabel={`${config.name} 평균·p95 응답 시간 추이`}
             />
           </ChartCard>
-          {/* 응답 시간 분포: 평균·p95로는 안 보이는 "가끔 느린 요청"을 칸 색으로 */}
-          <div className="rounded-xl border border-slate-200 p-4 xl:col-span-2">
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-slate-800">
-                응답 시간 분포 <span className="text-xs font-normal text-slate-400">(히트맵)</span>
-              </h3>
-              <p className="text-xs text-slate-500">칸이 진할수록 그 빠르기의 요청이 많음</p>
-            </div>
-            <LatencyHeatmap
-              columns={points.map((point) =>
-                isFuture(point) || isMerged(point) ? null : point.latency,
-              )}
+          {/* 응답 시간 분포: 평균·p95로는 안 보이는 "가끔 느린 요청"을 빠르기 묶음별 요청 수로 */}
+          <ChartCard
+            title="응답 시간 분포"
+            unit="건"
+            series={speedSeries}
+            className="xl:col-span-2"
+          >
+            <LineChart
               labels={labels}
               tooltipTitles={titles}
-              ariaLabel={`${config.name} 응답 시간 분포 히트맵`}
+              series={speedSeries}
+              formatValue={(value) => `${formatNumber(Math.round(value))}`}
+              labelEvery={1}
+              ariaLabel={`${config.name} 빠르기별 요청 수 추이`}
             />
-          </div>
+          </ChartCard>
         </div>
       )}
     </div>
@@ -480,15 +510,17 @@ function ChartCard({
   title,
   unit,
   series,
+  className = "",
   children,
 }: {
   title: string;
   unit: string;
   series: LineSeries[];
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 p-4">
+    <div className={`rounded-xl border border-slate-200 p-4 ${className}`}>
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-800">
           {title} <span className="text-xs font-normal text-slate-400">({unit})</span>
