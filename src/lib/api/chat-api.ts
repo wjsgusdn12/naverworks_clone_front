@@ -83,8 +83,8 @@ export type ChatSearchRoom = {
   memberCount: number;
   directMembershipId: number | null;
 };
-// 상단 검색 [메시지] 왼쪽 방 목록 한 줄: 방과 그 방에서 키워드가 들어간 메시지 수.
-export type ChatMessageSearchRoomItem = { room: ChatSearchRoom; count: number };
+// 상단 검색 왼쪽 방 목록 한 줄: 방과 그 방에서 키워드에 맞는 메시지(또는 파일) 수.
+export type ChatSearchRoomItem = { room: ChatSearchRoom; count: number };
 // 상단 검색 [메시지] 오른쪽 한 줄. forwarded는 전달받은 메시지인지.
 export type ChatMessageSearchItem = {
   messageId: number;
@@ -345,7 +345,7 @@ export const chatApi = {
   // 상단 검색 [메시지]: 왼쪽은 키워드가 들어간 메시지가 있는 방과 방별 개수, 오른쪽은 고른 방의 메시지.
   // 30개씩, cursor는 이전 nextCursor.
   searchMessageRooms: (token: string, keyword: string) =>
-    request<ChatMessageSearchRoomItem[]>(
+    request<ChatSearchRoomItem[]>(
       `/api/v1/chatRoom/search/message/room?keyword=${encodeURIComponent(keyword)}`,
       token,
     ),
@@ -354,10 +354,15 @@ export const chatApi = {
       `/api/v1/chatRoom/search/message?keyword=${encodeURIComponent(keyword)}&chatRoomId=${roomId}${cursor ? `&cursor=${cursor}` : ""}`,
       token,
     ),
-  // 상단 검색 [파일]: 참여 중인 모든 방에서 파일 이름에 키워드가 들어간 첨부.
-  searchFiles: (token: string, keyword: string, cursor?: number) =>
+  // 상단 검색 [파일]: 왼쪽은 파일 이름에 키워드가 들어간 첨부가 있는 방과 방별 개수, 오른쪽은 고른 방의 파일.
+  searchFileRooms: (token: string, keyword: string) =>
+    request<ChatSearchRoomItem[]>(
+      `/api/v1/chatRoom/search/file/room?keyword=${encodeURIComponent(keyword)}`,
+      token,
+    ),
+  searchFiles: (token: string, keyword: string, roomId: number, cursor?: number) =>
     request<ChatSearchPage<ChatFileSearchItem>>(
-      `/api/v1/chatRoom/search/file?keyword=${encodeURIComponent(keyword)}${cursor ? `&cursor=${cursor}` : ""}`,
+      `/api/v1/chatRoom/search/file?keyword=${encodeURIComponent(keyword)}&chatRoomId=${roomId}${cursor ? `&cursor=${cursor}` : ""}`,
       token,
     ),
   togglePin: (token: string, roomId: number) =>

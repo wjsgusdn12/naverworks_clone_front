@@ -29,6 +29,7 @@ import { FileDropOverlay } from "@/components/chat/file-drop-overlay";
 import { ImageViewer, type ViewerImage } from "@/components/chat/image-viewer";
 import { FilePreviewModal, type PreviewFile } from "@/components/chat/file-preview-modal";
 import { MessageSearchPanel } from "@/components/chat/message-search-panel";
+import type { RoomMenuAction } from "@/components/chat/room-action-menu";
 import { useAttachmentDownload } from "@/hooks/use-attachment";
 import {
   formatFileSize,
@@ -1154,6 +1155,39 @@ function MessageContent() {
       setNotificationRoom(room);
     },
   );
+  // 검색 결과의 ⋮ 메뉴. 성공하면 true를 돌려줘 검색 결과 쪽 표시(숨김 표시·나간 방 제거)도 맞춤.
+  // 숨김은 왼쪽 목록처럼 여러 방을 고르는 단계 없이 바로 숨김.
+  const handleSearchRoomAction = useStableCallback(
+    async (roomId: number, action: RoomMenuAction): Promise<boolean> => {
+      if (!accessToken) return false;
+      const room = rooms.find((target) => target.id === roomId);
+      try {
+        if (action === "hide" || action === "unhide") {
+          await (action === "hide" ? chatApi.hide : chatApi.unhide)(accessToken, roomId);
+          if (action === "hide" && selectedRoomId === roomId) setSelectedRoomId(null);
+          showToast(action === "hide" ? "메시지방을 숨겼습니다." : "메시지방을 다시 표시했습니다.");
+          await loadRooms();
+          return true;
+        }
+        // 숨긴 방은 왼쪽 목록에 없으므로 나가기만 직접 처리.
+        if (!room) {
+          if (action !== "leave") return false;
+          await chatApi.leave(accessToken, roomId);
+          showToast("채팅방에서 나갔습니다.");
+          return true;
+        }
+        await handleRoomAction(room, action);
+        return true;
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : "요청을 처리하지 못했습니다.");
+        return false;
+      }
+    },
+  );
+  const isRoomPinned = useCallback(
+    (roomId: number) => rooms.some((room) => room.id === roomId && room.pinned),
+    [rooms],
+  );
   const renderRoomItem = (room: ChatRoom) => (
     <MessageRoomItem
       key={room.id}
@@ -2178,6 +2212,8 @@ function MessageContent() {
               else setFilePreview(file);
             }}
             onDownload={downloadAttachment}
+            isRoomPinned={isRoomPinned}
+            onRoomAction={handleSearchRoomAction}
           />
         )}
         <section

@@ -8,9 +8,9 @@ import { MeBadge } from "@/components/common/me-badge";
 import type { AddressBookMember } from "@/lib/api/address-book-api";
 import type { ChatRoom } from "@/lib/api/chat-api";
 import { formatRoomTime } from "@/lib/chat-format";
-import { AtSign, Bell, EyeOff, Forward, LogOut, MoreVertical, Pin } from "lucide-react";
+import { RoomActionMenu } from "@/components/chat/room-action-menu";
+import { AtSign, Forward, MoreVertical, Pin } from "lucide-react";
 import { memo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 
 // 방 항목은 memo로 묶어, 메시지 입력·수신 등으로 부모가 다시 그려져도 자기 props가 같으면 건너뜀.
 // 그래서 콜백은 방마다 새 함수를 만들지 않고, 어느 방인지를 인자로 받는 고정 함수를 사용.
@@ -200,50 +200,15 @@ export const MessageRoomItem = memo(function MessageRoomItem({
           </span>
         )}
       </div>
-      {menuOpen &&
-        !isCollapsed &&
-        menuPosition &&
-        createPortal(
-          <div
-            data-room-menu
-            className="fixed z-[200] w-36 rounded-xl border border-slate-200 bg-white py-1 shadow-lg animate-in fade-in zoom-in-95"
-            style={menuPosition}
-          >
-            <button
-              type="button"
-              onClick={() => onAction(room, "notification")}
-              className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"
-            >
-              <Bell size={15} />
-              알림 설정
-            </button>
-            <button
-              type="button"
-              onClick={() => onAction(room, "pin")}
-              className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"
-            >
-              <Pin size={15} />
-              {room.pinned ? "핀 고정 해제" : "핀 고정"}
-            </button>
-            <button
-              type="button"
-              onClick={() => onAction(room, "hide")}
-              className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm hover:bg-slate-50"
-            >
-              <EyeOff size={15} />
-              숨김
-            </button>
-            <button
-              type="button"
-              onClick={() => onAction(room, "leave")}
-              className="flex w-full cursor-pointer items-center gap-2 px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50"
-            >
-              <LogOut size={15} />
-              나가기
-            </button>
-          </div>,
-          document.body,
-        )}
+      {menuOpen && !isCollapsed && menuPosition && (
+        <RoomActionMenu
+          position={menuPosition}
+          pinned={room.pinned}
+          onAction={(action) => {
+            if (action !== "unhide") onAction(room, action);
+          }}
+        />
+      )}
     </div>
   );
 });
