@@ -1,6 +1,7 @@
 "use client";
 
 import { LoadingInline, LoadingState } from "@/components/common/loading";
+import { Tabs } from "@/components/common/tabs";
 import { Tooltip } from "@/components/common/tooltip";
 import {
   chatApi,
@@ -155,23 +156,11 @@ export function MessageSearchPanel({
     }
   };
 
-  const tabButton = (target: Tab, label: string) => (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={tab === target}
-      onClick={() => setTab(target)}
-      className={`cursor-pointer rounded-md px-4 py-1.5 text-sm font-semibold transition ${tab === target ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
-    >
-      {label}
-      {tabs[target].status === "loaded" && (
-        <span className="ml-1 text-xs font-medium text-slate-400">
-          {tabs[target].items.length}
-          {tabs[target].nextCursor ? "+" : ""}
-        </span>
-      )}
-    </button>
-  );
+  // 탭 옆 결과 수(받은 뒤에만). 30개 넘게 남아 있으면 "30+".
+  const countOf = (target: Tab) =>
+    tabs[target].status === "loaded"
+      ? `${tabs[target].items.length}${tabs[target].nextCursor ? "+" : ""}`
+      : undefined;
 
   return (
     <section className="flex min-w-0 flex-1 flex-col bg-white">
@@ -189,10 +178,15 @@ export function MessageSearchPanel({
         </button>
       </div>
       <div className="px-6 pt-4">
-        <div role="tablist" className="inline-flex gap-1 rounded-lg bg-slate-100 p-1">
-          {tabButton("MESSAGE", "메시지")}
-          {tabButton("FILE", "파일")}
-        </div>
+        <Tabs<Tab>
+          items={[
+            { key: "MESSAGE", label: "메시지", count: countOf("MESSAGE") },
+            { key: "FILE", label: "파일", count: countOf("FILE") },
+          ]}
+          value={tab}
+          onChange={setTab}
+          ariaLabel="검색 결과 종류"
+        />
       </div>
       <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-6 pb-6">
         {current.status === "loading" ? (

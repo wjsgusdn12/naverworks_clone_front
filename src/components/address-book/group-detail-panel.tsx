@@ -4,6 +4,7 @@ import { GroupAvatar } from "@/components/chat/group-avatar";
 import { FavoriteBadge } from "@/components/address-book/favorite-badge";
 import { LoadingInline } from "@/components/common/loading";
 import { MeBadge } from "@/components/common/me-badge";
+import { Tabs } from "@/components/common/tabs";
 import { UserAvatar } from "@/components/common/user-avatar";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import type { ChatGroupMember, ChatGroupSummary } from "@/lib/api/chat-api";
@@ -86,25 +87,16 @@ export function GroupDetailPanel({
           캘린더
         </button>
       </div>
-      <div className="mt-6 flex gap-4 border-b border-slate-200" role="tablist">
-        {(
-          [
-            ["member", "그룹멤버"],
-            ["owner", "그룹마스터"],
-          ] as [GroupDetailTab, string][]
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={tab === key}
-            className={`cursor-pointer border-b-2 px-1 pb-2 text-sm transition ${tab === key ? "border-blue-600 font-semibold text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
-            onClick={() => setTab(key)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <Tabs<GroupDetailTab>
+        className="mt-6"
+        items={[
+          { key: "member", label: "그룹멤버" },
+          { key: "owner", label: "그룹마스터" },
+        ]}
+        value={tab}
+        onChange={setTab}
+        ariaLabel="그룹 구성원 보기"
+      />
       {members === null ? (
         <LoadingInline message="구성원을 불러오는 중입니다." className="py-8 text-sm" />
       ) : list.length === 0 ? (

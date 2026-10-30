@@ -2,6 +2,7 @@
 
 import { LegendSwatch, LineChart, Sparkline, type LineSeries } from "@/components/home/line-chart";
 import { LoadingState, Spinner } from "@/components/common/loading";
+import { Tabs } from "@/components/common/tabs";
 import { Tooltip } from "@/components/common/tooltip";
 import {
   adminApi,
@@ -204,26 +205,17 @@ export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
             </p>
           )}
           {/* 기간 탭: 숫자 카드와 그래프가 모두 이 기간을 따라감. */}
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
-            <div
-              role="tablist"
-              aria-label="기간"
-              className="flex gap-1 rounded-lg bg-slate-100 p-1"
-            >
-              {(Object.keys(RANGES) as Range[]).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  role="tab"
-                  aria-selected={range === value}
-                  onClick={() => setRange(value)}
-                  className={`cursor-pointer rounded-md px-3 py-1.5 text-xs font-semibold transition ${range === value ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
-                >
-                  {RANGES[value].tab}
-                </button>
-              ))}
-            </div>
-            <span className="text-xs font-medium text-slate-500">
+          <div className="mt-5 flex flex-wrap items-end justify-between gap-2">
+            <Tabs
+              items={(Object.keys(RANGES) as Range[]).map((value) => ({
+                key: value,
+                label: RANGES[value].tab,
+              }))}
+              value={range}
+              onChange={setRange}
+              ariaLabel="기간"
+            />
+            <span className="pb-2.5 text-xs font-medium text-slate-500">
               {periodOf(pointsOf(data, range), range)}
             </span>
           </div>

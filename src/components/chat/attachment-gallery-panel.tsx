@@ -5,6 +5,7 @@ import { FileAttachmentCard } from "@/components/chat/file-attachment-card";
 import type { PreviewFile } from "@/components/chat/file-preview-modal";
 import type { ViewerImage } from "@/components/chat/image-viewer";
 import { LoadingInline, LoadingState } from "@/components/common/loading";
+import { Tabs } from "@/components/common/tabs";
 import {
   chatApi,
   type ChatAttachment,
@@ -107,18 +108,6 @@ export function AttachmentGalleryPanel({
     createdAt: item.createdAt,
   }));
 
-  const tabButton = (target: Kind, label: string) => (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={kind === target}
-      onClick={() => setKind(target)}
-      className={`flex-1 cursor-pointer rounded-md py-1.5 text-sm font-semibold transition ${kind === target ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
-    >
-      {label}
-    </button>
-  );
-
   return (
     <aside className="flex h-full w-[min(420px,40vw)] shrink-0 animate-in slide-in-from-right flex-col border-l border-slate-200 bg-white shadow-xl">
       <div className="flex items-center justify-between px-5 pb-3 pt-5">
@@ -132,10 +121,17 @@ export function AttachmentGalleryPanel({
           <X size={20} aria-hidden="true" />
         </button>
       </div>
-      <div role="tablist" className="mx-5 flex gap-1 rounded-lg bg-slate-100 p-1">
-        {tabButton("IMAGE", "사진")}
-        {tabButton("FILE", "파일")}
-      </div>
+      <Tabs<Kind>
+        fill
+        className="mx-5"
+        items={[
+          { key: "IMAGE", label: "사진" },
+          { key: "FILE", label: "파일" },
+        ]}
+        value={kind}
+        onChange={setKind}
+        ariaLabel="첨부 종류"
+      />
       <div className="mt-3 min-h-0 flex-1 overflow-y-auto px-5 pb-5">
         {tab.status === "loading" ? (
           <LoadingState

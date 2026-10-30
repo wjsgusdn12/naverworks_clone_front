@@ -6,6 +6,7 @@ import { GroupDetailPanel } from "@/components/address-book/group-detail-panel";
 import { MemberPanel } from "@/components/address-book/member-panel";
 import { LoadingInline } from "@/components/common/loading";
 import { Pagination } from "@/components/common/pagination";
+import { Tabs } from "@/components/common/tabs";
 import { addressBookApi, type AddressBookMemberDetail } from "@/lib/api/address-book-api";
 import { chatApi, type ChatGroupMember, type ChatGroupSummary } from "@/lib/api/chat-api";
 import {
@@ -197,22 +198,9 @@ export function GroupPanel({
           메시지
         </button>
       </div>
-      <div className="flex gap-5" role="tablist">
-        {groupTabs.map(({ key, label }) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={tab === key}
-            className={`cursor-pointer border-b-2 px-1 pb-2.5 text-sm transition ${tab === key ? "border-blue-600 font-semibold text-blue-600" : "border-transparent text-slate-500 hover:text-slate-800"}`}
-            onClick={() => onTabChange(key)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      {/* 구성원 목록과 같은 틀: 위쪽 선이 있는 표 + 바닥 고정 페이지 영역. */}
-      <div className="flex flex-1 border-t border-slate-200">
+      <Tabs items={groupTabs} value={tab} onChange={onTabChange} ariaLabel="그룹 범위" />
+      {/* 구성원 목록과 같은 틀: 표 + 바닥 고정 페이지 영역(위쪽 선은 탭 줄 아래 선이 대신함). */}
+      <div className="flex flex-1">
         <div className="min-w-0 flex-1 overflow-auto">
           <table className="w-full min-w-[720px] border-collapse text-left text-sm">
             <thead className="border-b border-slate-200 bg-white text-slate-700">

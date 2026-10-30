@@ -13,6 +13,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { LoadingState } from "@/components/common/loading";
+import { Tabs } from "@/components/common/tabs";
 
 // 두 저장소의 README 다이어그램을 그대로 보여 주는 "프로젝트 소개" 모달.
 // 그림과 설명은 각 저장소 docs/guide.json·docs/diagrams/*.svg 를 GitHub raw 주소로 읽는다.
@@ -263,20 +264,14 @@ export function ProjectGuideModal({ onClose }: ProjectGuideModalProps) {
           </button>
         </div>
         {/* 좁은 화면: 탭으로 한 열씩. */}
-        <div className="flex border-b border-slate-200 lg:hidden" role="tablist">
-          {sources.map((source) => (
-            <button
-              key={source.key}
-              type="button"
-              role="tab"
-              aria-selected={activeTab === source.key}
-              onClick={() => setActiveTab(source.key)}
-              className={`flex-1 cursor-pointer py-2.5 text-sm font-semibold transition ${activeTab === source.key ? "border-b-2 border-blue-600 text-blue-600" : "text-slate-500 hover:text-slate-800"}`}
-            >
-              {source.label}
-            </button>
-          ))}
-        </div>
+        <Tabs
+          fill
+          className="pt-2.5 lg:hidden"
+          items={sources}
+          value={activeTab}
+          onChange={setActiveTab}
+          ariaLabel="저장소"
+        />
         {/* 넓은 화면: 가운데 선으로 나눈 두 열. */}
         <div className="flex min-h-0 flex-1">
           {sources.map((source, index) => (

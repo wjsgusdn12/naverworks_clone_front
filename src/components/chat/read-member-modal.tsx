@@ -1,6 +1,7 @@
 "use client";
 
 import { MessageMemberAvatar } from "@/components/chat/message-member-avatar";
+import { Tabs } from "@/components/common/tabs";
 import type { AddressBookMember } from "@/lib/api/address-book-api";
 import type { ReadModalState } from "@/lib/chat-page-helpers";
 import { useMemberBadge } from "@/hooks/use-member-badge";
@@ -30,8 +31,8 @@ export function ReadMemberModal({
   const badgeOf = useMemberBadge(profileByMemberId);
   const members = modal.read ? modal.readMembers : modal.unreadMembers;
   const tabs = [
-    { read: true, label: "읽음", count: modal.readMembers.length },
-    { read: false, label: "안 읽음", count: modal.unreadMembers.length },
+    { key: "read" as const, label: "읽음", count: modal.readMembers.length },
+    { key: "unread" as const, label: "안 읽음", count: modal.unreadMembers.length },
   ];
   useEffect(() => {
     const handler = (event: MouseEvent) => {
@@ -69,28 +70,14 @@ export function ReadMemberModal({
             <X size={20} />
           </button>
         </div>
-        {/* 선택한 탭은 아래 패널과 이어지도록 흰 배경으로 패널 테두리를 덮음. */}
-        <div role="tablist" className="relative z-10 mt-5 flex shrink-0 gap-1">
-          {tabs.map((tab) => {
-            const selected = modal.read === tab.read;
-            return (
-              <button
-                key={tab.label}
-                type="button"
-                role="tab"
-                aria-selected={selected}
-                onClick={() => onTab(tab.read)}
-                className={`-mb-px cursor-pointer rounded-t-lg border px-6 py-2.5 text-sm transition ${selected ? "border-slate-200 border-b-white bg-white font-semibold text-slate-900" : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-700"}`}
-              >
-                {tab.label} {tab.count}
-              </button>
-            );
-          })}
-        </div>
-        <div
-          role="tabpanel"
-          className="min-h-0 flex-1 overflow-y-auto rounded-b-lg rounded-tr-lg border border-slate-200 p-2"
-        >
+        <Tabs
+          className="mt-5"
+          items={tabs}
+          value={modal.read ? "read" : "unread"}
+          onChange={(key) => onTab(key === "read")}
+          ariaLabel="읽음 여부"
+        />
+        <div role="tabpanel" className="mt-2 min-h-0 flex-1 overflow-y-auto p-1">
           {members.length === 0 ? (
             <p className="flex h-full items-center justify-center text-sm text-slate-500">
               {modal.read ? "읽은 멤버가 없습니다." : "안 읽은 멤버가 없습니다."}
