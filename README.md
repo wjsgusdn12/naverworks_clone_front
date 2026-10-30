@@ -399,5 +399,5 @@ node --test "tests/**/*.test.mjs"
 
 ## 문서
 
-- [백엔드 README](https://github.com/wjsgusdn12/naverworks_clone_api#readme) · [전체 설계·요구사항](https://github.com/wjsgusdn12/naverworks_clone_api/blob/main/docs/PROJECT_CONTEXT.md)
+- [백엔드 README](https://github.com/wjsgusdn12/naverworks_clone_api#readme)
 - 이 README의 다이어그램은 `scripts/build-diagrams.mjs`가 `docs/diagrams/`에 SVG로 뽑아 두며, 앱의 "프로젝트 소개" 모달이 같은 파일을 보여 줍니다.
