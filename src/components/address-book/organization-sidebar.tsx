@@ -1,6 +1,7 @@
 "use client";
 
 import { SidebarIcon } from "@/components/address-book/sidebar-icon";
+import { LoadingInline } from "@/components/common/loading";
 import type { AddressBookOrganization } from "@/lib/api/address-book-api";
 import {
   Building2,
@@ -18,6 +19,7 @@ export function OrganizationSidebar({
   isCollapsed,
   view,
   organizations,
+  organizationLoading = false,
   companyId,
   departmentId,
   isOrganizationExpanded,
@@ -33,6 +35,8 @@ export function OrganizationSidebar({
   isCollapsed: boolean;
   view: AddressBookView;
   organizations: AddressBookOrganization[];
+  // 조직도를 불러오는 중이면 목록 자리에 로딩 표시.
+  organizationLoading?: boolean;
   companyId: number | null;
   departmentId: number | null;
   isOrganizationExpanded: boolean;
@@ -126,6 +130,12 @@ export function OrganizationSidebar({
               </button>
               <span>조직도</span>
             </div>
+            {isOrganizationExpanded && organizationLoading && (
+              <LoadingInline
+                message="조직도를 불러오는 중입니다."
+                className="px-3 py-2 text-xs text-slate-500"
+              />
+            )}
             {isOrganizationExpanded &&
               organizations.map((organization) => {
                 const isCompanyExpanded = expandedCompanyIds.includes(organization.companyId);

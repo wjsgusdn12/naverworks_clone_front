@@ -70,3 +70,8 @@ export function LoadingState({ message, size = "sm", className = "" }: LoadingSt
     </div>
   );
 }
+
+// 화면 전체를 통째로 불러올 때(로그인 확인·페이지 준비). 빈 회색 화면 대신 가운데에 로딩 표시.
+export function PageLoading({ message = "불러오는 중입니다." }: { message?: string }) {
+  return <LoadingState message={message} size="md" className="min-h-screen bg-slate-100" />;
+}

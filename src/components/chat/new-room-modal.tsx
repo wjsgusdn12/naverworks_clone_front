@@ -2,12 +2,16 @@
 
 import { MessageMemberAvatar } from "@/components/chat/message-member-avatar";
 import { CheckboxControl } from "@/components/common/custom-checkbox";
+import { LoadingState } from "@/components/common/loading";
+import { useChatNotification } from "@/components/chat/chat-notification-provider";
+import { withLiveStatus } from "@/lib/live-status";
 import type { AddressBookMember } from "@/lib/api/address-book-api";
 import { Search, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export function NewRoomModal({
-  members,
+  members: rawMembers,
+  membersLoaded = true,
   initialMemberIds,
   initialType,
   onClose,
@@ -17,6 +21,8 @@ export function NewRoomModal({
   showToast,
 }: {
   members: AddressBookMember[];
+  // 구성원 목록을 받아 왔는지. 받기 전에는 목록 자리에 로딩 표시.
+  membersLoaded?: boolean;
   initialMemberIds: number[];
   initialType: "DIRECT" | "GROUP";
   onClose: () => void;
@@ -25,6 +31,11 @@ export function NewRoomModal({
   onProfileClick: (membershipId: number) => void;
   showToast: (message: string) => void;
 }) {
+  // 실시간 접속 상태·상태 설정을 덮어 아바타 배지가 다른 화면과 같게 보이도록 함.
+  const { presenceByMembershipId, memberStatusByMembershipId } = useChatNotification();
+  const members = rawMembers.map((member) =>
+    withLiveStatus(member, presenceByMembershipId, memberStatusByMembershipId),
+  );
   const [type, setType] = useState<"DIRECT" | "GROUP">(initialType);
   const [name, setName] = useState("");
   const [selectedIds, setSelectedIds] = useState<number[]>(initialMemberIds);
@@ -137,6 +148,12 @@ export function NewRoomModal({
           />
         </label>
         <div className="mt-3 max-h-64 overflow-y-auto rounded-lg border border-slate-200">
+          {!membersLoaded && (
+            <LoadingState message="구성원을 불러오는 중입니다." className="py-8" />
+          )}
+          {membersLoaded && visibleMembers.length === 0 && (
+            <p className="py-8 text-center text-sm text-slate-500">표시할 구성원이 없습니다.</p>
+          )}
           {visibleMembers.map((member) => {
             const selected = selectedIds.includes(member.membershipId);
             return (

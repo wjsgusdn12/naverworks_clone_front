@@ -1,5 +1,6 @@
 "use client";
 
+import { PageLoading } from "@/components/common/loading";
 import { GlobalHeader } from "@/components/common/global-header";
 import { Toast } from "@/components/common/toast";
 import { HomeDashboard } from "@/components/home/home-dashboard";
@@ -36,7 +37,7 @@ export default function HomePage() {
 
   if (status !== "authenticated" || !member || !accessToken) {
     // 화면 전환 전에는 빈 배경만 보여 보호 화면 내용을 노출하지 않음.
-    return <div className="min-h-screen bg-slate-100" />;
+    return <PageLoading />;
   }
 
   return (

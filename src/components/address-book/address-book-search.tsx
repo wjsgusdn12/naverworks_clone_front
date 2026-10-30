@@ -15,6 +15,7 @@ export function AddressBookSearch({
   saveSearchEnabled,
   previewMembers,
   recentSearches,
+  isRecentSearchLoading = false,
   isPreviewLoading,
   showPreviewProfileImage,
   onChange,
@@ -35,6 +36,8 @@ export function AddressBookSearch({
   saveSearchEnabled: boolean;
   previewMembers: AddressBookMember[];
   recentSearches: AddressBookSearchHistory[];
+  // 최근 검색어를 불러오는 중이면 "없습니다" 대신 로딩 표시.
+  isRecentSearchLoading?: boolean;
   isPreviewLoading: boolean;
   showPreviewProfileImage: boolean;
   onChange: (keyword: string) => void;
@@ -163,6 +166,8 @@ export function AddressBookSearch({
                   <p className="px-4 py-5">일치하는 구성원이 없습니다.</p>
                 ) : null}
               </>
+            ) : saveSearchEnabled && isRecentSearchLoading && recentSearches.length === 0 ? (
+              <LoadingInline message="최근 검색어를 불러오는 중입니다." className="px-4 py-5" />
             ) : saveSearchEnabled && recentSearches.length ? (
               recentSearches.map((search) => (
                 <div

@@ -1,5 +1,6 @@
 "use client";
 
+import { LoadingState } from "@/components/common/loading";
 import type { ChatRoom } from "@/lib/api/chat-api";
 import type { RoomSort } from "@/lib/chat-room-sort";
 import { ArrowDownUp, Check, ChevronDown } from "lucide-react";
@@ -8,6 +9,7 @@ import type { ReactNode, RefObject } from "react";
 // 왼쪽 메시지방 목록 사이드바. 상태는 page가 가지고 값·콜백만 내려받음.
 export function MessageRoomSidebar({
   isSidebarCollapsed,
+  roomsLoaded = true,
   onCreateRoom,
   sortMenuRef,
   sortMenuOpen,
@@ -28,6 +30,8 @@ export function MessageRoomSidebar({
   onCancelHide,
 }: {
   isSidebarCollapsed: boolean;
+  // 방 목록을 처음 받아 왔는지. 받기 전에는 "없습니다" 대신 로딩 표시.
+  roomsLoaded?: boolean;
   onCreateRoom: () => void;
   sortMenuRef: RefObject<HTMLDivElement | null>;
   sortMenuOpen: boolean;
@@ -139,7 +143,10 @@ export function MessageRoomSidebar({
         ) : (
           filteredRooms.map(renderRoomItem)
         )}
-        {!isSidebarCollapsed && filteredRooms.length === 0 && (
+        {!isSidebarCollapsed && !roomsLoaded && (
+          <LoadingState message="메시지방을 불러오는 중입니다." className="p-8" />
+        )}
+        {!isSidebarCollapsed && roomsLoaded && filteredRooms.length === 0 && (
           <p className="p-8 text-center text-sm text-slate-500">표시할 메시지방이 없습니다.</p>
         )}
       </div>

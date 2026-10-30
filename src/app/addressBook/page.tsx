@@ -1,5 +1,6 @@
 "use client";
 
+import { PageLoading, Spinner } from "@/components/common/loading";
 import { CompanyMoveDialog } from "@/components/common/company-move-dialog";
 import { GlobalHeader } from "@/components/common/global-header";
 import { AddressBookSearch } from "@/components/address-book/address-book-search";
@@ -69,6 +70,10 @@ export default function AddressBookPage() {
   const [hasMorePreview, setHasMorePreview] = useState(false);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [recentSearches, setRecentSearches] = useState<AddressBookSearchHistory[]>([]);
+  // 처음 불러오는 동안 빈 목록 안내 대신 로딩 표시를 보이기 위한 상태들.
+  const [isOrganizationLoading, setIsOrganizationLoading] = useState(true);
+  const [isMembersLoading, setIsMembersLoading] = useState(true);
+  const [isRecentSearchLoading, setIsRecentSearchLoading] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const previewRequestIdRef = useRef(0);
@@ -108,10 +113,15 @@ export default function AddressBookPage() {
     if (view !== "favorite" && companyId) parameters.set("companyId", String(companyId));
     if (view === "department" && departmentId) parameters.set("departmentId", String(departmentId));
     if (view === "favorite") parameters.set("favoriteOnly", "true");
-    const result = await addressBookApi.member(accessToken, parameters);
-    setMembers(result.content);
-    setMemberTotal(result.totalElements);
-    setTotalPages(Math.max(result.totalPages, 1));
+    setIsMembersLoading(true);
+    try {
+      const result = await addressBookApi.member(accessToken, parameters);
+      setMembers(result.content);
+      setMemberTotal(result.totalElements);
+      setTotalPages(Math.max(result.totalPages, 1));
+    } finally {
+      setIsMembersLoading(false);
+    }
   }, [accessToken, companyId, departmentId, direction, executedKeyword, page, sort, view]);
 
   useEffect(() => {
@@ -132,29 +142,37 @@ export default function AddressBookPage() {
         }
       } catch (error) {
         showToast(error instanceof Error ? error.message : "주소록을 불러오지 못했습니다.");
+      } finally {
+        setIsOrganizationLoading(false);
       }
     })();
   }, [accessToken, isLoggingOut, router, showToast, status]);
 
   useEffect(() => {
     if (!accessToken || !isSearchFocused || keyword.trim() || !saveSearchEnabled) return;
-    void addressBookApi
-      .searchHistory(accessToken)
+    void Promise.resolve()
+      .then(() => {
+        setIsRecentSearchLoading(true);
+        return addressBookApi.searchHistory(accessToken);
+      })
       .then(setRecentSearches)
       .catch((error: unknown) =>
         showToast(error instanceof Error ? error.message : "최근 검색어를 불러오지 못했습니다."),
-      );
+      )
+      .finally(() => setIsRecentSearchLoading(false));
   }, [accessToken, isSearchFocused, keyword, saveSearchEnabled, showToast]);
 
   useEffect(() => {
     if (status !== "authenticated" || !accessToken || view === "group") return;
+    // 회사 필터가 정해지기 전에 전체 목록을 한 번 더 받지 않도록 조직도를 먼저 기다림.
+    if (isOrganizationLoading && view !== "favorite") return;
     // 렌더링 직후 비동기로 목록을 갱신해 Effect 안의 동기 상태 변경을 피함.
     void Promise.resolve()
       .then(loadMembers)
       .catch((error: unknown) => {
         showToast(error instanceof Error ? error.message : "주소록을 불러오지 못했습니다.");
       });
-  }, [accessToken, loadMembers, showToast, status, view]);
+  }, [accessToken, isOrganizationLoading, loadMembers, showToast, status, view]);
 
   // 그룹 탭에 들어올 때 회사의 그룹 채팅방 목록을 조회.
   useEffect(() => {
@@ -318,6 +336,8 @@ export default function AddressBookPage() {
     setPreviewMembers([]);
     setPreviewPage(0);
     setHasMorePreview(false);
+    // 입력 직후(요청 대기 180ms 동안)에도 "없습니다" 대신 로딩 표시가 보이도록 바로 켬.
+    setIsPreviewLoading(Boolean(nextKeyword.trim()));
     setKeyword(nextKeyword);
   };
 
@@ -393,7 +413,7 @@ export default function AddressBookPage() {
     }
   }, [accessToken, hasMorePreview, isPreviewLoading, keyword, previewPage, showToast]);
 
-  if (status !== "authenticated" || !member) return <div className="min-h-screen bg-slate-100" />;
+  if (status !== "authenticated" || !member) return <PageLoading />;
 
   const selectedCompany = organizations.find(
     (organization) => organization.companyId === companyId,
@@ -463,6 +483,7 @@ export default function AddressBookPage() {
             saveSearchEnabled={saveSearchEnabled}
             previewMembers={previewMembers}
             recentSearches={recentSearches}
+            isRecentSearchLoading={isRecentSearchLoading}
             isPreviewLoading={isPreviewLoading}
             showPreviewProfileImage={showPreviewProfileImage}
             onChange={changeKeyword}
@@ -487,6 +508,7 @@ export default function AddressBookPage() {
           isCollapsed={isSidebarCollapsed}
           view={view}
           organizations={organizations}
+          organizationLoading={isOrganizationLoading}
           companyId={companyId}
           departmentId={departmentId}
           isOrganizationExpanded={isOrganizationExpanded}
@@ -515,7 +537,9 @@ export default function AddressBookPage() {
                   </span>
                 )
               ) : (
-                <span className="font-bold text-blue-600">{memberTotal}</span>
+                <span className="font-bold text-blue-600">
+                  {isMembersLoading ? <Spinner size={16} className="text-blue-500" /> : memberTotal}
+                </span>
               )}
             </h1>
           </div>
@@ -566,6 +590,7 @@ export default function AddressBookPage() {
                   onSelectMember={(target) => void selectMember(target)}
                   onToggleFavorite={(target) => void toggleFavorite(target)}
                   onToggleSelection={toggleMemberSelection}
+                  loading={isMembersLoading}
                 />
                 {selectedMember && (
                   <MemberPanel

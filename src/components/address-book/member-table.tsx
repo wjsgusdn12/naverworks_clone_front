@@ -4,6 +4,7 @@ import { CustomCheckbox } from "@/components/common/custom-checkbox";
 import { FavoriteButton } from "@/components/address-book/favorite-button";
 import { MemberAvatar } from "@/components/address-book/member-avatar";
 import { MeBadge } from "@/components/common/me-badge";
+import { LoadingState } from "@/components/common/loading";
 import type { AddressBookMember } from "@/lib/api/address-book-api";
 
 export function MemberTable({
@@ -17,6 +18,7 @@ export function MemberTable({
   onSelectMember,
   onToggleFavorite,
   onToggleSelection,
+  loading = false,
 }: {
   members: AddressBookMember[];
   // 본인 줄에 "나" 딱지를 붙이기 위한 로그인 사용자 ID.
@@ -29,6 +31,8 @@ export function MemberTable({
   onSelectMember: (member: AddressBookMember) => void;
   onToggleFavorite: (member: AddressBookMember) => void;
   onToggleSelection: (membershipId: number) => void;
+  // 목록을 불러오는 중이면 줄 대신 로딩 표시.
+  loading?: boolean;
 }) {
   return (
     <div className="min-w-0 flex-1 overflow-auto">
@@ -54,47 +58,53 @@ export function MemberTable({
           </tr>
         </thead>
         <tbody>
-          {members.map((target) => (
-            <tr
-              key={target.membershipId}
-              className={`cursor-pointer border-b border-slate-100 transition hover:bg-blue-50 ${selectedMemberId === target.membershipId ? "bg-blue-50" : ""}`}
-              onClick={() => onSelectMember(target)}
-            >
-              <td className="px-3 py-3">
-                <span onClick={(event) => event.stopPropagation()}>
-                  <CustomCheckbox
-                    label={`${target.displayName} 선택`}
-                    checked={selectedMemberIds.includes(target.membershipId)}
-                    onChange={() => onToggleSelection(target.membershipId)}
-                  />
-                </span>
-              </td>
-              <td className="px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <span className="shrink-0" onClick={(event) => event.stopPropagation()}>
-                    <FavoriteButton
-                      active={target.favorite}
-                      onClick={() => onToggleFavorite(target)}
+          {!loading &&
+            members.map((target) => (
+              <tr
+                key={target.membershipId}
+                className={`cursor-pointer border-b border-slate-100 transition hover:bg-blue-50 ${selectedMemberId === target.membershipId ? "bg-blue-50" : ""}`}
+                onClick={() => onSelectMember(target)}
+              >
+                <td className="px-3 py-3">
+                  <span onClick={(event) => event.stopPropagation()}>
+                    <CustomCheckbox
+                      label={`${target.displayName} 선택`}
+                      checked={selectedMemberIds.includes(target.membershipId)}
+                      onChange={() => onToggleSelection(target.membershipId)}
                     />
                   </span>
-                  <MemberAvatar member={target} />
-                  {target.membershipId === myMembershipId && <MeBadge />}
-                  <b>{target.displayName}</b>
-                </div>
-              </td>
-              <td className="px-4 py-3">
-                {[target.jobTitle, target.jobGradeName].filter(Boolean).join(" / ") || "-"}
-              </td>
-              <td className="px-4 py-3">{target.departmentName ?? "-"}</td>
-              <td className="px-4 py-3">{target.companyName}</td>
-              <td className="px-4 py-3">{target.email}</td>
-              <td className="px-4 py-3">{target.phoneNumber ?? "-"}</td>
-            </tr>
-          ))}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="shrink-0" onClick={(event) => event.stopPropagation()}>
+                      <FavoriteButton
+                        active={target.favorite}
+                        onClick={() => onToggleFavorite(target)}
+                      />
+                    </span>
+                    <MemberAvatar member={target} />
+                    {target.membershipId === myMembershipId && <MeBadge />}
+                    <b>{target.displayName}</b>
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  {[target.jobTitle, target.jobGradeName].filter(Boolean).join(" / ") || "-"}
+                </td>
+                <td className="px-4 py-3">{target.departmentName ?? "-"}</td>
+                <td className="px-4 py-3">{target.companyName}</td>
+                <td className="px-4 py-3">{target.email}</td>
+                <td className="px-4 py-3">{target.phoneNumber ?? "-"}</td>
+              </tr>
+            ))}
         </tbody>
       </table>
-      {members.length === 0 && (
-        <p className="p-12 text-center text-sm text-slate-500">표시할 구성원이 없습니다.</p>
+      {loading ? (
+        // 불러오는 중에는 빈 목록 안내 대신 로딩 표시.
+        <LoadingState message="구성원을 불러오는 중입니다." className="p-12" />
+      ) : (
+        members.length === 0 && (
+          <p className="p-12 text-center text-sm text-slate-500">표시할 구성원이 없습니다.</p>
+        )
       )}
     </div>
   );

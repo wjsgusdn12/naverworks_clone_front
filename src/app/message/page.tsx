@@ -8,7 +8,7 @@ import {
   EDIT_EXPIRED_MESSAGE,
   REACTION_EXPIRED_MESSAGE,
 } from "@/components/chat/message-action-menu";
-import { LoadingInline, LoadingState } from "@/components/common/loading";
+import { LoadingInline, LoadingState, PageLoading } from "@/components/common/loading";
 import { MessageDeleteDialog } from "@/components/chat/message-change-dialog";
 import { ForwardMessageModal } from "@/components/chat/forward-message-modal";
 import { NoticePanel } from "@/components/chat/notice-panel";
@@ -67,7 +67,7 @@ import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState 
 export default function MessagePage() {
   // URL 쿼리(roomId)는 런타임 값이라 Suspense 경계 안에서 읽음.
   return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-100" />}>
+    <Suspense fallback={<PageLoading />}>
       <MessageContent />
     </Suspense>
   );
@@ -147,6 +147,8 @@ function MessageContent() {
   }, [reactionModal]);
   const [newRoomModalOpen, setNewRoomModalOpen] = useState(searchParams.get("create") === "group");
   const [contactMembers, setContactMembers] = useState<AddressBookMember[]>([]);
+  // 구성원 목록을 한 번이라도 받아 왔는지. 받기 전에는 구성원 목록 자리에 로딩 표시.
+  const [contactsLoaded, setContactsLoaded] = useState(false);
   const [roomManageOpen, setRoomManageOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [roomSort, setRoomSort] = useState<RoomSort>("LATEST");
@@ -1047,7 +1049,8 @@ function MessageContent() {
           ),
         );
       })
-      .catch((error: Error) => showToast(error.message));
+      .catch((error: Error) => showToast(error.message))
+      .finally(() => setContactsLoaded(true));
   }, [accessToken, member?.membershipId, showToast, status]);
 
   const filteredRooms = sortRooms(
@@ -1850,6 +1853,7 @@ function MessageContent() {
       <main className="flex min-h-0 flex-1">
         <MessageRoomSidebar
           isSidebarCollapsed={isSidebarCollapsed}
+          roomsLoaded={hasLoadedRooms}
           onCreateRoom={() => setNewRoomModalOpen(true)}
           sortMenuRef={sortMenuRef}
           sortMenuOpen={sortMenuOpen}
@@ -2223,6 +2227,7 @@ function MessageContent() {
       {newRoomModalOpen && accessToken && (
         <NewRoomModal
           members={contactMembers}
+          membersLoaded={contactsLoaded}
           initialMemberIds={requestedMemberIds}
           initialType={searchParams.get("create") === "group" ? "GROUP" : "DIRECT"}
           onClose={() => setNewRoomModalOpen(false)}

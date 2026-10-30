@@ -2,19 +2,22 @@
 
 import { GlobalHeader } from "@/components/common/global-header";
 import { Toast } from "@/components/common/toast";
+import { PageLoading } from "@/components/common/loading";
 import { LoginForm } from "@/components/login/login-form";
 import { useAuth } from "@/components/auth/auth-provider";
 import { ApiClientError, type LoginInput } from "@/lib/api/auth-api";
 import { consumeAuthenticationRequired } from "@/lib/auth-required-notice";
 import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function Home() {
   // Next.js 페이지 이동과 공통 토스트 기능을 사용.
   const router = useRouter();
   const { toast, showToast, dismissToast } = useToast();
   const { status, login } = useAuth();
+  // 첫 로그인 상태 확인(새로고침 시 세션 복구)이 끝났는지.
+  const [initialCheckDone, setInitialCheckDone] = useState(false);
   // 헤더 아이콘을 누르면 안내 토스트와 함께 아이디 칸으로 포커스를 보냄.
   const loginIdInputRef = useRef<HTMLInputElement | null>(null);
   const requireLogin = () => {
@@ -51,6 +54,13 @@ export default function Home() {
       throw error;
     }
   };
+
+  // 처음 로그인 상태를 확인하는 동안에는 로그인 폼 대신 로딩 표시. 이미 로그인된 사용자에게 폼이 잠깐 보이지 않게 함.
+  // 로그인 버튼을 눌렀을 때도 status가 loading이 되므로, 첫 확인이 끝난 뒤에는 폼을 그대로 둠.
+  if (!initialCheckDone && status !== "loading") setInitialCheckDone(true);
+  if (!initialCheckDone || status === "authenticated") {
+    return <PageLoading message="로그인 상태를 확인하는 중입니다." />;
+  }
 
   // 헤더는 고정, 스크롤은 헤더 아래 영역에서만 생기도록 화면 높이를 고정.
   return (

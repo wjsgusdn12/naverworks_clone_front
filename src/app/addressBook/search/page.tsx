@@ -1,5 +1,6 @@
 "use client";
 
+import { LoadingState, PageLoading, Spinner } from "@/components/common/loading";
 import { GlobalHeader } from "@/components/common/global-header";
 import { FavoriteButton } from "@/components/address-book/favorite-button";
 import { MemberAvatar } from "@/components/address-book/member-avatar";
@@ -35,7 +36,7 @@ type ResultTab = "all" | "member" | "organizationGroup";
 
 export default function AddressBookSearchPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-100" />}>
+    <Suspense fallback={<PageLoading />}>
       <AddressBookSearchContent />
     </Suspense>
   );
@@ -50,6 +51,8 @@ function AddressBookSearchContent() {
   const [keyword, setKeyword] = useState(requestedKeyword);
   const [members, setMembers] = useState<AddressBookMember[]>([]);
   const [totalElements, setTotalElements] = useState(0);
+  // 검색 결과를 불러오는 중이면 "0"·"없습니다" 대신 로딩 표시.
+  const [isResultsLoading, setIsResultsLoading] = useState(true);
   const [selectedMember, setSelectedMember] = useState<AddressBookMemberDetail | null>(null);
   const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([]);
   const [tab, setTab] = useState<ResultTab>("all");
@@ -61,6 +64,7 @@ function AddressBookSearchContent() {
     if (!accessToken || !requestedKeyword) {
       setMembers([]);
       setTotalElements(0);
+      setIsResultsLoading(false);
       return;
     }
     const parameters = new URLSearchParams({
@@ -70,9 +74,14 @@ function AddressBookSearchContent() {
       sort: "name",
       direction: "asc",
     });
-    const result = await addressBookApi.member(accessToken, parameters);
-    setMembers(result.content);
-    setTotalElements(result.totalElements);
+    setIsResultsLoading(true);
+    try {
+      const result = await addressBookApi.member(accessToken, parameters);
+      setMembers(result.content);
+      setTotalElements(result.totalElements);
+    } finally {
+      setIsResultsLoading(false);
+    }
   }, [accessToken, requestedKeyword]);
 
   useEffect(() => {
@@ -173,7 +182,7 @@ function AddressBookSearchContent() {
     router.replace("/");
   };
 
-  if (status !== "authenticated" || !member) return <div className="min-h-screen bg-slate-100" />;
+  if (status !== "authenticated" || !member) return <PageLoading />;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-white text-slate-900">
@@ -249,7 +258,14 @@ function AddressBookSearchContent() {
         </aside>
         <section className="min-w-0 flex-1 p-6">
           <h1 className="text-xl font-bold">
-            검색 결과 <span className="text-blue-600">{totalElements}</span>
+            검색 결과{" "}
+            <span className="text-blue-600">
+              {isResultsLoading ? (
+                <Spinner size={16} className="inline text-blue-500" />
+              ) : (
+                totalElements
+              )}
+            </span>
           </h1>
           <p className="mt-1 text-sm text-slate-500">
             “{requestedKeyword || "검색어 없음"}” · 이름, 이메일, 연락처에서 검색
@@ -305,47 +321,54 @@ function AddressBookSearchContent() {
                     </tr>
                   </thead>
                   <tbody>
-                    {members.map((target) => (
-                      <tr
-                        key={target.membershipId}
-                        className={`cursor-pointer border-b border-slate-100 transition hover:bg-blue-50 ${selectedMember?.membershipId === target.membershipId ? "bg-blue-50" : ""}`}
-                        onClick={() => void selectMember(target)}
-                      >
-                        <td className="px-3 py-3">
-                          <span onClick={(event) => event.stopPropagation()}>
-                            <Checkbox
-                              label={`${target.displayName} 선택`}
-                              checked={selectedMemberIds.includes(target.membershipId)}
-                              onChange={() => toggleSelection(target.membershipId)}
-                            />
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
+                    {!isResultsLoading &&
+                      members.map((target) => (
+                        <tr
+                          key={target.membershipId}
+                          className={`cursor-pointer border-b border-slate-100 transition hover:bg-blue-50 ${selectedMember?.membershipId === target.membershipId ? "bg-blue-50" : ""}`}
+                          onClick={() => void selectMember(target)}
+                        >
+                          <td className="px-3 py-3">
                             <span onClick={(event) => event.stopPropagation()}>
-                              <FavoriteButton
-                                active={target.favorite}
-                                onClick={() => void toggleFavorite(target)}
+                              <Checkbox
+                                label={`${target.displayName} 선택`}
+                                checked={selectedMemberIds.includes(target.membershipId)}
+                                onChange={() => toggleSelection(target.membershipId)}
                               />
                             </span>
-                            <Avatar member={target} />
-                            <b>{target.displayName}</b>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          {[target.jobTitle, target.jobGradeName].filter(Boolean).join(" / ") ||
-                            "-"}
-                        </td>
-                        <td className="px-4 py-3">{target.departmentName ?? "-"}</td>
-                        <td className="px-4 py-3">{target.companyName}</td>
-                        <td className="px-4 py-3">{target.email}</td>
-                        <td className="px-4 py-3">{target.phoneNumber ?? "-"}</td>
-                      </tr>
-                    ))}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <span onClick={(event) => event.stopPropagation()}>
+                                <FavoriteButton
+                                  active={target.favorite}
+                                  onClick={() => void toggleFavorite(target)}
+                                />
+                              </span>
+                              <Avatar member={target} />
+                              <b>{target.displayName}</b>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            {[target.jobTitle, target.jobGradeName].filter(Boolean).join(" / ") ||
+                              "-"}
+                          </td>
+                          <td className="px-4 py-3">{target.departmentName ?? "-"}</td>
+                          <td className="px-4 py-3">{target.companyName}</td>
+                          <td className="px-4 py-3">{target.email}</td>
+                          <td className="px-4 py-3">{target.phoneNumber ?? "-"}</td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
-                {!members.length && (
-                  <p className="py-24 text-center text-sm text-slate-500">검색 결과가 없습니다.</p>
+                {isResultsLoading ? (
+                  <LoadingState message="검색 결과를 불러오는 중입니다." className="py-24" />
+                ) : (
+                  !members.length && (
+                    <p className="py-24 text-center text-sm text-slate-500">
+                      검색 결과가 없습니다.
+                    </p>
+                  )
                 )}
               </div>
               {selectedMember && (
