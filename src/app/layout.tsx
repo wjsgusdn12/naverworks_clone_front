@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { AuthProvider } from "@/components/auth/auth-provider";
 import { ChatNotificationProvider } from "@/components/chat/chat-notification-provider";
 import { RouteStateBoundary } from "@/components/common/route-state-boundary";
+import { RequestProgressBar } from "@/components/common/request-progress-bar";
 import { Geist } from "next/font/google";
 import "./globals.css";
 
@@ -22,6 +23,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     // 모든 페이지가 공통으로 사용하는 HTML 언어·높이·글꼴 설정.
     <html lang="ko" className={`${geistSans.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
+        {/* 서버 요청이 진행 중이면 화면 맨 위에 진행 막대. 모든 화면 공통. */}
+        <RequestProgressBar />
         {/* 모든 화면이 동일한 메모리 인증 상태를 공유. */}
         <AuthProvider>
           <ChatNotificationProvider>

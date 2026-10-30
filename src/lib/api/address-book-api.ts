@@ -1,3 +1,4 @@
+import { trackRequest } from "@/lib/api/request-tracker";
 import { ApiClientError } from "@/lib/api/auth-api";
 import type { MemberStatusType } from "@/lib/status-options";
 
@@ -71,15 +72,17 @@ const request = async <T>(
 ): Promise<T> => {
   let response: Response;
   try {
-    response = await fetch(`${getApiBaseUrl()}${path}`, {
-      ...init,
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        ...init.headers,
-      },
-    });
+    response = await trackRequest(
+      fetch(`${getApiBaseUrl()}${path}`, {
+        ...init,
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+          ...init.headers,
+        },
+      }),
+    );
   } catch (error) {
     // 입력값이 바뀌어 취소한 이전 자동완성 요청은 오류 토스트로 보이지 않게 전달.
     if (error instanceof DOMException && error.name === "AbortError") throw error;

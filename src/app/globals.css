@@ -421,3 +421,22 @@ body {
     animation: none;
   }
 }
+
+/* 화면 맨 위 서버 요청 진행 막대. 왼쪽에서 오른쪽으로 계속 흐름. */
+@keyframes request-progress {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+.request-progress-bar {
+  animation: request-progress 1.1s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .request-progress-bar {
+    width: 100%;
+    animation: none;
+  }
+}
