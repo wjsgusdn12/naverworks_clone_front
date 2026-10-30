@@ -1578,6 +1578,14 @@ function MessageContent() {
     // 답장은 처음 보내는 한 건(글 또는 첫 첨부)에만 붙임.
     let replyId = sentReplyId;
     sendingRef.current = true;
+    // 입력칸은 서버 응답을 기다리지 않고 바로 비움(메신저 공통 방식).
+    // 응답 뒤에 비우면, 기다리는 사이 새로 친 글자가 보낸 글에 이어 붙은 채 남아 다음 전송에 중복으로 섞임.
+    if (input.trim())
+      setDraftByRoomId((current) => {
+        const remainingDrafts = { ...current };
+        delete remainingDrafts[roomId];
+        return remainingDrafts;
+      });
     try {
       stopTyping();
       if (input.trim()) {
@@ -1586,21 +1594,25 @@ function MessageContent() {
           : mentionCandidates
               .filter((candidate) => input.includes(`@${candidate.displayName}`))
               .map((candidate) => candidate.membershipId);
-        const message = await chatApi.send(
-          accessToken,
-          roomId,
-          input.trim(),
-          mentionedMembershipIds,
-          replyId,
-        );
+        let message: ChatMessage;
+        try {
+          message = await chatApi.send(
+            accessToken,
+            roomId,
+            input.trim(),
+            mentionedMembershipIds,
+            replyId,
+          );
+        } catch (error) {
+          // 보내기 실패: 쓴 글이 사라지지 않게 되돌림. 그사이 새로 친 글이 있으면 다음 줄에 이어 둠.
+          setDraftByRoomId((current) => ({
+            ...current,
+            [roomId]: current[roomId] ? `${sentInput}\n${current[roomId]}` : sentInput,
+          }));
+          throw error;
+        }
         replyId = undefined;
         applySentMessage(roomId, message);
-        setDraftByRoomId((current) => {
-          if (current[roomId] !== sentInput) return current;
-          const remainingDrafts = { ...current };
-          delete remainingDrafts[roomId];
-          return remainingDrafts;
-        });
       }
       // 첨부는 하나씩 차례로 올려 말풍선 순서가 고른 순서와 같게 함. 실패한 것은 칸에 남겨 이유를 보여 줌.
       if (pending.length > 0) {
