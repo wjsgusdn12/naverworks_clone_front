@@ -27,9 +27,15 @@ export type ApiDashboardEndpoint = {
   requests: number;
   errors: number;
   avgMs: number;
-  // 오늘 0~23시 1시간 단위 값(작은 추이선용)
-  hourlyRequests: number[];
-  hourlyAvgMs: number[];
+  // 순위의 bins 칸마다 호출 수·평균 응답 시간(작은 추이선용)
+  trendRequests: number[];
+  trendAvgMs: number[];
+};
+// 기간별 API 순위. bins는 작은 추이선 칸의 시작 시각(이번 시간 5분×12, 오늘 1시간×24, 이번 주 1일×7, 이번 달 1일×말일).
+export type ApiDashboardRanking = {
+  bins: string[];
+  top: ApiDashboardEndpoint[];
+  slow: ApiDashboardEndpoint[];
 };
 export type ApiDashboardServer = {
   instanceId: string;
@@ -59,8 +65,10 @@ export type ApiDashboard = {
   weekTrend: ApiDashboardTrendPoint[];
   // 이번 달 1일~말일 1일 단위
   monthTrend: ApiDashboardTrendPoint[];
-  topEndpoints: ApiDashboardEndpoint[];
-  slowEndpoints: ApiDashboardEndpoint[];
+  hourRanking: ApiDashboardRanking;
+  dayRanking: ApiDashboardRanking;
+  weekRanking: ApiDashboardRanking;
+  monthRanking: ApiDashboardRanking;
 };
 
 const apiBaseUrl = () => {

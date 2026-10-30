@@ -7,6 +7,7 @@ import {
   adminApi,
   type ApiDashboard,
   type ApiDashboardEndpoint,
+  type ApiDashboardRanking,
   type ApiDashboardSummary,
   type ApiDashboardTrendPoint,
 } from "@/lib/api/admin-api";
@@ -79,6 +80,20 @@ const pointsOf = (data: ApiDashboard, range: Range) =>
   ({ HOUR: data.hourTrend, DAY: data.dayTrend, WEEK: data.weekTrend, MONTH: data.monthTrend })[
     range
   ];
+const rankingOf = (data: ApiDashboard, range: Range) =>
+  ({
+    HOUR: data.hourRanking,
+    DAY: data.dayRanking,
+    WEEK: data.weekRanking,
+    MONTH: data.monthRanking,
+  })[range];
+// 순위 옆 작은 추이선 한 칸의 길이
+const RANKING_STEP: Record<Range, string> = {
+  HOUR: "5분",
+  DAY: "1시간",
+  WEEK: "하루",
+  MONTH: "하루",
+};
 const summaryOf = (data: ApiDashboard, range: Range) =>
   ({ HOUR: data.thisHour, DAY: data.today, WEEK: data.thisWeek, MONTH: data.thisMonth })[range];
 
@@ -133,13 +148,6 @@ export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
     const timer = window.setInterval(() => void load(), REFRESH_MS);
     return () => window.clearInterval(timer);
   }, [load]);
-
-  // 오늘 중 이미 지난(지금 포함) 시간 수. API 순위 추이선에서 그 뒤 시간은 비움.
-  const pastHours = data
-    ? data.dayTrend.filter(
-        (point) => new Date(point.startAt).getTime() <= new Date(data.generatedAt).getTime(),
-      ).length
-    : 0;
 
   return (
     <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -224,18 +232,20 @@ export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
           />
           <div className="mt-6 grid gap-6 lg:grid-cols-2">
             <EndpointList
-              title="많이 호출된 API"
-              description="오늘 00:00~23:59 호출 수 · 오른쪽 점선은 시간별 흐름"
-              items={data.topEndpoints}
+              title={`많이 호출된 API · ${RANGES[range].name}`}
+              description={`${RANGES[range].name} 호출 수 · 오른쪽 점선은 ${RANKING_STEP[range]} 단위 흐름`}
+              ranking={rankingOf(data, range)}
+              items={rankingOf(data, range).top}
               metric="requests"
-              pastHours={pastHours}
+              generatedAt={data.generatedAt}
             />
             <EndpointList
-              title="느린 API"
-              description="오늘 00:00~23:59 평균 응답 시간(5회 이상 호출) · 점선은 시간별 평균"
-              items={data.slowEndpoints}
+              title={`느린 API · ${RANGES[range].name}`}
+              description={`${RANGES[range].name} 평균 응답 시간(5회 이상 호출) · 점선은 ${RANKING_STEP[range]} 단위 평균`}
+              ranking={rankingOf(data, range)}
+              items={rankingOf(data, range).slow}
               metric="avgMs"
-              pastHours={pastHours}
+              generatedAt={data.generatedAt}
             />
           </div>
           <ServerList servers={data.servers} mode={data.mode} />
@@ -537,21 +547,26 @@ function EndpointName({ endpoint }: { endpoint: string }) {
   );
 }
 
-// API 순위(오늘 기준). 막대 대신 오른쪽에 오늘 0~23시 점선 추이선을 붙여 "언제 많이/느리게 불렸는지"를 함께 보여 줌.
+// API 순위(고른 기간 기준). 막대 대신 오른쪽에 점선 추이선을 붙여 "언제 많이/느리게 불렸는지"를 함께 보여 줌.
 function EndpointList({
   title,
   description,
+  ranking,
   items,
   metric,
-  pastHours,
+  generatedAt,
 }: {
   title: string;
   description: string;
+  // 작은 추이선 칸의 시작 시각(bins)을 쓰기 위해 순위 전체를 받음.
+  ranking: ApiDashboardRanking;
   items: ApiDashboardEndpoint[];
   metric: "requests" | "avgMs";
-  // 오늘 중 이미 지난(지금 포함) 시간 수. 그 뒤는 아직 오지 않아 추이선을 비움.
-  pastHours: number;
+  // 이 시각보다 뒤에 시작하는 칸은 아직 오지 않아 추이선을 비움.
+  generatedAt: string;
 }) {
+  const now = new Date(generatedAt).getTime();
+  const future = ranking.bins.map((bin) => new Date(bin).getTime() > now);
   return (
     <div>
       <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
@@ -563,11 +578,9 @@ function EndpointList({
       ) : (
         <ol className="mt-2 divide-y divide-slate-100">
           {items.map((item, index) => {
-            const trend = (metric === "requests" ? item.hourlyRequests : item.hourlyAvgMs).map(
-              (value, hour) =>
-                hour >= pastHours || (metric === "avgMs" && item.hourlyRequests[hour] === 0)
-                  ? null
-                  : value,
+            const trend = (metric === "requests" ? item.trendRequests : item.trendAvgMs).map(
+              (value, bin) =>
+                future[bin] || (metric === "avgMs" && item.trendRequests[bin] === 0) ? null : value,
             );
             return (
               <li key={item.endpoint} className="flex items-center gap-3 py-2">
@@ -580,7 +593,7 @@ function EndpointList({
                 <Sparkline
                   values={trend}
                   color={metric === "requests" ? REQUEST_COLOR : P95_COLOR}
-                  label={`${item.endpoint} 오늘 ${metric === "requests" ? "호출 수" : "평균 응답 시간"} 추이`}
+                  label={`${item.endpoint} ${title} ${metric === "requests" ? "호출 수" : "평균 응답 시간"} 추이`}
                 />
                 <span className="w-20 shrink-0 text-right text-xs tabular-nums">
                   <span className="font-semibold text-slate-800">
