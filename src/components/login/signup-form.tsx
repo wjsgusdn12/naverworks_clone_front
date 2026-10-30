@@ -121,7 +121,10 @@ export function SignupForm({ onToast, onSignedUp, onBackToLogin }: SignupFormPro
       email:
         normalizedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
           ? "올바른 이메일 주소 형식이 아닙니다."
-          : undefined,
+          : // 화면에서는 앞 일부만 보이고 나머지를 가리므로 @ 앞은 4자 이상.
+            normalizedEmail && normalizedEmail.indexOf("@") < 4
+            ? "이메일은 @ 앞부분이 4자 이상이어야 합니다."
+            : undefined,
       companyName:
         joinType === "NEW_COMPANY" && !companyName.trim()
           ? "회사 이름을 입력해 주세요."
@@ -157,7 +160,8 @@ export function SignupForm({ onToast, onSignedUp, onBackToLogin }: SignupFormPro
       // 서버가 알려 준 중복·코드 오류는 해당 칸 아래에도 표시.
       const code = error instanceof Error && "code" in error ? String(error.code) : "";
       if (code === "AUTH_LOGIN_ID_TAKEN") setFieldErrors({ loginId: message });
-      else if (code === "AUTH_EMAIL_TAKEN") setFieldErrors({ email: message });
+      else if (code === "AUTH_EMAIL_TAKEN" || code === "AUTH_EMAIL_TOO_SHORT")
+        setFieldErrors({ email: message });
       else if (code === "AUTH_COMPANY_NAME_TAKEN" || code === "AUTH_COMPANY_NAME_REQUIRED")
         setFieldErrors({ companyName: message });
       else if (code === "AUTH_INVITE_CODE_INVALID") setFieldErrors({ inviteCode: message });
@@ -363,7 +367,8 @@ export function SignupForm({ onToast, onSignedUp, onBackToLogin }: SignupFormPro
             복구 코드로만 찾을 수 있습니다.
           </p>
           <p className="mt-1.5">
-            프로젝트 안에서는 가려서 표시됩니다. 예) abcd*****@example.com · 010-12**-56**
+            프로젝트 안에서는 가려서 표시됩니다. 이메일은 @ 앞 4자 이상이어야 합니다. 예)
+            user11@example.com → us****@example.com · 010-1234-5678 → 010-12**-56**
           </p>
         </div>
 
