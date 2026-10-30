@@ -1,7 +1,7 @@
 "use client";
 
 import { CHART_COLORS } from "@/lib/chart-colors";
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 // 선 그래프 한 줄(계열). dashed면 점선으로 그려 색뿐 아니라 모양으로도 구분.
 // values의 null은 "값 없음"(예: 요청이 없던 구간의 응답 시간)이라 선을 끊음.
@@ -27,12 +27,14 @@ const niceCeil = (value: number) => {
 };
 
 // 부모 폭에 맞춰 그리기 위해 실제 폭을 잼(창 크기를 바꾸면 다시 잼).
+// 화면에 그리기 전에 먼저 재서(useLayoutEffect) 첫 화면부터 그래프가 보임(빈 자리 → 그래프로 깜빡이지 않음).
 function useElementWidth() {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
+    setWidth(Math.round(element.getBoundingClientRect().width));
     const observer = new ResizeObserver(([entry]) => setWidth(Math.round(entry.contentRect.width)));
     observer.observe(element);
     return () => observer.disconnect();
@@ -105,7 +107,14 @@ export function LineChart({
     return Math.min(count - 1, Math.max(0, Math.round(ratio * (count - 1))));
   };
   return (
-    <div ref={ref} className="relative w-full" role="img" aria-label={ariaLabel}>
+    // 높이를 미리 잡아 둬서 폭을 재기 전에도 그래프 자리가 접히지 않음
+    <div
+      ref={ref}
+      className="relative w-full"
+      style={{ height: HEIGHT }}
+      role="img"
+      aria-label={ariaLabel}
+    >
       {width > 0 && (
         <svg width={width} height={HEIGHT} className="block overflow-visible">
           {/* 가로 눈금선(점선)과 왼쪽 값 */}
