@@ -3,7 +3,7 @@
 import { FavoriteBadge } from "@/components/address-book/favorite-badge";
 import { GroupAvatar } from "@/components/chat/group-avatar";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
-import { LoadingInline } from "@/components/common/loading";
+import { LoadingInline, Spinner } from "@/components/common/loading";
 import { MeBadge } from "@/components/common/me-badge";
 import { UserAvatar } from "@/components/common/user-avatar";
 import { addressBookApi, type AddressBookMember } from "@/lib/api/address-book-api";
@@ -426,18 +426,21 @@ function StatTile({
     <Tag
       type={onClick ? "button" : undefined}
       onClick={onClick}
-      className={`rounded-xl border border-slate-200 bg-white p-5 text-left shadow-sm ${onClick ? "cursor-pointer transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md" : ""}`}
+      className={`flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-left shadow-sm ${onClick ? "cursor-pointer transition hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md" : ""}`}
     >
-      <div className="flex items-start justify-between">
-        <p className="text-sm font-medium text-slate-500">{label}</p>
-        <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${accent}`}>
-          <Icon size={19} />
+      {/* 한 줄: 아이콘 · 이름 · 값. 값을 불러오는 중이면 값 자리에 로딩 표시. */}
+      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${accent}`}>
+        <Icon size={17} />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-600">{label}</span>
+      {value === null ? (
+        <Spinner size={16} className="text-blue-500" />
+      ) : (
+        <span className="shrink-0 text-xl font-bold tracking-tight text-slate-900">
+          {value}
+          <span className="ml-0.5 text-sm font-medium text-slate-500">{suffix}</span>
         </span>
-      </div>
-      <p className="mt-4 text-3xl font-bold tracking-tight text-slate-900">
-        {value === null ? <span className="text-slate-300">–</span> : value}
-        <span className="ml-1 text-base font-medium text-slate-500">{suffix}</span>
-      </p>
+      )}
     </Tag>
   );
 }
