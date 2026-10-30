@@ -56,7 +56,7 @@ export function LineChart({
   // 아래쪽 글자를 몇 칸마다 보여 줄지
   labelEvery: number;
   ariaLabel: string;
-  // false면 점을 숨기고 마우스가 올라간 시점만 점을 보여 줌(일주일 168점처럼 촘촘할 때).
+  // false면 점을 숨기고 마우스가 올라간 시점만 점을 보여 줌(오늘 288점·이번 달 744점처럼 촘촘할 때).
   showMarkers?: boolean;
 }) {
   const { ref, width } = useElementWidth();
@@ -92,7 +92,12 @@ export function LineChart({
   const isolated = (items: (number | null)[], index: number) =>
     (items[index - 1] ?? null) === null && (items[index + 1] ?? null) === null;
 
-  const slotWidth = count > 1 ? plotWidth / (count - 1) : plotWidth;
+  // 마우스 x 위치에서 가장 가까운 칸 번호. 점이 수백 개여도 칸마다 영역을 만들지 않고 계산으로 찾음.
+  const indexAt = (mouseX: number) => {
+    if (count <= 1) return 0;
+    const ratio = (mouseX - PADDING.left) / plotWidth;
+    return Math.min(count - 1, Math.max(0, Math.round(ratio * (count - 1))));
+  };
   return (
     <div ref={ref} className="relative w-full" role="img" aria-label={ariaLabel}>
       {width > 0 && (
@@ -172,19 +177,22 @@ export function LineChart({
               )}
             </g>
           ))}
-          {/* 점보다 넓은 세로 칸 전체를 마우스 영역으로 써서 쉽게 가리킬 수 있게 함. */}
-          {labels.map((label, index) => (
-            <rect
-              key={`hit-${index}`}
-              x={x(index) - slotWidth / 2}
-              y={PADDING.top}
-              width={Math.max(slotWidth, 8)}
-              height={plotHeight}
-              fill="transparent"
-              onMouseEnter={() => setHovered(index)}
-              onMouseLeave={() => setHovered(null)}
-            />
-          ))}
+          {/* 그래프 영역 전체를 마우스 영역으로 써서 가장 가까운 시점을 가리킴. */}
+          <rect
+            x={PADDING.left - 8}
+            y={PADDING.top}
+            width={plotWidth + 16}
+            height={plotHeight}
+            fill="transparent"
+            onMouseMove={(event) =>
+              setHovered(
+                indexAt(
+                  event.clientX - event.currentTarget.ownerSVGElement!.getBoundingClientRect().left,
+                ),
+              )
+            }
+            onMouseLeave={() => setHovered(null)}
+          />
         </svg>
       )}
       {hovered !== null && width > 0 && (
@@ -231,7 +239,8 @@ export function LegendSwatch({ color, dashed }: { color: string; dashed?: boolea
   );
 }
 
-// 목록 옆 작은 점선 추이선. 마지막 점만 강조해 "지금" 값을 보여 줌.
+// 목록 옆 작은 추이선. 마지막 점만 강조해 "지금" 값을 보여 줌.
+// 칸이 적으면 점선, 많으면(오늘 288칸·이번 달 744칸) 점선 무늬가 뭉개지므로 가는 실선으로 그림.
 export function Sparkline({
   values,
   color,
@@ -245,6 +254,7 @@ export function Sparkline({
   const height = 28;
   const numbers = values.filter((value): value is number => value !== null);
   const max = Math.max(1, ...numbers);
+  const dense = values.length > 48;
   const step = values.length > 1 ? (width - 6) / (values.length - 1) : 0;
   const point = (value: number, index: number) => ({
     x: 3 + index * step,
@@ -271,8 +281,9 @@ export function Sparkline({
         d={path}
         fill="none"
         stroke={color}
-        strokeWidth="1.5"
-        strokeDasharray="3 3"
+        strokeWidth={dense ? 1.25 : 1.5}
+        strokeDasharray={dense ? undefined : "3 3"}
+        strokeLinejoin="round"
         strokeLinecap="round"
       />
       {last && (

@@ -39,9 +39,9 @@ type Range = "HOUR" | "DAY" | "WEEK" | "MONTH";
 // 기간별 탭 글자, 이름, 점 하나의 길이(분). 모두 달력 기준(이번 시간·오늘·이번 주 일~토·이번 달 1일~말일).
 const RANGES: Record<Range, { tab: string; name: string; stepMinutes: number }> = {
   HOUR: { tab: "이번 시간 · 5분 단위", name: "이번 시간", stepMinutes: 5 },
-  DAY: { tab: "오늘 · 1시간 단위", name: "오늘", stepMinutes: 60 },
+  DAY: { tab: "오늘 · 5분 단위", name: "오늘", stepMinutes: 5 },
   WEEK: { tab: "이번 주 · 1시간 단위", name: "이번 주", stepMinutes: 60 },
-  MONTH: { tab: "이번 달 · 1일 단위", name: "이번 달", stepMinutes: 1440 },
+  MONTH: { tab: "이번 달 · 1시간 단위", name: "이번 달", stepMinutes: 60 },
 };
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 // "10/27(화)"
@@ -90,9 +90,9 @@ const rankingOf = (data: ApiDashboard, range: Range) =>
 // 순위 옆 작은 추이선 한 칸의 길이
 const RANKING_STEP: Record<Range, string> = {
   HOUR: "5분",
-  DAY: "1시간",
+  DAY: "5분",
   WEEK: "하루",
-  MONTH: "하루",
+  MONTH: "1시간",
 };
 const summaryOf = (data: ApiDashboard, range: Range) =>
   ({ HOUR: data.thisHour, DAY: data.today, WEEK: data.thisWeek, MONTH: data.thisMonth })[range];
@@ -109,14 +109,17 @@ const periodOf = (points: ApiDashboardTrendPoint[], range: Range) => {
     return `${monthDay(first)} ${hourOnly(first)} ~ ${monthDay(last)} ${hourOnly(last)}`;
   return `${monthDay(first)} ~ ${monthDay(last)}`;
 };
-// 아래쪽 글자(빈 글자는 표시 안 함): 이번 시간 10분마다, 오늘 3시간마다, 이번 주는 날마다(그날 정오 위치), 이번 달 5일마다
+// 아래쪽 글자(빈 글자는 표시 안 함): 이번 시간 10분마다, 오늘 3시간마다(정각), 이번 주는 날마다(그날 정오 위치),
+// 이번 달은 1·6·11…일 0시
 const labelOf = (point: ApiDashboardTrendPoint, index: number, range: Range) => {
+  const date = new Date(point.startAt);
   if (range === "HOUR") return index % 2 === 0 ? clock(point.startAt) : "";
-  if (range === "DAY") return index % 3 === 0 ? hourOnly(point.startAt) : "";
+  if (range === "DAY")
+    return date.getMinutes() === 0 && date.getHours() % 3 === 0 ? hourOnly(point.startAt) : "";
   if (range === "WEEK") return index % 24 === 12 ? monthDay(point.startAt) : "";
-  return index % 5 === 0 ? shortDay(point.startAt) : "";
+  return date.getHours() === 0 && (date.getDate() - 1) % 5 === 0 ? shortDay(point.startAt) : "";
 };
-// 마우스를 올렸을 때 제목: 14:05 ~ 14:09 / 13:00 ~ 13:59 / 10/27(화) 13:00 ~ 13:59 / 10/27(화) 00:00 ~ 23:59
+// 마우스를 올렸을 때 제목: 14:05 ~ 14:09 / 10/27(화) 13:00 ~ 13:59
 const titleOf = (point: ApiDashboardTrendPoint, range: Range) => {
   const span = `${clock(point.startAt)} ~ ${clock(lastMinute(point.startAt, RANGES[range].stepMinutes))}`;
   return range === "WEEK" || range === "MONTH" ? `${monthDay(point.startAt)} ${span}` : span;
@@ -364,8 +367,8 @@ function TrendSection({
 }) {
   const [showTable, setShowTable] = useState(false);
   const config = RANGES[range];
-  // 이번 주(168점)는 점을 숨기고 마우스 위치만 표시
-  const denseChart = range === "WEEK";
+  // 오늘(288점)·이번 주(168점)·이번 달(최대 744점)은 점을 숨기고 선만 그림(마우스 위치만 점 표시)
+  const denseChart = range !== "HOUR";
   const labels = points.map((point, index) => labelOf(point, index, range));
   const titles = points.map((point) => titleOf(point, range));
   const now = new Date(generatedAt).getTime();
