@@ -1,11 +1,13 @@
 "use client";
 
+import { AttachmentTray, type PendingAttachment } from "@/components/chat/attachment-tray";
 import { MessageMemberAvatar } from "@/components/chat/message-member-avatar";
 import { MessageQuote } from "@/components/chat/message-quote";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import { Tooltip } from "@/components/common/tooltip";
 import type { AddressBookMember } from "@/lib/api/address-book-api";
 import type { ChatMessage } from "@/lib/api/chat-api";
+import { IMAGE_ACCEPT } from "@/lib/attachment-files";
 import {
   DEFAULT_INPUT_HEIGHT,
   MAX_INPUT_HEIGHT,
@@ -47,6 +49,11 @@ export function MessageComposer({
   onSelectMention,
   onProfileClick,
   showToast,
+  pendingAttachments,
+  attachmentSending,
+  onAddFiles,
+  onRemoveAttachment,
+  onClearAttachments,
 }: {
   composerRef: RefObject<HTMLFormElement | null>;
   inputRef: RefObject<HTMLTextAreaElement | null>;
@@ -70,10 +77,18 @@ export function MessageComposer({
   onSelectMention: (candidate: { membershipId: number; displayName: string }) => void;
   onProfileClick: (membershipId: number) => void;
   showToast: (message: string) => void;
+  // 보내기 전 첨부 목록과 올리는 중 여부. 추가·빼기는 page가 검사(개수·크기)한 뒤 반영.
+  pendingAttachments: PendingAttachment[];
+  attachmentSending: boolean;
+  onAddFiles: (files: File[]) => void;
+  onRemoveAttachment: (key: string) => void;
+  onClearAttachments: () => void;
 }) {
   // 본인 아바타 배지에 쓰는 내 상태 설정.
   const { myStatusType } = useChatNotification();
   const inputResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   return (
     <form
       ref={composerRef}
@@ -118,6 +133,15 @@ export function MessageComposer({
       >
         <span className="h-1 w-10 rounded-full bg-slate-300 opacity-0 transition duration-150 group-hover:opacity-100 group-focus-visible:bg-blue-500 group-focus-visible:opacity-100 group-active:bg-blue-500 group-active:opacity-100" />
       </div>
+      {pendingAttachments.length > 0 && (
+        <AttachmentTray
+          items={pendingAttachments}
+          sending={attachmentSending}
+          onRemove={onRemoveAttachment}
+          onClear={onClearAttachments}
+          onSend={() => void onSubmit()}
+        />
+      )}
       {replyTarget && (
         <div className="message-action-menu flex items-center gap-3 rounded-t-2xl border border-slate-200 bg-white px-4 py-3">
           <div className="min-w-0 flex-1">
@@ -220,6 +244,13 @@ export function MessageComposer({
           onChange={(event) =>
             onInput(event.target.value, event.target.selectionStart ?? event.target.value.length)
           }
+          onPaste={(event) => {
+            // 복사한 사진·파일을 붙여넣으면 글자 대신 첨부로 추가.
+            const files = Array.from(event.clipboardData.files);
+            if (files.length === 0) return;
+            event.preventDefault();
+            onAddFiles(files);
+          }}
           onKeyDown={(event) => {
             // 한글 조합 확정 Enter를 전송으로 오인하지 않음.
             if (event.nativeEvent.isComposing || event.keyCode === 229) return;
@@ -305,23 +336,49 @@ export function MessageComposer({
           ))}
         </div>
       )}
+      {/* 파일 선택 창만 쓰는 숨은 입력칸. 화면에는 아래 아이콘 버튼만 보임. */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        hidden
+        onChange={(event) => {
+          onAddFiles(Array.from(event.target.files ?? []));
+          event.target.value = "";
+        }}
+      />
+      <input
+        ref={imageInputRef}
+        type="file"
+        multiple
+        hidden
+        accept={IMAGE_ACCEPT}
+        onChange={(event) => {
+          onAddFiles(Array.from(event.target.files ?? []));
+          event.target.value = "";
+        }}
+      />
       <div className="flex items-center gap-3 px-4 text-slate-600">
-        <button
-          type="button"
-          aria-label="첨부"
-          onClick={() => showToast("파일 첨부 기능은 준비 중입니다.")}
-          className="cursor-pointer transition hover:text-blue-600"
-        >
-          <Paperclip size={19} />
-        </button>
-        <button
-          type="button"
-          aria-label="이미지"
-          onClick={() => showToast("이미지 전송 기능은 준비 중입니다.")}
-          className="cursor-pointer transition hover:text-blue-600"
-        >
-          <ImagePlus size={19} />
-        </button>
+        <Tooltip label="파일 첨부" placement="top">
+          <button
+            type="button"
+            aria-label="파일 첨부"
+            onClick={() => fileInputRef.current?.click()}
+            className="cursor-pointer transition hover:text-blue-600"
+          >
+            <Paperclip size={19} />
+          </button>
+        </Tooltip>
+        <Tooltip label="사진 첨부" placement="top">
+          <button
+            type="button"
+            aria-label="사진 첨부"
+            onClick={() => imageInputRef.current?.click()}
+            className="cursor-pointer transition hover:text-blue-600"
+          >
+            <ImagePlus size={19} />
+          </button>
+        </Tooltip>
         <button
           type="button"
           aria-label="이모지"

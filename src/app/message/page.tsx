@@ -23,6 +23,17 @@ import { ReactionMemberModal } from "@/components/chat/reaction-member-modal";
 import { ReadMemberModal } from "@/components/chat/read-member-modal";
 import { TypingBubble } from "@/components/chat/typing-bubble";
 import { UserProfileModal } from "@/components/chat/user-profile-modal";
+import { AttachmentGalleryPanel } from "@/components/chat/attachment-gallery-panel";
+import type { PendingAttachment } from "@/components/chat/attachment-tray";
+import { FileDropOverlay } from "@/components/chat/file-drop-overlay";
+import { ImageViewer, type ViewerImage } from "@/components/chat/image-viewer";
+import { useAttachmentDownload } from "@/hooks/use-attachment";
+import {
+  formatFileSize,
+  isPreviewableImage,
+  MAX_ATTACHMENT_COUNT,
+  MAX_ATTACHMENT_SIZE,
+} from "@/lib/attachment-files";
 import {
   applyMessageChange,
   applyReactionChange,
@@ -62,7 +73,16 @@ import { useToast } from "@/hooks/use-toast";
 import { ArrowDown, ChevronDown, MessageCircle, Search, X } from "lucide-react";
 import { withLiveStatus } from "@/lib/live-status";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type DragEvent,
+  FormEvent,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 export default function MessagePage() {
   // URL 쿼리(roomId)는 런타임 값이라 Suspense 경계 안에서 읽음.
@@ -150,6 +170,19 @@ function MessageContent() {
   // 구성원 목록을 한 번이라도 받아 왔는지. 받기 전에는 구성원 목록 자리에 로딩 표시.
   const [contactsLoaded, setContactsLoaded] = useState(false);
   const [roomManageOpen, setRoomManageOpen] = useState(false);
+  // 보내기 전 첨부는 입력 초안처럼 방마다 따로 보관(방을 바꿔도 사라지지 않음).
+  const [pendingByRoomId, setPendingByRoomId] = useState<Record<number, PendingAttachment[]>>({});
+  const [attachmentSending, setAttachmentSending] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  // 사진 크게 보기. 연 방이 바뀌면 보여 주지 않음.
+  const [viewer, setViewer] = useState<{
+    roomId: number;
+    images: ViewerImage[];
+    index: number;
+  } | null>(null);
+  // 파일을 대화 영역 위로 끌고 있는지. 안쪽 요소를 지날 때 생기는 들어옴·나감 이벤트를 세어 깜빡임 방지.
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const dragDepthRef = useRef(0);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [roomSort, setRoomSort] = useState<RoomSort>("LATEST");
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
@@ -1265,7 +1298,12 @@ function MessageContent() {
 
   // 답장하기와 같은 흐름: 입력칸 위에 원문을 띄우고, 입력칸에는 기존 본문을 채워 바로 고치게 함.
   const startEdit = (message: ChatMessage) => {
-    if (!selectedRoomId || message.deletedAt || message.senderMembershipId !== member?.membershipId)
+    if (
+      !selectedRoomId ||
+      message.deletedAt ||
+      message.attachment ||
+      message.senderMembershipId !== member?.membershipId
+    )
       return;
     // 메뉴가 열려 있는 사이에 24시간이 지났을 수도 있으므로 시작 시점에 한 번 더 확인.
     if (!isMessageEditable(message)) {
@@ -1417,91 +1455,222 @@ function MessageContent() {
     }
   };
 
+  // 보낸 메시지(글·첨부 공통)를 대화 목록과 왼쪽 방 목록에 반영.
+  const applySentMessage = (roomId: number, message: ChatMessage) => {
+    if (selectedRoomIdRef.current === roomId) {
+      shouldScrollToLatestRef.current = true;
+      isMessageListAtBottomRef.current = true;
+      setUnseenMessageCount(0);
+      setLatestUnseenMessage(null);
+      if (newerCursorRef.current !== null) {
+        // 과거 구간에서 전송했다면 최신 페이지로 돌아와 대화 간격을 메움.
+        messageWindowVersionRef.current += 1;
+        pendingMessageScrollRef.current = null;
+        preservedScrollRef.current = null;
+        setIsLocatingOriginal(false);
+        void loadMessages(roomId).catch(() =>
+          showToast("전송은 완료했으나 최신 대화를 불러오지 못했습니다."),
+        );
+      } else {
+        // REST 응답과 STOMP 수신이 겹쳐도 같은 ID의 말풍선은 한 번만 추가.
+        setMessages((current) =>
+          current.some((item) => item.id === message.id)
+            ? current
+            : withReadCounts([...current, message]),
+        );
+      }
+    }
+    setRooms((current) =>
+      sortRoomsByLatestActivity(
+        current.map((room) =>
+          room.id === roomId
+            ? {
+                ...room,
+                lastMessage: message.content,
+                lastMessageId: message.id,
+                lastMessageVersion: message.version,
+                lastMessageAt: message.createdAt,
+                lastSenderMembershipId: member?.membershipId ?? null,
+                unreadCount: 0,
+              }
+            : room,
+        ),
+      ),
+    );
+  };
+
+  // 보내기 전 첨부 한 개의 진행률·오류를 바꿈.
+  const updatePendingAttachment = (
+    roomId: number,
+    key: string,
+    change: Partial<PendingAttachment>,
+  ) =>
+    setPendingByRoomId((current) => ({
+      ...current,
+      [roomId]: (current[roomId] ?? []).map((item) =>
+        item.key === key ? { ...item, ...change } : item,
+      ),
+    }));
+  // 첨부를 미리보기 칸에서 빼고, 사진 미리보기용 임시 주소도 정리.
+  const dropPendingAttachments = (roomId: number, items: PendingAttachment[]) => {
+    items.forEach((item) => {
+      if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+    });
+    const keys = new Set(items.map((item) => item.key));
+    setPendingByRoomId((current) => {
+      const rest = (current[roomId] ?? []).filter((item) => !keys.has(item.key));
+      const next = { ...current };
+      if (rest.length > 0) next[roomId] = rest;
+      else delete next[roomId];
+      return next;
+    });
+  };
+  // 파일 선택·끌어 놓기·붙여넣기 공통 입구. 크기·개수를 먼저 검사해 안 되는 것은 이유와 함께 뺌.
+  const addAttachments = (files: File[]) => {
+    if (!selectedRoomId || files.length === 0) return;
+    if (editingTarget) {
+      showToast("메시지를 수정하는 중에는 첨부할 수 없습니다.");
+      return;
+    }
+    const roomId = selectedRoomId;
+    const current = pendingByRoomId[roomId] ?? [];
+    const valid = files.filter((file) => file.size > 0 && file.size <= MAX_ATTACHMENT_SIZE);
+    const accepted = valid.slice(0, Math.max(0, MAX_ATTACHMENT_COUNT - current.length));
+    const tooLarge = files.filter((file) => file.size > MAX_ATTACHMENT_SIZE).length;
+    const empty = files.filter((file) => file.size === 0).length;
+    const overCount = valid.length - accepted.length;
+    if (tooLarge > 0)
+      showToast(`${formatFileSize(MAX_ATTACHMENT_SIZE)}를 넘는 파일 ${tooLarge}개는 뺐습니다.`);
+    else if (overCount > 0)
+      showToast(`한 번에 ${MAX_ATTACHMENT_COUNT}개까지 보낼 수 있어 ${overCount}개는 뺐습니다.`);
+    else if (empty > 0) showToast("빈 파일은 보낼 수 없습니다.");
+    if (accepted.length === 0) return;
+    const items: PendingAttachment[] = accepted.map((file) => ({
+      key: crypto.randomUUID(),
+      file,
+      previewUrl: isPreviewableImage(file) ? URL.createObjectURL(file) : null,
+      progress: null,
+      error: null,
+    }));
+    setPendingByRoomId((state) => ({ ...state, [roomId]: [...(state[roomId] ?? []), ...items] }));
+    inputRef.current?.focus({ preventScroll: true });
+  };
+  const selectedPendingAttachments = selectedRoomId ? (pendingByRoomId[selectedRoomId] ?? []) : [];
+
   const submitMessage = async (event?: FormEvent) => {
     event?.preventDefault();
     if (editingTarget) {
       await submitEdit();
       return;
     }
-    if (!accessToken || !selectedRoomId || !input.trim() || sendingRef.current) return;
+    if (!accessToken || !selectedRoomId || sendingRef.current) return;
     // 전송 중 방을 바꿔도 응답·초기화는 전송을 시작한 방에만 적용.
     const roomId = selectedRoomId;
+    const pending = (pendingByRoomId[roomId] ?? []).filter((item) => item.progress === null);
+    if (!input.trim() && pending.length === 0) return;
     const sentInput = input;
     const sentReplyId = replyTarget?.id;
+    // 답장은 처음 보내는 한 건(글 또는 첫 첨부)에만 붙임.
+    let replyId = sentReplyId;
     sendingRef.current = true;
     try {
       stopTyping();
-      const mentionedMembershipIds = input.includes("@All")
-        ? mentionCandidates.map((candidate) => candidate.membershipId)
-        : mentionCandidates
-            .filter((candidate) => input.includes(`@${candidate.displayName}`))
-            .map((candidate) => candidate.membershipId);
-      const message = await chatApi.send(
-        accessToken,
-        roomId,
-        input.trim(),
-        mentionedMembershipIds,
-        sentReplyId,
-      );
-      if (selectedRoomIdRef.current === roomId) {
-        shouldScrollToLatestRef.current = true;
-        isMessageListAtBottomRef.current = true;
-        setUnseenMessageCount(0);
-        setLatestUnseenMessage(null);
-        if (newerCursorRef.current !== null) {
-          // 과거 구간에서 전송했다면 최신 페이지로 돌아와 대화 간격을 메움.
-          messageWindowVersionRef.current += 1;
-          pendingMessageScrollRef.current = null;
-          preservedScrollRef.current = null;
-          setIsLocatingOriginal(false);
-          void loadMessages(roomId).catch(() =>
-            showToast("전송은 완료했으나 최신 대화를 불러오지 못했습니다."),
-          );
-        } else {
-          // REST 응답과 STOMP 수신이 겹쳐도 같은 ID의 말풍선은 한 번만 추가.
-          setMessages((current) =>
-            current.some((item) => item.id === message.id)
-              ? current
-              : withReadCounts([...current, message]),
-          );
-        }
+      if (input.trim()) {
+        const mentionedMembershipIds = input.includes("@All")
+          ? mentionCandidates.map((candidate) => candidate.membershipId)
+          : mentionCandidates
+              .filter((candidate) => input.includes(`@${candidate.displayName}`))
+              .map((candidate) => candidate.membershipId);
+        const message = await chatApi.send(
+          accessToken,
+          roomId,
+          input.trim(),
+          mentionedMembershipIds,
+          replyId,
+        );
+        replyId = undefined;
+        applySentMessage(roomId, message);
+        setDraftByRoomId((current) => {
+          if (current[roomId] !== sentInput) return current;
+          const remainingDrafts = { ...current };
+          delete remainingDrafts[roomId];
+          return remainingDrafts;
+        });
       }
-      setRooms((current) =>
-        sortRoomsByLatestActivity(
-          current.map((room) =>
-            room.id === roomId
-              ? {
-                  ...room,
-                  lastMessage: message.content,
-                  lastMessageId: message.id,
-                  lastMessageVersion: message.version,
-                  lastMessageAt: message.createdAt,
-                  lastSenderMembershipId: member?.membershipId ?? null,
-                  unreadCount: 0,
-                }
-              : room,
-          ),
-        ),
-      );
-      setDraftByRoomId((current) => {
-        if (current[roomId] !== sentInput) return current;
-        const remainingDrafts = { ...current };
-        delete remainingDrafts[roomId];
-        return remainingDrafts;
-      });
-      setReplyByRoomId((current) => {
-        if (current[roomId]?.id !== sentReplyId) return current;
-        const next = { ...current };
-        delete next[roomId];
-        return next;
-      });
+      // 첨부는 하나씩 차례로 올려 말풍선 순서가 고른 순서와 같게 함. 실패한 것은 칸에 남겨 이유를 보여 줌.
+      if (pending.length > 0) {
+        setAttachmentSending(true);
+        let failedCount = 0;
+        for (const item of pending) {
+          updatePendingAttachment(roomId, item.key, { progress: 0, error: null });
+          try {
+            const message = await chatApi.uploadAttachment(
+              accessToken,
+              roomId,
+              item.file,
+              replyId,
+              (percent) => updatePendingAttachment(roomId, item.key, { progress: percent }),
+            );
+            replyId = undefined;
+            applySentMessage(roomId, message);
+            dropPendingAttachments(roomId, [item]);
+          } catch (error) {
+            failedCount += 1;
+            updatePendingAttachment(roomId, item.key, {
+              progress: null,
+              error: error instanceof Error ? error.message : "파일을 보내지 못했습니다.",
+            });
+          }
+        }
+        if (failedCount > 0)
+          showToast(
+            `파일 ${failedCount}개를 보내지 못했습니다. 빨간 표시에 마우스를 올려 이유를 확인해 주세요.`,
+          );
+      }
+      // 실제로 한 건이라도 보냈을 때만 답장 대상을 비움.
+      if (sentReplyId !== undefined && replyId === undefined)
+        setReplyByRoomId((current) => {
+          if (current[roomId]?.id !== sentReplyId) return current;
+          const next = { ...current };
+          delete next[roomId];
+          return next;
+        });
       if (selectedRoomIdRef.current === roomId) inputRef.current?.focus({ preventScroll: true });
     } catch (error) {
       showToast(error instanceof Error ? error.message : "메시지를 보내지 못했습니다.");
     } finally {
       sendingRef.current = false;
+      setAttachmentSending(false);
     }
   };
+
+  // 지금 대화에 불러온 사진들을 순서대로 묶어 크게 보기를 엶(←/→로 넘겨 봄).
+  const openImageFromMessage = (target: ChatMessage) => {
+    if (!selectedRoomId) return;
+    const images: ViewerImage[] = messages
+      .filter((item) => !item.deletedAt && item.attachment?.kind === "IMAGE")
+      .map((item) => ({
+        attachment: item.attachment!,
+        messageId: item.id,
+        senderName: item.senderName,
+        createdAt: item.createdAt,
+      }));
+    const index = images.findIndex((image) => image.messageId === target.id);
+    if (index >= 0) setViewer({ roomId: selectedRoomId, images, index });
+  };
+  const downloadAttachment = useAttachmentDownload(showToast);
+  const closeViewer = useCallback(() => setViewer(null), []);
+  const closeGallery = useCallback(() => setGalleryOpen(false), []);
+  // 첨부가 새로 오거나 지워지면 바뀌는 값. 모아보기 패널이 이 값을 보고 목록을 다시 받음.
+  const attachmentRefreshKey = useMemo(() => {
+    const ids = messages
+      .filter((item) => !item.deletedAt && item.attachment)
+      .map((item) => item.id);
+    return `${ids.length}:${ids.at(-1) ?? 0}`;
+  }, [messages]);
+  // 파일을 끄는 중인지(글자·링크를 끄는 경우는 무시).
+  const isFileDrag = (event: DragEvent<HTMLDivElement>) =>
+    event.dataTransfer.types.includes("Files");
 
   const stopTyping = () => {
     if (typingStartTimerRef.current) clearTimeout(typingStartTimerRef.current);
@@ -1810,6 +1979,7 @@ function MessageContent() {
     (message: ChatMessage) => void toggleNotice(message),
   );
   const stableDisplayRoomName = useStableCallback(displayRoomName);
+  const stableOpenImage = useStableCallback(openImageFromMessage);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-white text-slate-900">
@@ -1883,7 +2053,15 @@ function MessageContent() {
           <MessageRoomHeader
             selectedRoom={selectedRoom}
             roomManageOpen={roomManageOpen}
-            onToggleRoomManage={() => setRoomManageOpen((open) => !open)}
+            onToggleRoomManage={() => {
+              setRoomManageOpen((open) => !open);
+              setGalleryOpen(false);
+            }}
+            galleryOpen={galleryOpen}
+            onToggleGallery={() => {
+              setGalleryOpen((open) => !open);
+              setRoomManageOpen(false);
+            }}
             displayRoomName={displayRoomName}
             headerProfile={headerProfile}
             directPresenceStatus={addressBookProfile?.presenceStatus}
@@ -1892,7 +2070,33 @@ function MessageContent() {
             onProfileClick={openUserProfile}
           />
           <div className="flex min-h-0 flex-1">
-            <div className="relative flex min-w-0 flex-1 flex-col">
+            {/* 대화 영역 어디에 파일을 끌어 놓아도 첨부로 추가. */}
+            <div
+              className="relative flex min-w-0 flex-1 flex-col"
+              onDragEnter={(event) => {
+                if (!isFileDrag(event)) return;
+                event.preventDefault();
+                dragDepthRef.current += 1;
+                setIsDraggingFile(true);
+              }}
+              onDragOver={(event) => {
+                if (!isFileDrag(event)) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "copy";
+              }}
+              onDragLeave={(event) => {
+                if (!isFileDrag(event)) return;
+                dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+                if (dragDepthRef.current === 0) setIsDraggingFile(false);
+              }}
+              onDrop={(event) => {
+                if (!isFileDrag(event)) return;
+                event.preventDefault();
+                dragDepthRef.current = 0;
+                setIsDraggingFile(false);
+                addAttachments(Array.from(event.dataTransfer.files));
+              }}
+            >
               {/* 공지 카드가 떠 있는 동안 날짜 칩·안내문이 가려지지 않게 카드 높이만큼 아래로 내림. */}
               <div
                 ref={noticePanelRef}
@@ -1969,6 +2173,8 @@ function MessageContent() {
                   onOpenReactionMembers={stableOpenReactionMembers}
                   onForward={stableStartForward}
                   onToggleNotice={stableToggleNotice}
+                  onOpenImage={stableOpenImage}
+                  onDownload={downloadAttachment}
                   noticeMessageIds={noticeMessageIds}
                 />
                 {newerCursor === null && typingMembers.length > 0 && (
@@ -2041,8 +2247,37 @@ function MessageContent() {
                 onSelectMention={selectMention}
                 onProfileClick={openUserProfile}
                 showToast={showToast}
+                pendingAttachments={selectedPendingAttachments}
+                attachmentSending={attachmentSending}
+                onAddFiles={addAttachments}
+                onRemoveAttachment={(key) => {
+                  if (!selectedRoomId) return;
+                  dropPendingAttachments(
+                    selectedRoomId,
+                    selectedPendingAttachments.filter((item) => item.key === key),
+                  );
+                }}
+                onClearAttachments={() => {
+                  if (selectedRoomId)
+                    dropPendingAttachments(selectedRoomId, selectedPendingAttachments);
+                }}
               />
+              {isDraggingFile && <FileDropOverlay />}
             </div>
+            {galleryOpen && selectedRoom && accessToken && (
+              <AttachmentGalleryPanel
+                key={selectedRoom.id}
+                roomId={selectedRoom.id}
+                accessToken={accessToken}
+                refreshKey={attachmentRefreshKey}
+                onClose={closeGallery}
+                onOpenImage={(images, index) =>
+                  setViewer({ roomId: selectedRoom.id, images, index })
+                }
+                onOpenMessage={stableJumpToOriginal}
+                onDownload={downloadAttachment}
+              />
+            )}
             {roomManageOpen && selectedRoom?.type === "GROUP" && accessToken && member && (
               <GroupRoomDetail
                 room={selectedRoom}
@@ -2311,6 +2546,16 @@ function MessageContent() {
             router.push(`/message?roomId=${room.id}`);
           }}
           showToast={showToast}
+        />
+      )}
+      {viewer && viewer.roomId === selectedRoomId && (
+        <ImageViewer
+          images={viewer.images}
+          index={viewer.index}
+          onIndexChange={(index) => setViewer((current) => current && { ...current, index })}
+          onClose={closeViewer}
+          onDownload={downloadAttachment}
+          onOpenMessage={stableJumpToOriginal}
         />
       )}
       {toast && (
