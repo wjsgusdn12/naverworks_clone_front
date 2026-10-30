@@ -2,6 +2,7 @@
 
 import { AttachmentImage } from "@/components/chat/attachment-image";
 import { FileAttachmentCard } from "@/components/chat/file-attachment-card";
+import type { PreviewFile } from "@/components/chat/file-preview-modal";
 import type { ViewerImage } from "@/components/chat/image-viewer";
 import { LoadingInline, LoadingState } from "@/components/common/loading";
 import {
@@ -33,7 +34,7 @@ export function AttachmentGalleryPanel({
   refreshKey,
   onClose,
   onOpenImage,
-  onOpenMessage,
+  onOpenFile,
   onDownload,
 }: {
   roomId: number;
@@ -42,7 +43,7 @@ export function AttachmentGalleryPanel({
   refreshKey: string;
   onClose: () => void;
   onOpenImage: (images: ViewerImage[], index: number) => void;
-  onOpenMessage: (messageId: number) => void;
+  onOpenFile: (file: PreviewFile) => void;
   onDownload: (attachment: ChatAttachment) => Promise<void>;
 }) {
   const [kind, setKind] = useState<Kind>("IMAGE");
@@ -186,26 +187,20 @@ export function AttachmentGalleryPanel({
           <ul className="space-y-2">
             {tab.items.map((item) => (
               <li key={item.attachment.id}>
-                {/* 카드를 누르면 대화에서 그 메시지 위치로 이동, 오른쪽 버튼은 내려받기. */}
-                <div
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`${item.attachment.name} 메시지로 이동`}
-                  onClick={() => onOpenMessage(item.messageId)}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter" && event.key !== " ") return;
-                    event.preventDefault();
-                    onOpenMessage(item.messageId);
-                  }}
-                  className="cursor-pointer rounded-xl transition hover:bg-slate-50"
-                >
-                  <FileAttachmentCard
-                    attachment={item.attachment}
-                    onDownload={() => onDownload(item.attachment)}
-                    detail={` · ${item.senderName} · ${shortDate(item.createdAt)}`}
-                    className="bg-transparent"
-                  />
-                </div>
+                {/* 카드를 누르면 미리보기(그 안에서 "대화에서 보기"로 이동 가능), 오른쪽 버튼은 내려받기. */}
+                <FileAttachmentCard
+                  attachment={item.attachment}
+                  onDownload={() => onDownload(item.attachment)}
+                  onOpen={() =>
+                    onOpenFile({
+                      attachment: item.attachment,
+                      messageId: item.messageId,
+                      senderName: item.senderName,
+                      createdAt: item.createdAt,
+                    })
+                  }
+                  detail={` · ${item.senderName} · ${shortDate(item.createdAt)}`}
+                />
               </li>
             ))}
           </ul>

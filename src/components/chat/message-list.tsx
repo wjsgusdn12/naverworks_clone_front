@@ -27,6 +27,7 @@ export const MessageList = memo(function MessageList({
   onForward,
   onToggleNotice,
   onOpenImage,
+  onOpenFile,
   onDownload,
   noticeMessageIds,
   myDisplayName,
@@ -49,6 +50,7 @@ export const MessageList = memo(function MessageList({
   onForward: (message: ChatMessage) => void;
   onToggleNotice: (message: ChatMessage) => void;
   onOpenImage: (message: ChatMessage) => void;
+  onOpenFile: (message: ChatMessage) => void;
   onDownload: (attachment: ChatAttachment) => Promise<void>;
   // 현재 방 공지 메시지 ID 목록. 포함된 말풍선의 메뉴가 "공지 내리기"로 바뀜.
   noticeMessageIds: Set<number>;
@@ -131,6 +133,7 @@ export const MessageList = memo(function MessageList({
                   onForward={onForward}
                   onToggleNotice={onToggleNotice}
                   onOpenImage={onOpenImage}
+                  onOpenFile={onOpenFile}
                   onDownload={onDownload}
                   isNotice={noticeMessageIds.has(message.id)}
                 />

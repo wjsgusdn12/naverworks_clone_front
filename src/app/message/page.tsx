@@ -27,6 +27,7 @@ import { AttachmentGalleryPanel } from "@/components/chat/attachment-gallery-pan
 import type { PendingAttachment } from "@/components/chat/attachment-tray";
 import { FileDropOverlay } from "@/components/chat/file-drop-overlay";
 import { ImageViewer, type ViewerImage } from "@/components/chat/image-viewer";
+import { FilePreviewModal, type PreviewFile } from "@/components/chat/file-preview-modal";
 import { useAttachmentDownload } from "@/hooks/use-attachment";
 import {
   formatFileSize,
@@ -180,6 +181,8 @@ function MessageContent() {
     images: ViewerImage[];
     index: number;
   } | null>(null);
+  // 파일 미리보기 모달. 연 방이 바뀌면 보여 주지 않음.
+  const [filePreview, setFilePreview] = useState<(PreviewFile & { roomId: number }) | null>(null);
   // 파일을 대화 영역 위로 끌고 있는지. 안쪽 요소를 지날 때 생기는 들어옴·나감 이벤트를 세어 깜빡임 방지.
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const dragDepthRef = useRef(0);
@@ -1658,8 +1661,20 @@ function MessageContent() {
     const index = images.findIndex((image) => image.messageId === target.id);
     if (index >= 0) setViewer({ roomId: selectedRoomId, images, index });
   };
+  // 파일 말풍선을 누르면 미리보기 모달.
+  const openFileFromMessage = (target: ChatMessage) => {
+    if (!selectedRoomId || !target.attachment || target.deletedAt) return;
+    setFilePreview({
+      roomId: selectedRoomId,
+      attachment: target.attachment,
+      messageId: target.id,
+      senderName: target.senderName,
+      createdAt: target.createdAt,
+    });
+  };
   const downloadAttachment = useAttachmentDownload(showToast);
   const closeViewer = useCallback(() => setViewer(null), []);
+  const closeFilePreview = useCallback(() => setFilePreview(null), []);
   const closeGallery = useCallback(() => setGalleryOpen(false), []);
   // 첨부가 새로 오거나 지워지면 바뀌는 값. 모아보기 패널이 이 값을 보고 목록을 다시 받음.
   const attachmentRefreshKey = useMemo(() => {
@@ -1980,6 +1995,7 @@ function MessageContent() {
   );
   const stableDisplayRoomName = useStableCallback(displayRoomName);
   const stableOpenImage = useStableCallback(openImageFromMessage);
+  const stableOpenFile = useStableCallback(openFileFromMessage);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-white text-slate-900">
@@ -2174,6 +2190,7 @@ function MessageContent() {
                   onForward={stableStartForward}
                   onToggleNotice={stableToggleNotice}
                   onOpenImage={stableOpenImage}
+                  onOpenFile={stableOpenFile}
                   onDownload={downloadAttachment}
                   noticeMessageIds={noticeMessageIds}
                 />
@@ -2274,7 +2291,7 @@ function MessageContent() {
                 onOpenImage={(images, index) =>
                   setViewer({ roomId: selectedRoom.id, images, index })
                 }
-                onOpenMessage={stableJumpToOriginal}
+                onOpenFile={(file) => setFilePreview({ ...file, roomId: selectedRoom.id })}
                 onDownload={downloadAttachment}
               />
             )}
@@ -2554,6 +2571,15 @@ function MessageContent() {
           index={viewer.index}
           onIndexChange={(index) => setViewer((current) => current && { ...current, index })}
           onClose={closeViewer}
+          onDownload={downloadAttachment}
+          onOpenMessage={stableJumpToOriginal}
+        />
+      )}
+      {filePreview && filePreview.roomId === selectedRoomId && (
+        <FilePreviewModal
+          key={filePreview.attachment.id}
+          file={filePreview}
+          onClose={closeFilePreview}
           onDownload={downloadAttachment}
           onOpenMessage={stableJumpToOriginal}
         />

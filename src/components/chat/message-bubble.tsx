@@ -59,6 +59,7 @@ export const MessageBubble = memo(function MessageBubble({
   onForward,
   onToggleNotice,
   onOpenImage,
+  onOpenFile,
   onDownload,
   isNotice,
 }: {
@@ -87,6 +88,8 @@ export const MessageBubble = memo(function MessageBubble({
   onToggleNotice: (message: ChatMessage) => void;
   // 사진 말풍선을 누르면 크게 보기, 파일 카드·메뉴의 "저장"은 내려받기.
   onOpenImage: (message: ChatMessage) => void;
+  // 파일 카드를 누르면 미리보기 모달.
+  onOpenFile: (message: ChatMessage) => void;
   onDownload: (attachment: ChatAttachment) => Promise<void>;
   isNotice: boolean;
 }) {
@@ -237,6 +240,7 @@ export const MessageBubble = memo(function MessageBubble({
       <FileAttachmentCard
         attachment={attachment}
         onDownload={() => onDownload(attachment)}
+        onOpen={() => onOpenFile(message)}
         className="w-[280px] max-w-full"
       />
     )
