@@ -2,7 +2,7 @@
 
 import { MessageBubble } from "@/components/chat/message-bubble";
 import type { AddressBookMember } from "@/lib/api/address-book-api";
-import type { ChatMessage, ChatRoom } from "@/lib/api/chat-api";
+import type { ChatAttachment, ChatMessage, ChatRoom } from "@/lib/api/chat-api";
 import { dateKey, formatChatDate, minuteKey } from "@/lib/chat-format";
 import type { MemberStatusType } from "@/lib/status-options";
 import { Fragment, memo, useMemo } from "react";
@@ -26,6 +26,8 @@ export const MessageList = memo(function MessageList({
   onOpenReactionMembers,
   onForward,
   onToggleNotice,
+  onOpenImage,
+  onDownload,
   noticeMessageIds,
   myDisplayName,
   myStatusType,
@@ -46,6 +48,8 @@ export const MessageList = memo(function MessageList({
   onOpenReactionMembers: (message: ChatMessage) => void;
   onForward: (message: ChatMessage) => void;
   onToggleNotice: (message: ChatMessage) => void;
+  onOpenImage: (message: ChatMessage) => void;
+  onDownload: (attachment: ChatAttachment) => Promise<void>;
   // 현재 방 공지 메시지 ID 목록. 포함된 말풍선의 메뉴가 "공지 내리기"로 바뀜.
   noticeMessageIds: Set<number>;
   // 답장 인용이 내 메시지일 때 아바타 배지에 쓰는 내 이름·상태.
@@ -126,6 +130,8 @@ export const MessageList = memo(function MessageList({
                   onOpenReactionMembers={onOpenReactionMembers}
                   onForward={onForward}
                   onToggleNotice={onToggleNotice}
+                  onOpenImage={onOpenImage}
+                  onDownload={onDownload}
                   isNotice={noticeMessageIds.has(message.id)}
                 />
               )}

@@ -2,6 +2,7 @@
 
 import {
   Copy,
+  Download,
   Forward,
   Megaphone,
   MegaphoneOff,
@@ -31,6 +32,8 @@ type MessageActionMenuProps = {
   position: MessageMenuPosition | null;
   onPositionChange: (position: MessageMenuPosition | null) => void;
   onCopy: () => void;
+  // 사진·파일 메시지면 "복사" 대신 "저장"을 보여 주고, 수정 항목은 숨김(첨부는 수정 불가).
+  onSave?: () => void;
   onReply: () => void;
   onForward: () => void;
   onToggleNotice: () => void;
@@ -51,6 +54,7 @@ export function MessageActionMenu({
   position,
   onPositionChange,
   onCopy,
+  onSave,
   onReply,
   onForward,
   onToggleNotice,
@@ -138,12 +142,17 @@ export function MessageActionMenu({
               type="button"
               onClick={() => {
                 onPositionChange(null);
-                onCopy();
+                if (onSave) onSave();
+                else onCopy();
               }}
               className="flex w-full cursor-pointer items-center gap-2 rounded px-3 py-2 text-left transition hover:bg-slate-100 focus-visible:bg-slate-100 active:scale-[0.98]"
             >
-              <Copy size={15} aria-hidden="true" />
-              복사
+              {onSave ? (
+                <Download size={15} aria-hidden="true" />
+              ) : (
+                <Copy size={15} aria-hidden="true" />
+              )}
+              {onSave ? "저장" : "복사"}
             </button>
             <button
               type="button"
@@ -185,7 +194,7 @@ export function MessageActionMenu({
             {isMine && (
               <>
                 <div className="my-1 border-t border-slate-100" />
-                {canEdit ? (
+                {onSave ? null : canEdit ? (
                   <button
                     type="button"
                     onClick={() => {

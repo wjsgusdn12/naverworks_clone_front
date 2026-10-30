@@ -1,5 +1,7 @@
 "use client";
 
+import { AttachmentImage } from "@/components/chat/attachment-image";
+import { FileAttachmentCard } from "@/components/chat/file-attachment-card";
 import { MentionText } from "@/components/chat/mention-text";
 import {
   MENU_HEIGHT_MINE,
@@ -16,11 +18,21 @@ import { Tooltip } from "@/components/common/tooltip";
 import { UserAvatar } from "@/components/common/user-avatar";
 import type { AddressBookMember, PresenceStatus } from "@/lib/api/address-book-api";
 import type { MemberStatusType } from "@/lib/status-options";
-import type { ChatMessage } from "@/lib/api/chat-api";
+import type { ChatAttachment, ChatMessage } from "@/lib/api/chat-api";
 import { isMessageEditable } from "@/lib/chat-page-helpers";
 import { reactionLabel } from "@/lib/chat-reactions";
 import { ChevronLeft, ChevronRight, Forward } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
+
+// 사진 말풍선 크기. 원본 비율을 지키며 가로 280·세로 300 안에 맞추고, 크기를 모르면 기본 칸.
+const imageBoxSize = (attachment: ChatAttachment) => {
+  if (!attachment.width || !attachment.height) return { width: 240, height: 180 };
+  const scale = Math.min(1, 280 / attachment.width, 300 / attachment.height);
+  return {
+    width: Math.max(80, Math.round(attachment.width * scale)),
+    height: Math.max(60, Math.round(attachment.height * scale)),
+  };
+};
 
 // 말풍선 하나는 자기 props가 바뀔 때만 다시 그림(목록 안에서 다른 말풍선이 바뀌어도 영향 없음).
 export const MessageBubble = memo(function MessageBubble({
@@ -46,6 +58,8 @@ export const MessageBubble = memo(function MessageBubble({
   onOpenReactionMembers,
   onForward,
   onToggleNotice,
+  onOpenImage,
+  onDownload,
   isNotice,
 }: {
   message: ChatMessage;
@@ -71,6 +85,9 @@ export const MessageBubble = memo(function MessageBubble({
   onOpenReactionMembers: (message: ChatMessage) => void;
   onForward: (message: ChatMessage) => void;
   onToggleNotice: (message: ChatMessage) => void;
+  // 사진 말풍선을 누르면 크게 보기, 파일 카드·메뉴의 "저장"은 내려받기.
+  onOpenImage: (message: ChatMessage) => void;
+  onDownload: (attachment: ChatAttachment) => Promise<void>;
   isNotice: boolean;
 }) {
   // ⋮ 클릭과 말풍선 우클릭이 같은 메뉴·닫기 동작을 공유.
@@ -122,6 +139,8 @@ export const MessageBubble = memo(function MessageBubble({
       </div>
     ) : null;
   const reactions = message.deletedAt ? [] : (message.reactions ?? []);
+  // 삭제된 메시지는 서버가 첨부를 null로 내려 주지만, 화면에서도 한 번 더 막음.
+  const attachment = message.deletedAt ? null : (message.attachment ?? null);
   const messageMenu = message.deletedAt ? (
     <span aria-hidden="true" className="h-5 w-6 shrink-0" />
   ) : (
@@ -132,6 +151,7 @@ export const MessageBubble = memo(function MessageBubble({
       position={menuPosition}
       onPositionChange={setMenuPosition}
       onCopy={() => onCopy(message)}
+      onSave={attachment ? () => void onDownload(attachment) : undefined}
       onReply={() => onReply(message)}
       onForward={() => onForward(message)}
       onToggleNotice={() => onToggleNotice(message)}
@@ -198,6 +218,31 @@ export const MessageBubble = memo(function MessageBubble({
   // 말풍선 아래 줄(리액션·수정됨)이 있으면 그 높이만큼 아래 여백을 늘려 다음 메시지와 겹치지 않게 처리.
   const rowSpacing =
     reactions.length > 0 ? "mb-9" : message.editedAt ? "mb-6" : showMeta ? "mb-2" : "mb-1";
+  // 답장·전달 표시가 없는 사진은 말풍선 배경 없이 사진만 둥글게 보여 줌.
+  const bareImage = attachment?.kind === "IMAGE" && !reply && !message.forwarded;
+  const bubblePadding = reply ? "w-[380px]" : bareImage ? "" : attachment ? "p-2" : "px-4 py-3";
+  const bubbleColor = bareImage ? "" : isMine ? "bg-blue-100" : "bg-slate-100";
+  const body = attachment ? (
+    attachment.kind === "IMAGE" ? (
+      <button
+        type="button"
+        aria-label={`${message.senderName}님이 보낸 사진 크게 보기`}
+        onClick={() => onOpenImage(message)}
+        style={imageBoxSize(attachment)}
+        className="block max-w-full cursor-zoom-in overflow-hidden rounded-2xl bg-slate-100 transition hover:opacity-90"
+      >
+        <AttachmentImage attachment={attachment} className="h-full w-full" />
+      </button>
+    ) : (
+      <FileAttachmentCard
+        attachment={attachment}
+        onDownload={() => onDownload(attachment)}
+        className="w-[280px] max-w-full"
+      />
+    )
+  ) : (
+    <MentionText content={message.content} />
+  );
   const bubble = (
     <div
       ref={bubbleRef}
@@ -218,7 +263,7 @@ export const MessageBubble = memo(function MessageBubble({
           ),
         });
       }}
-      className={`relative min-w-0 ${isGroup && !isMine ? "max-w-full" : "max-w-[70%]"} whitespace-pre-wrap break-words ${reply ? "w-[380px]" : "px-4 py-3"} text-sm leading-6 ${isMine ? "rounded-2xl bg-blue-100" : "rounded-2xl bg-slate-100"} ${showTail ? (isMine ? "after:absolute after:-right-2 after:top-3 after:h-3 after:w-3 after:bg-blue-100 after:[clip-path:polygon(0_0,0_100%,100%_0)]" : "after:absolute after:-left-2 after:top-3 after:h-3 after:w-3 after:bg-slate-100 after:[clip-path:polygon(100%_0,100%_100%,0_0)]") : ""}`}
+      className={`relative min-w-0 ${isGroup && !isMine ? "max-w-full" : "max-w-[70%]"} whitespace-pre-wrap break-words ${bubblePadding} text-sm leading-6 rounded-2xl ${bubbleColor} ${showTail && !bareImage ? (isMine ? "after:absolute after:-right-2 after:top-3 after:h-3 after:w-3 after:bg-blue-100 after:[clip-path:polygon(0_0,0_100%,100%_0)]" : "after:absolute after:-left-2 after:top-3 after:h-3 after:w-3 after:bg-slate-100 after:[clip-path:polygon(100%_0,100%_100%,0_0)]") : ""}`}
     >
       {/* 꼬리 가상 요소보다 앞에 테두리를 그려 접점에서도 파란 선이 가려지지 않게 처리. */}
       {isOriginalHighlighted && (
@@ -257,14 +302,14 @@ export const MessageBubble = memo(function MessageBubble({
       )}
       {reply ? (
         <div className="px-3 py-2">
-          <MentionText content={message.content} />
+          {body}
           {underBubble}
         </div>
       ) : message.deletedAt ? (
         <span className="text-slate-400 italic">{message.content}</span>
       ) : (
         <>
-          <MentionText content={message.content} />
+          {body}
           {underBubble}
         </>
       )}
