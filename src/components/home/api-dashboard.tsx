@@ -1,5 +1,6 @@
 "use client";
 
+import { LatencyHeatmap } from "@/components/home/latency-heatmap";
 import { LegendSwatch, LineChart, Sparkline, type LineSeries } from "@/components/home/line-chart";
 import { LoadingState, Spinner } from "@/components/common/loading";
 import { Tabs } from "@/components/common/tabs";
@@ -61,7 +62,8 @@ const shortDay = (value: string) => {
 
 const formatNumber = (value: number) => value.toLocaleString("ko-KR");
 const formatMs = (value: number) => `${formatNumber(Math.round(value))}ms`;
-const formatP95 = (value: number) => (value < 0 ? "5초 초과" : `≤ ${formatNumber(value)}ms`);
+// p95는 응답 시간 구간 안에서 비례 계산한 추정값이라 "약"을 붙임.
+const formatP95 = (value: number) => (value < 0 ? "5초 초과" : `약 ${formatNumber(value)}ms`);
 const formatUptime = (seconds: number) => {
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
@@ -77,17 +79,6 @@ const clock = (value: string) =>
     hour12: false,
   });
 
-const pointsOf = (data: ApiDashboard, range: Range) =>
-  ({ HOUR: data.hourTrend, DAY: data.dayTrend, WEEK: data.weekTrend, MONTH: data.monthTrend })[
-    range
-  ];
-const rankingOf = (data: ApiDashboard, range: Range) =>
-  ({
-    HOUR: data.hourRanking,
-    DAY: data.dayRanking,
-    WEEK: data.weekRanking,
-    MONTH: data.monthRanking,
-  })[range];
 // 순위 옆 작은 추이선 한 칸의 길이
 const RANKING_STEP: Record<Range, string> = {
   HOUR: "1분",
@@ -95,8 +86,6 @@ const RANKING_STEP: Record<Range, string> = {
   WEEK: "하루",
   MONTH: "1시간",
 };
-const summaryOf = (data: ApiDashboard, range: Range) =>
-  ({ HOUR: data.thisHour, DAY: data.today, WEEK: data.thisWeek, MONTH: data.thisMonth })[range];
 
 // 전체 구간 글자: 14:00 ~ 14:59 / 10/30(금) 00:00 ~ 23:59 / 10/25(일) 00시 ~ 10/31(토) 23시 / 10/1(목) ~ 10/31(토)
 const periodOf = (points: ApiDashboardTrendPoint[], range: Range) => {
@@ -136,16 +125,20 @@ const titleOf = (point: ApiDashboardTrendPoint, range: Range) => {
 };
 
 // 홈 화면의 관리자 전용 "API 상태". 서버 여러 대의 요청을 합친 숫자(배포)나 이 서버 숫자(로컬)를 30초마다 갱신.
+// 고른 기간 탭 것만 받아 오고(30초마다 갱신), 한 번 받은 탭은 기억해 두었다가 다시 고르면 바로 보여 줌.
 export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
-  const [data, setData] = useState<ApiDashboard | null>(null);
+  const [range, setRange] = useState<Range>("DAY");
+  const [dataByRange, setDataByRange] = useState<Partial<Record<Range, ApiDashboard>>>({});
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [range, setRange] = useState<Range>("DAY");
+  const data = dataByRange[range] ?? null;
 
   const load = useCallback(async () => {
+    const target = range;
     setRefreshing(true);
     try {
-      setData(await adminApi.apiDashboard(accessToken));
+      const result = await adminApi.apiDashboard(accessToken, target);
+      setDataByRange((current) => ({ ...current, [target]: result }));
       setError(null);
     } catch (reason) {
       setError(
@@ -154,7 +147,7 @@ export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
     } finally {
       setRefreshing(false);
     }
-  }, [accessToken]);
+  }, [accessToken, range]);
 
   useEffect(() => {
     void Promise.resolve().then(load);
@@ -200,6 +193,21 @@ export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
         </div>
       </div>
 
+      {/* 기간 탭: 숫자 카드·그래프·순위가 모두 이 기간을 따라감. */}
+      <div className="mt-5 flex flex-wrap items-end justify-between gap-2">
+        <Tabs
+          items={(Object.keys(RANGES) as Range[]).map((value) => ({
+            key: value,
+            label: RANGES[value].tab,
+          }))}
+          value={range}
+          onChange={setRange}
+          ariaLabel="기간"
+        />
+        <span className="pb-2.5 text-xs font-medium text-slate-500">
+          {data ? periodOf(data.trend, range) : ""}
+        </span>
+      </div>
       {data === null ? (
         error ? (
           <p className="py-10 text-center text-sm text-slate-500">{error}</p>
@@ -213,41 +221,22 @@ export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
               [갱신 실패] {error} · 마지막으로 받은 숫자를 보여 주는 중
             </p>
           )}
-          {/* 기간 탭: 숫자 카드와 그래프가 모두 이 기간을 따라감. */}
-          <div className="mt-5 flex flex-wrap items-end justify-between gap-2">
-            <Tabs
-              items={(Object.keys(RANGES) as Range[]).map((value) => ({
-                key: value,
-                label: RANGES[value].tab,
-              }))}
-              value={range}
-              onChange={setRange}
-              ariaLabel="기간"
-            />
-            <span className="pb-2.5 text-xs font-medium text-slate-500">
-              {periodOf(pointsOf(data, range), range)}
-            </span>
-          </div>
-          <KpiRow summary={summaryOf(data, range)} rangeName={RANGES[range].name} />
-          <TrendSection
-            points={pointsOf(data, range)}
-            range={range}
-            generatedAt={data.generatedAt}
-          />
+          <KpiRow summary={data.summary} rangeName={RANGES[range].name} />
+          <TrendSection points={data.trend} range={range} generatedAt={data.generatedAt} />
           <div className="mt-6 grid gap-6 lg:grid-cols-2">
             <EndpointList
               title={`많이 호출된 API · ${RANGES[range].name}`}
               description={`${RANGES[range].name} 호출 수 · 오른쪽 점선은 ${RANKING_STEP[range]} 단위 흐름`}
-              ranking={rankingOf(data, range)}
-              items={rankingOf(data, range).top}
+              ranking={data.ranking}
+              items={data.ranking.top}
               metric="requests"
               generatedAt={data.generatedAt}
             />
             <EndpointList
               title={`느린 API · ${RANGES[range].name}`}
               description={`${RANGES[range].name} 평균 응답 시간(5회 이상 호출) · 점선은 ${RANKING_STEP[range]} 단위 평균`}
-              ranking={rankingOf(data, range)}
-              items={rankingOf(data, range).slow}
+              ranking={data.ranking}
+              items={data.ranking.slow}
               metric="avgMs"
               generatedAt={data.generatedAt}
             />
@@ -327,7 +316,7 @@ function KpiRow({ summary, rangeName }: { summary: ApiDashboardSummary; rangeNam
       icon: Gauge,
       value: formatP95(summary.p95Ms),
       sub: "100건 중 95건이 이 안에 끝남",
-      help: "100건 중 95건이 이 시간 안에 끝났다는 뜻. 평균에 묻히는 느린 요청을 잡아내는 숫자",
+      help: "100건 중 95건이 이 시간 안에 끝났다는 뜻. 평균에 묻히는 느린 요청을 잡아내는 숫자. 응답 시간 구간 안에서 비례 계산한 추정값",
     },
   ];
   return (
@@ -368,8 +357,6 @@ function TrendSection({
 }) {
   const [showTable, setShowTable] = useState(false);
   const config = RANGES[range];
-  // 점이 많아(이번 시간 60점·오늘 288점·이번 주 168점·이번 달 최대 744점) 점을 숨기고 선만 그림(마우스 위치만 점 표시)
-  const denseChart = true;
   const labels = points.map((point, index) => labelOf(point, index, range));
   const titles = points.map((point) => titleOf(point, range));
   const now = new Date(generatedAt).getTime();
@@ -453,7 +440,6 @@ function TrendSection({
               series={requestSeries}
               formatValue={(value) => `${formatNumber(Math.round(value))}`}
               labelEvery={1}
-              showMarkers={!denseChart}
               ariaLabel={`${config.name} 요청과 오류 추이`}
             />
           </ChartCard>
@@ -464,10 +450,26 @@ function TrendSection({
               series={responseSeries}
               formatValue={formatMs}
               labelEvery={1}
-              showMarkers={!denseChart}
               ariaLabel={`${config.name} 평균·p95 응답 시간 추이`}
             />
           </ChartCard>
+          {/* 응답 시간 분포: 평균·p95로는 안 보이는 "가끔 느린 요청"을 칸 색으로 */}
+          <div className="rounded-xl border border-slate-200 p-4 xl:col-span-2">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-800">
+                응답 시간 분포 <span className="text-xs font-normal text-slate-400">(히트맵)</span>
+              </h3>
+              <p className="text-xs text-slate-500">칸이 진할수록 그 빠르기의 요청이 많음</p>
+            </div>
+            <LatencyHeatmap
+              columns={points.map((point) =>
+                isFuture(point) || isMerged(point) ? null : point.latency,
+              )}
+              labels={labels}
+              tooltipTitles={titles}
+              ariaLabel={`${config.name} 응답 시간 분포 히트맵`}
+            />
+          </div>
         </div>
       )}
     </div>

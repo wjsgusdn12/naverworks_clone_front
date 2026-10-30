@@ -26,7 +26,7 @@ const niceCeil = (value: number) => {
 };
 
 // 부모 폭에 맞춰 그리기 위해 실제 폭을 잼(창 크기를 바꾸면 다시 잼).
-function useElementWidth() {
+export function useElementWidth() {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   useEffect(() => {
@@ -173,10 +173,10 @@ export function LineChart({
                     key={index}
                     cx={x(index)}
                     cy={y(value)}
-                    r={hovered === index ? 5 : 4}
+                    r={hovered === index ? 5 : count > 120 ? 2.5 : 4}
                     fill={item.color}
                     stroke="#fff"
-                    strokeWidth={1.5}
+                    strokeWidth={count > 120 ? 1 : 1.5}
                   />
                 ),
               )}
