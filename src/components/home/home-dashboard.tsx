@@ -31,10 +31,14 @@ type HomeDashboardProps = {
   showToast: (message: string) => void;
 };
 
-// 목록에 보여 줄 최대 개수.
-const RECENT_ROOM_LIMIT = 6;
-const NOTIFICATION_LIMIT = 5;
-const FAVORITE_LIMIT = 6;
+// 최근 대화에 담을 최대 개수(카드 높이를 넘으면 스크롤).
+const RECENT_ROOM_LIMIT = 30;
+// 즐겨찾기는 전부 보여 주되, 서버 한 페이지 최대치(100명)까지만 받음.
+const FAVORITE_LIMIT = 100;
+// 알림·즐겨찾기 카드는 3줄 높이까지 보여 주고 4줄부터는 스크롤.
+// 한 줄 높이 = 위아래 여백 + 내용(알림 62px, 즐겨찾기 60px), 줄 사이 구분선 1px.
+const NOTIFICATION_LIST_HEIGHT = "max-h-[188px]";
+const FAVORITE_LIST_HEIGHT = "max-h-[182px]";
 
 // 상대 시각. 오늘이면 시각, 올해면 월·일, 그 외는 연·월·일.
 const formatRelative = (value: string | null) => {
@@ -124,7 +128,6 @@ export function HomeDashboard({
     .filter((room) => room.lastMessageAt !== null)
     .sort((a, b) => (b.lastMessageAt ?? "").localeCompare(a.lastMessageAt ?? ""))
     .slice(0, RECENT_ROOM_LIMIT);
-  const recentNotifications = notifications.slice(0, NOTIFICATION_LIMIT);
 
   // 나와의 채팅은 내 이름을 쓰고 옆에 "나" 딱지를 붙임.
   const roomName = (room: ChatRoom) =>
@@ -211,6 +214,7 @@ export function HomeDashboard({
         <section className="mt-5 grid gap-5 xl:grid-cols-12">
           <Card
             className="xl:col-span-8"
+            fill
             title="최근 대화"
             description="마지막 메시지가 최근인 순서입니다."
             action={<LinkButton onClick={() => router.push("/message")}>전체보기</LinkButton>}
@@ -224,7 +228,7 @@ export function HomeDashboard({
                 onAction={() => router.push("/addressBook")}
               />
             ) : (
-              <ul className="divide-y divide-slate-100">
+              <ul className="max-h-[389px] divide-y divide-slate-100 overflow-y-auto xl:absolute xl:inset-0 xl:max-h-none">
                 {recentRooms.map((room) => (
                   <li key={room.id}>
                     <button
@@ -293,11 +297,13 @@ export function HomeDashboard({
             <Card title="알림" description="최근 30일 알림입니다.">
               {!notificationsLoaded ? (
                 <LoadingInline message="알림을 불러오는 중입니다." className="py-8 text-sm" />
-              ) : recentNotifications.length === 0 ? (
+              ) : notifications.length === 0 ? (
                 <Empty message="새 알림이 없습니다." />
               ) : (
-                <ul className="divide-y divide-slate-100">
-                  {recentNotifications.map((item) => (
+                <ul
+                  className={`${NOTIFICATION_LIST_HEIGHT} divide-y divide-slate-100 overflow-y-auto`}
+                >
+                  {notifications.map((item) => (
                     <li key={item.id}>
                       <button
                         type="button"
@@ -341,7 +347,7 @@ export function HomeDashboard({
                   onAction={() => router.push("/addressBook")}
                 />
               ) : (
-                <ul className="divide-y divide-slate-100">
+                <ul className={`${FAVORITE_LIST_HEIGHT} divide-y divide-slate-100 overflow-y-auto`}>
                   {favorites.map((favorite) => {
                     const target = withLiveStatus(
                       favorite,
@@ -453,21 +459,27 @@ function StatTile({
   );
 }
 
+// fill: 넓은 화면에서 카드 높이를 옆 열에 맞추고, 내용은 그 안에서 스크롤(내용 길이가 카드 높이를 키우지 않음).
+// 이때 내용은 absolute inset-0으로 본문 칸을 꽉 채워야 함.
 function Card({
   title,
   description,
   action,
   className = "",
+  fill = false,
   children,
 }: {
   title: string;
   description: string;
   action?: ReactNode;
   className?: string;
+  fill?: boolean;
   children: ReactNode;
 }) {
   return (
-    <article className={`rounded-xl border border-slate-200 bg-white p-5 shadow-sm ${className}`}>
+    <article
+      className={`rounded-xl border border-slate-200 bg-white p-5 shadow-sm ${fill ? "flex flex-col" : ""} ${className}`}
+    >
       <div className="flex items-center justify-between">
         <div>
           <p className="text-base font-bold text-slate-900">{title}</p>
@@ -475,7 +487,7 @@ function Card({
         </div>
         {action}
       </div>
-      <div className="mt-3">{children}</div>
+      <div className={fill ? "relative mt-3 min-h-0 flex-1" : "mt-3"}>{children}</div>
     </article>
   );
 }
