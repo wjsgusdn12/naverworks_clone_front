@@ -1,6 +1,7 @@
 "use client";
 
 import { AttachmentTray, type PendingAttachment } from "@/components/chat/attachment-tray";
+import { EmojiPickerButton } from "@/components/chat/emoji-picker";
 import { MessageMemberAvatar } from "@/components/chat/message-member-avatar";
 import { MessageQuote } from "@/components/chat/message-quote";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
@@ -14,8 +15,10 @@ import {
   MIN_INPUT_HEIGHT,
   clampInputHeight,
 } from "@/lib/chat-input-height";
-import { AtSign, ImagePlus, Paperclip, Pencil, Reply, SmilePlus, X } from "lucide-react";
+import { AtSign, ImagePlus, Paperclip, Pencil, Reply, X } from "lucide-react";
 import { type Dispatch, type FormEvent, type RefObject, type SetStateAction, useRef } from "react";
+
+const MESSAGE_MAX_LENGTH = 2000;
 
 type MentionCandidate = {
   membershipId: number;
@@ -89,6 +92,20 @@ export function MessageComposer({
   const inputResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  // 고른 이모지를 커서 자리(글자를 선택했으면 그 자리)에 넣고 커서를 이모지 뒤로 옮김. 글자 수 상한(2000)을 넘으면 넣지 않음.
+  const insertEmoji = (emoji: string) => {
+    const textarea = inputRef.current;
+    const start = textarea?.selectionStart ?? input.length;
+    const end = textarea?.selectionEnd ?? input.length;
+    const next = input.slice(0, start) + emoji + input.slice(end);
+    if (next.length > MESSAGE_MAX_LENGTH) {
+      showToast("메시지는 2000자까지 입력할 수 있습니다.");
+      return;
+    }
+    const cursor = start + emoji.length;
+    onInput(next, cursor);
+    requestAnimationFrame(() => inputRef.current?.setSelectionRange(cursor, cursor));
+  };
   return (
     <form
       ref={composerRef}
@@ -240,7 +257,7 @@ export function MessageComposer({
         <textarea
           ref={inputRef}
           value={input}
-          maxLength={2000}
+          maxLength={MESSAGE_MAX_LENGTH}
           onChange={(event) =>
             onInput(event.target.value, event.target.selectionStart ?? event.target.value.length)
           }
@@ -379,14 +396,7 @@ export function MessageComposer({
             <ImagePlus size={19} />
           </button>
         </Tooltip>
-        <button
-          type="button"
-          aria-label="이모지"
-          onClick={() => showToast("이모지 기능은 준비 중입니다.")}
-          className="cursor-pointer transition hover:text-blue-600"
-        >
-          <SmilePlus size={19} />
-        </button>
+        <EmojiPickerButton onSelect={insertEmoji} />
         {/* 첨부 전에 제한을 미리 알 수 있도록 버튼 줄 오른쪽에 항상 표시. */}
         <span className="ml-auto text-xs text-slate-400">첨부 {ATTACHMENT_LIMIT_LABEL}</span>
       </div>
