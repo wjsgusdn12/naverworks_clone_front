@@ -14,6 +14,7 @@ export function GroupRoomDetail({
   accessToken,
   currentMemberId,
   members,
+  membersLoaded = true,
   onClose,
   onAction,
   onReloadMessages,
@@ -24,6 +25,8 @@ export function GroupRoomDetail({
   accessToken: string;
   currentMemberId: number;
   members: AddressBookMember[];
+  // 회사 구성원 목록을 받아 왔는지. 받기 전에는 초대 목록 자리에 로딩 표시.
+  membersLoaded?: boolean;
   onClose: () => void;
   onAction: (
     action: "leave" | "invite" | "remove" | "owner" | "rename",
@@ -40,25 +43,37 @@ export function GroupRoomDetail({
   const [inviteId, setInviteId] = useState<number | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [participants, setParticipants] = useState<ChatMemberProfile[]>([]);
+  // 참여자 조회 결과. 받기 전에는 로딩 표시, 실패하면 안내 문구(로딩이 끝없이 돌지 않게).
+  const [participantsState, setParticipantsState] = useState<"loading" | "loaded" | "failed">(
+    "loading",
+  );
   const inviteRef = useRef<HTMLDivElement>(null);
   const owner = room.ownerMembershipId === currentMemberId;
-  // 전체 회사 구성원 중 현재 방에 없는 사람만 초대 후보로 제공.
-  const inviteCandidates = members.filter(
-    (member) =>
-      !participants.some((participant) => participant.membershipId === member.membershipId),
-  );
+  // 전체 회사 구성원 중 현재 방에 없는 사람만 초대 후보로 제공. 참여자를 받기 전에는 후보를 보이지 않음.
+  const inviteCandidates =
+    participantsState === "loaded"
+      ? members.filter(
+          (member) =>
+            !participants.some((participant) => participant.membershipId === member.membershipId),
+        )
+      : [];
+  const isInviteListLoading = !membersLoaded || participantsState === "loading";
   const selectedInvite =
     inviteCandidates.find((member) => member.membershipId === inviteId) ?? null;
 
   const refreshParticipants = useCallback(async () => {
     const detail = await chatApi.detail(accessToken, room.id);
     setParticipants(detail.members);
+    setParticipantsState("loaded");
   }, [accessToken, room.id]);
 
   useEffect(() => {
     void Promise.resolve()
       .then(refreshParticipants)
-      .catch((error: Error) => showToast(error.message));
+      .catch((error: Error) => {
+        setParticipantsState((current) => (current === "loading" ? "failed" : current));
+        showToast(error.message);
+      });
   }, [refreshParticipants, showToast]);
 
   useEffect(() => {
@@ -206,10 +221,14 @@ export function GroupRoomDetail({
                     </span>
                   </button>
                 ))}
-                {inviteCandidates.length === 0 && (
-                  <p className="px-3 py-4 text-center text-sm text-slate-500">
-                    초대할 구성원이 없습니다.
-                  </p>
+                {isInviteListLoading ? (
+                  <LoadingState message="구성원을 불러오는 중입니다." className="py-4" />
+                ) : (
+                  inviteCandidates.length === 0 && (
+                    <p className="px-3 py-4 text-center text-sm text-slate-500">
+                      초대할 구성원이 없습니다.
+                    </p>
+                  )
                 )}
               </div>
             )}
@@ -288,8 +307,11 @@ export function GroupRoomDetail({
               </div>
             );
           })}
-          {participants.length === 0 && (
+          {participantsState === "loading" && (
             <LoadingState message="참여자를 불러오는 중입니다." className="py-6" />
+          )}
+          {participantsState === "failed" && (
+            <p className="py-6 text-center text-sm text-slate-500">참여자를 불러오지 못했습니다.</p>
           )}
         </div>
       </section>

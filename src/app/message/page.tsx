@@ -2049,6 +2049,7 @@ function MessageContent() {
                 accessToken={accessToken}
                 currentMemberId={member.membershipId}
                 members={contactMembers}
+                membersLoaded={contactsLoaded}
                 onClose={closeRoomManageModal}
                 onProfileClick={openUserProfile}
                 onReloadMessages={() => loadMessages(selectedRoom.id)}
