@@ -180,7 +180,9 @@ export function HomeDashboard({
           </div>
         </section>
 
-        <section className="mt-6 grid gap-4 sm:grid-cols-3">
+        {/* 위 숫자 카드 3개와 아래 카드들은 같은 12칸 격자·같은 간격(gap-5)을 써서 세로선이 일직선으로 맞음.
+            숫자 카드 1개 = 4칸, 최근 대화 = 8칸(카드 2개 폭), 오른쪽 열 = 4칸(카드 1개 폭). */}
+        <section className="mt-6 grid gap-5 sm:grid-cols-3">
           <StatTile
             label="안 읽은 메시지"
             value={rooms === null ? null : unreadTotal}
@@ -208,7 +210,7 @@ export function HomeDashboard({
 
         <section className="mt-5 grid gap-5 xl:grid-cols-12">
           <Card
-            className="xl:col-span-7"
+            className="xl:col-span-8"
             title="최근 대화"
             description="마지막 메시지가 최근인 순서입니다."
             action={<LinkButton onClick={() => router.push("/message")}>전체보기</LinkButton>}
@@ -287,7 +289,7 @@ export function HomeDashboard({
             )}
           </Card>
 
-          <div className="flex flex-col gap-5 xl:col-span-5">
+          <div className="flex flex-col gap-5 xl:col-span-4">
             <Card title="알림" description="최근 30일 알림입니다.">
               {!notificationsLoaded ? (
                 <LoadingInline message="알림을 불러오는 중입니다." className="py-8 text-sm" />
