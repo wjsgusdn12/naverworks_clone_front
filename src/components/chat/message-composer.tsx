@@ -7,7 +7,7 @@ import { useChatNotification } from "@/components/chat/chat-notification-provide
 import { Tooltip } from "@/components/common/tooltip";
 import type { AddressBookMember } from "@/lib/api/address-book-api";
 import type { ChatMessage } from "@/lib/api/chat-api";
-import { IMAGE_ACCEPT } from "@/lib/attachment-files";
+import { ATTACHMENT_LIMIT_LABEL, IMAGE_ACCEPT } from "@/lib/attachment-files";
 import {
   DEFAULT_INPUT_HEIGHT,
   MAX_INPUT_HEIGHT,
@@ -359,7 +359,7 @@ export function MessageComposer({
         }}
       />
       <div className="flex items-center gap-3 px-4 text-slate-600">
-        <Tooltip label="파일 첨부" placement="top">
+        <Tooltip label={`파일 첨부 (${ATTACHMENT_LIMIT_LABEL})`} placement="top">
           <button
             type="button"
             aria-label="파일 첨부"
@@ -369,7 +369,7 @@ export function MessageComposer({
             <Paperclip size={19} />
           </button>
         </Tooltip>
-        <Tooltip label="사진 첨부" placement="top">
+        <Tooltip label={`사진 첨부 (${ATTACHMENT_LIMIT_LABEL})`} placement="top">
           <button
             type="button"
             aria-label="사진 첨부"
@@ -387,6 +387,8 @@ export function MessageComposer({
         >
           <SmilePlus size={19} />
         </button>
+        {/* 첨부 전에 제한을 미리 알 수 있도록 버튼 줄 오른쪽에 항상 표시. */}
+        <span className="ml-auto text-xs text-slate-400">첨부 {ATTACHMENT_LIMIT_LABEL}</span>
       </div>
     </form>
   );

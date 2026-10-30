@@ -1529,7 +1529,7 @@ function MessageContent() {
   const addAttachments = (files: File[]) => {
     if (!selectedRoomId || files.length === 0) return;
     if (editingTarget) {
-      showToast("메시지를 수정하는 중에는 첨부할 수 없습니다.");
+      showToast("[첨부 불가] 메시지 수정 중");
       return;
     }
     const roomId = selectedRoomId;
@@ -1539,11 +1539,13 @@ function MessageContent() {
     const tooLarge = files.filter((file) => file.size > MAX_ATTACHMENT_SIZE).length;
     const empty = files.filter((file) => file.size === 0).length;
     const overCount = valid.length - accepted.length;
-    if (tooLarge > 0)
-      showToast(`${formatFileSize(MAX_ATTACHMENT_SIZE)}를 넘는 파일 ${tooLarge}개는 뺐습니다.`);
-    else if (overCount > 0)
-      showToast(`한 번에 ${MAX_ATTACHMENT_COUNT}개까지 보낼 수 있어 ${overCount}개는 뺐습니다.`);
-    else if (empty > 0) showToast("빈 파일은 보낼 수 없습니다.");
+    // 제외 사유를 한 줄 시스템 안내로 모아 표시. 예: [첨부 제외] 용량 초과(최대 20MB) 2개 · 개수 초과(최대 10개) 1개
+    const excluded = [
+      tooLarge > 0 && `용량 초과(최대 ${formatFileSize(MAX_ATTACHMENT_SIZE)}) ${tooLarge}개`,
+      overCount > 0 && `개수 초과(최대 ${MAX_ATTACHMENT_COUNT}개) ${overCount}개`,
+      empty > 0 && `빈 파일 ${empty}개`,
+    ].filter(Boolean);
+    if (excluded.length > 0) showToast(`[첨부 제외] ${excluded.join(" · ")}`);
     if (accepted.length === 0) return;
     const items: PendingAttachment[] = accepted.map((file) => ({
       key: crypto.randomUUID(),
@@ -1623,9 +1625,7 @@ function MessageContent() {
           }
         }
         if (failedCount > 0)
-          showToast(
-            `파일 ${failedCount}개를 보내지 못했습니다. 빨간 표시에 마우스를 올려 이유를 확인해 주세요.`,
-          );
+          showToast(`[전송 실패] 파일 ${failedCount}개 · 사유는 미리보기 칸의 빨간 표시 참고`);
       }
       // 실제로 한 건이라도 보냈을 때만 답장 대상을 비움.
       if (sentReplyId !== undefined && replyId === undefined)

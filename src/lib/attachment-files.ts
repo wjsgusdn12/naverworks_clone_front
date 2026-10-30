@@ -14,6 +14,8 @@ import {
 // 첨부 제한. 서버(application.yml)와 같은 값을 유지해 올리기 전에 미리 안내.
 export const MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024;
 export const MAX_ATTACHMENT_COUNT = 10;
+// 입력창·미리보기 칸·끌어 놓기 화면에 공통으로 보여 주는 제한 안내.
+export const ATTACHMENT_LIMIT_LABEL = `파일당 최대 ${MAX_ATTACHMENT_SIZE / 1024 / 1024}MB · 한 번에 최대 ${MAX_ATTACHMENT_COUNT}개`;
 // 서버가 사진으로 인정하는 형식. 이미지 버튼의 파일 선택 창에도 이 형식만 보여 줌.
 export const IMAGE_ACCEPT = "image/png,image/jpeg,image/gif,image/webp";
 

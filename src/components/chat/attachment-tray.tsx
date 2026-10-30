@@ -2,7 +2,12 @@
 
 import { Spinner } from "@/components/common/loading";
 import { Tooltip } from "@/components/common/tooltip";
-import { fileIconOf, formatFileSize, MAX_ATTACHMENT_COUNT } from "@/lib/attachment-files";
+import {
+  fileIconOf,
+  formatFileSize,
+  MAX_ATTACHMENT_COUNT,
+  MAX_ATTACHMENT_SIZE,
+} from "@/lib/attachment-files";
 import { AlertCircle, Send, X } from "lucide-react";
 
 // 보내기 전 첨부 한 개. progress가 null이면 대기, 숫자면 올리는 중(%), error가 있으면 실패.
@@ -36,6 +41,9 @@ export function AttachmentTray({
         <span>
           첨부 <b className="text-blue-600">{items.length}</b>/{MAX_ATTACHMENT_COUNT}개 ·{" "}
           {formatFileSize(totalSize)}
+          <span className="ml-2 text-slate-400">
+            파일당 최대 {formatFileSize(MAX_ATTACHMENT_SIZE)}
+          </span>
         </span>
         <span className="ml-auto flex items-center gap-1">
           <button
