@@ -1,5 +1,6 @@
 "use client";
 
+import { CHART_COLORS } from "@/lib/chart-colors";
 import { useEffect, useRef, useState } from "react";
 
 // 선 그래프 한 줄(계열). dashed면 점선으로 그려 색뿐 아니라 모양으로도 구분.
@@ -115,7 +116,7 @@ export function LineChart({
                 x2={width - PADDING.right}
                 y1={y(tick)}
                 y2={y(tick)}
-                stroke="#e2e8f0"
+                stroke={CHART_COLORS.grid}
                 strokeDasharray={tick === 0 ? undefined : "3 4"}
               />
               <text
@@ -150,7 +151,7 @@ export function LineChart({
               x2={x(hovered)}
               y1={PADDING.top}
               y2={PADDING.top + plotHeight}
-              stroke="#94a3b8"
+              stroke={CHART_COLORS.crosshair}
               strokeDasharray="4 4"
             />
           )}
@@ -175,7 +176,7 @@ export function LineChart({
                     cy={y(value)}
                     r={hovered === index ? 5 : count > 120 ? 2.5 : 4}
                     fill={item.color}
-                    stroke="#fff"
+                    stroke={CHART_COLORS.surface}
                     strokeWidth={count > 120 ? 1 : 1.5}
                   />
                 ),
@@ -239,7 +240,7 @@ export function LegendSwatch({ color, dashed }: { color: string; dashed?: boolea
         strokeDasharray={dashed ? "4 3" : undefined}
         strokeLinecap="round"
       />
-      <circle cx="9" cy="4" r="2.5" fill={color} stroke="#fff" strokeWidth="1" />
+      <circle cx="9" cy="4" r="2.5" fill={color} stroke={CHART_COLORS.surface} strokeWidth="1" />
     </svg>
   );
 }
@@ -279,7 +280,7 @@ export function Sparkline({
   return (
     <svg width={width} height={height} role="img" aria-label={label} className="shrink-0">
       <title>{label}</title>
-      <line x1="0" x2={width} y1={height - 3} y2={height - 3} stroke="#e2e8f0" />
+      <line x1="0" x2={width} y1={height - 3} y2={height - 3} stroke={CHART_COLORS.grid} />
       <path
         d={path}
         fill="none"
@@ -290,7 +291,14 @@ export function Sparkline({
         strokeLinecap="round"
       />
       {last && (
-        <circle cx={last.x} cy={last.y} r="3" fill={color} stroke="#fff" strokeWidth="1.5" />
+        <circle
+          cx={last.x}
+          cy={last.y}
+          r="3"
+          fill={color}
+          stroke={CHART_COLORS.surface}
+          strokeWidth="1.5"
+        />
       )}
     </svg>
   );

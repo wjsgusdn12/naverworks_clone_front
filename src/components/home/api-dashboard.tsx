@@ -1,6 +1,7 @@
 "use client";
 
 import { LegendSwatch, LineChart, Sparkline, type LineSeries } from "@/components/home/line-chart";
+import { CHART_COLORS } from "@/lib/chart-colors";
 import { LoadingState, Spinner } from "@/components/common/loading";
 import { Tabs } from "@/components/common/tabs";
 import { Tooltip } from "@/components/common/tooltip";
@@ -30,13 +31,12 @@ import { useCallback, useEffect, useState } from "react";
 
 // 이 주기마다 숫자를 새로 받음.
 const REFRESH_MS = 30_000;
-// 그래프 색. 파랑·주황은 색약 구분·대비 검사를 통과한 조합이고, 둘째 계열(오류·p95)은 점선으로도 구분.
-const REQUEST_COLOR = "#3b82f6";
-const ERROR_COLOR = "#d97706";
-const AVG_COLOR = "#3b82f6";
-const P95_COLOR = "#d97706";
-// 응답 시간 분포(빠름 연파랑·보통 연두·느림 노랑·매우 느림 빨강) 선 색. 연두와 노랑은 색약(적록)에게 비슷해 보이므로
-// 느린 두 계열은 점선으로 모양도 구분하고, 범례 이름·표로 보기를 함께 둠.
+// 그래프 색은 공통 색(CHART_COLORS)에서. 둘째 계열(오류·p95)은 점선으로도 구분.
+const REQUEST_COLOR = CHART_COLORS.primary;
+const ERROR_COLOR = CHART_COLORS.secondary;
+const AVG_COLOR = CHART_COLORS.primary;
+const P95_COLOR = CHART_COLORS.secondary;
+// 응답 시간 분포: 빠를수록 진한 파랑, 느릴수록 진한 빨강. 느린 두 계열은 점선으로 모양도 구분.
 const SPEED_GROUPS: {
   key: string;
   label: string;
@@ -44,10 +44,22 @@ const SPEED_GROUPS: {
   dashed?: boolean;
   bins: number[];
 }[] = [
-  { key: "fast", label: "빠름 ≤200ms", color: "#60a5fa", bins: [0, 1, 2] },
-  { key: "normal", label: "보통 ≤1초", color: "#84cc16", bins: [3, 4, 5] },
-  { key: "slow", label: "느림 ≤5초", color: "#eda100", dashed: true, bins: [6, 7] },
-  { key: "verySlow", label: "매우 느림 >5초", color: "#e34948", dashed: true, bins: [8] },
+  { key: "fast", label: "빠름 ≤200ms", color: CHART_COLORS.speed.fast, bins: [0, 1, 2] },
+  { key: "normal", label: "보통 ≤1초", color: CHART_COLORS.speed.normal, bins: [3, 4, 5] },
+  {
+    key: "slow",
+    label: "느림 ≤5초",
+    color: CHART_COLORS.speed.slow,
+    dashed: true,
+    bins: [6, 7],
+  },
+  {
+    key: "verySlow",
+    label: "매우 느림 >5초",
+    color: CHART_COLORS.speed.verySlow,
+    dashed: true,
+    bins: [8],
+  },
 ];
 
 type Range = "HOUR" | "DAY" | "WEEK" | "MONTH";
@@ -123,18 +135,23 @@ const labelOf = (point: ApiDashboardTrendPoint, index: number, range: Range) => 
   return date.getHours() === 0 && (date.getDate() - 1) % 5 === 0 ? shortDay(point.startAt) : "";
 };
 // 마우스를 올렸을 때 제목: 14:05(1분) / 14:05 ~ 14:09 / 10/27(화) 13:00 ~ 13:59
-// 큰 단위 기록으로 채운 점은 그 길이와 함께: 13:00 ~ 13:59 (1시간 합계)
+// 세밀한 기록이 없어 큰 단위 합계를 나눠 채운 칸은 추정값임을 함께 표시.
+const ESTIMATE_NOTE: Record<Range, string> = {
+  HOUR: " (5분 합계를 나눈 추정값)",
+  DAY: " (1시간 합계를 나눈 추정값)",
+  WEEK: "",
+  MONTH: "",
+};
 const titleOf = (point: ApiDashboardTrendPoint, range: Range) => {
   const step = RANGES[range].stepMinutes;
-  const minutes = point.spanMinutes > 0 ? point.spanMinutes : step;
   const span =
-    minutes === 1
+    step === 1
       ? clock(point.startAt)
-      : `${clock(point.startAt)} ~ ${clock(lastMinute(point.startAt, minutes))}`;
-  const merged = minutes !== step ? ` (${minutes >= 60 ? "1시간" : `${minutes}분`} 합계)` : "";
+      : `${clock(point.startAt)} ~ ${clock(lastMinute(point.startAt, step))}`;
+  const note = point.estimated ? ESTIMATE_NOTE[range] : "";
   return range === "WEEK" || range === "MONTH"
-    ? `${monthDay(point.startAt)} ${span}${merged}`
-    : `${span}${merged}`;
+    ? `${monthDay(point.startAt)} ${span}${note}`
+    : `${span}${note}`;
 };
 
 // 홈 화면의 관리자 전용 "API 상태". 서버 여러 대의 요청을 합친 숫자(배포)나 이 서버 숫자(로컬)를 30초마다 갱신.

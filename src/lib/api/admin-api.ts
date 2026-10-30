@@ -24,8 +24,10 @@ export type ApiDashboardTrendPoint = {
   // 이 점이 담은 시간(분). 보통은 그래프 한 칸 길이, 잘게 쪼갠 기록이 없는 구간을 큰 단위(1시간·5분 합계)로
   // 채운 점은 그 길이, 그 묶음에 포함돼 따로 값이 없는 나머지 칸은 0(빈칸으로 그림).
   spanMinutes: number;
-  // 응답 시간 구간별 요청 수(50·100·200·300·500ms·1·2·5초 이하, 5초 초과 9칸, 히트맵용)
+  // 응답 시간 구간별 요청 수(50·100·200·300·500ms·1·2·5초 이하, 5초 초과 9칸, 응답 시간 분포용)
   latency: number[];
+  // 세밀한 기록이 없는 구간(기능 추가 전)이라 큰 단위 합계를 칸마다 고르게 나눈 추정값
+  estimated: boolean;
 };
 export type ApiDashboardEndpoint = {
   endpoint: string;
