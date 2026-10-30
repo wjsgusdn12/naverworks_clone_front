@@ -1,5 +1,6 @@
 "use client";
 
+import { LegendSwatch, LineChart, Sparkline, type LineSeries } from "@/components/home/line-chart";
 import { LoadingState, Spinner } from "@/components/common/loading";
 import { Tooltip } from "@/components/common/tooltip";
 import {
@@ -15,20 +16,28 @@ import {
   CheckCircle2,
   Database,
   Gauge,
+  Info,
   RotateCw,
   Server,
+  Table2,
   Timer,
   XCircle,
+  type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 // 이 주기마다 숫자를 새로 받음.
 const REFRESH_MS = 30_000;
-// 차트 색: 정상 요청(파랑)·오류 요청(빨강). 색약 구분·대비 검사를 통과한 조합.
-const NORMAL_COLOR = "#3b82f6";
+// 그래프 색. 두 쌍 모두 색약 구분·대비 검사를 통과한 조합이고, 둘째 계열은 점선으로도 구분.
+const REQUEST_COLOR = "#3b82f6";
 const ERROR_COLOR = "#ef4444";
+const AVG_COLOR = "#3b82f6";
+const P95_COLOR = "#d97706";
+
+type Range = "HOUR" | "DAY";
 
 const formatNumber = (value: number) => value.toLocaleString("ko-KR");
+const formatMs = (value: number) => `${formatNumber(Math.round(value))}ms`;
 const formatP95 = (value: number) => (value < 0 ? "5초 초과" : `≤ ${formatNumber(value)}ms`);
 const formatUptime = (seconds: number) => {
   const days = Math.floor(seconds / 86400);
@@ -38,13 +47,19 @@ const formatUptime = (seconds: number) => {
   if (hours > 0) return `${hours}시간 ${minutes}분`;
   return `${minutes}분`;
 };
-const hourLabel = (value: string) => `${new Date(value).getHours()}시`;
+const clock = (value: string) =>
+  new Date(value).toLocaleTimeString("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 
 // 홈 화면의 관리자 전용 "API 상태". 서버 여러 대의 요청을 합친 숫자(배포)나 이 서버 숫자(로컬)를 30초마다 갱신.
 export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
   const [data, setData] = useState<ApiDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [range, setRange] = useState<Range>("DAY");
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -78,22 +93,13 @@ export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
             </span>
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            최근 1시간·24시간 API 요청을 5분 단위로 모아 보여 줍니다.
+            모든 API 요청을 5분 단위로 모아 최근 1시간·24시간 흐름을 보여 줍니다.
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-500">
           {data && <ModeBadge mode={data.mode} />}
           {data && <DatabaseBadge status={data.database} />}
-          {data && (
-            <span>
-              {new Date(data.generatedAt).toLocaleTimeString("ko-KR", {
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-              })}{" "}
-              기준
-            </span>
-          )}
+          {data && <span>{clock(data.generatedAt)} 기준</span>}
           <Tooltip label="지금 새로 불러오기 (30초마다 자동)">
             <button
               type="button"
@@ -126,17 +132,21 @@ export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
             </p>
           )}
           <KpiRow lastHour={data.lastHour} lastDay={data.lastDay} />
-          <TrendChart points={data.trend} />
-          <div className="mt-5 grid gap-5 lg:grid-cols-2">
+          <TrendSection
+            points={range === "HOUR" ? data.recentTrend : data.trend}
+            range={range}
+            onRangeChange={setRange}
+          />
+          <div className="mt-6 grid gap-6 lg:grid-cols-2">
             <EndpointList
               title="많이 호출된 API"
-              description="최근 24시간 호출 수"
+              description="최근 24시간 호출 수 · 오른쪽 점선은 시간별 흐름"
               items={data.topEndpoints}
               metric="requests"
             />
             <EndpointList
               title="느린 API"
-              description="최근 24시간 평균 응답 시간(5회 이상 호출)"
+              description="최근 24시간 평균 응답 시간(5회 이상 호출) · 점선은 시간별 평균"
               items={data.slowEndpoints}
               metric="avgMs"
             />
@@ -187,7 +197,14 @@ function KpiRow({
   lastHour: ApiDashboardSummary;
   lastDay: ApiDashboardSummary;
 }) {
-  const tiles = [
+  const tiles: {
+    label: string;
+    icon: LucideIcon;
+    value: string;
+    sub: string;
+    help: string;
+    warn?: boolean;
+  }[] = [
     {
       label: "요청 수",
       icon: Activity,
@@ -199,15 +216,15 @@ function KpiRow({
       label: "서버 오류율",
       icon: lastHour.serverErrors > 0 ? AlertTriangle : CheckCircle2,
       value: `${lastHour.errorRate}%`,
-      sub: `5xx ${formatNumber(lastHour.serverErrors)} · 4xx ${formatNumber(lastHour.clientErrors)}`,
+      sub: `5xx ${formatNumber(lastHour.serverErrors)}건 · 4xx ${formatNumber(lastHour.clientErrors)}건`,
       help: "서버 잘못(5xx)으로 실패한 비율. 4xx는 잘못된 요청·권한 없음처럼 요청 쪽 문제",
       warn: lastHour.serverErrors > 0,
     },
     {
       label: "평균 응답",
       icon: Timer,
-      value: `${formatNumber(lastHour.avgMs)}ms`,
-      sub: `24시간 ${formatNumber(lastDay.avgMs)}ms`,
+      value: formatMs(lastHour.avgMs),
+      sub: `24시간 ${formatMs(lastDay.avgMs)}`,
       help: "요청 하나를 처리하는 데 걸린 평균 시간",
     },
     {
@@ -215,124 +232,220 @@ function KpiRow({
       icon: Gauge,
       value: formatP95(lastHour.p95Ms),
       sub: `24시간 ${formatP95(lastDay.p95Ms)}`,
-      help: "100건 중 95건이 이 시간 안에 끝남. 평균에 묻히는 느린 요청을 잡아내는 숫자",
+      help: "100건 중 95건이 이 시간 안에 끝났다는 뜻. 평균에 묻히는 느린 요청을 잡아내는 숫자",
     },
   ];
   return (
     <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {tiles.map((tile) => (
-        <Tooltip key={tile.label} label={tile.help} multiline className="block">
-          <div className="rounded-xl border border-slate-200 px-4 py-3">
-            <p className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
-              <tile.icon
-                size={14}
-                className={tile.warn ? "text-red-500" : "text-slate-400"}
-                aria-hidden="true"
-              />
-              {tile.label} · 최근 1시간
-            </p>
-            <p className="mt-1 text-2xl font-bold tracking-tight text-slate-900">{tile.value}</p>
-            <p className="mt-0.5 text-xs text-slate-500">{tile.sub}</p>
-          </div>
-        </Tooltip>
+        <div key={tile.label} className="rounded-xl border border-slate-200 px-4 py-3">
+          <p className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+            <tile.icon
+              size={14}
+              className={tile.warn ? "text-red-500" : "text-slate-400"}
+              aria-hidden="true"
+            />
+            {tile.label} · 최근 1시간
+            <Tooltip label={tile.help} multiline className="ml-auto">
+              <Info size={13} className="text-slate-300" aria-label={tile.help} />
+            </Tooltip>
+          </p>
+          <p className="mt-1 text-2xl font-bold tracking-tight text-slate-900">{tile.value}</p>
+          <p className="mt-0.5 text-xs text-slate-500">{tile.sub}</p>
+        </div>
       ))}
     </div>
   );
 }
 
-// 24시간 시간별 요청 막대. 한 막대 = 1시간, 아래쪽 파랑은 정상·위쪽 빨강은 오류(4xx+5xx).
-function TrendChart({ points }: { points: ApiDashboardTrendPoint[] }) {
-  const [hovered, setHovered] = useState<number | null>(null);
-  const max = Math.max(1, ...points.map((point) => point.requests));
-  const total = points.reduce((sum, point) => sum + point.requests, 0);
-  const hoveredPoint = hovered === null ? null : points[hovered];
+// 추이 영역: 기간 선택(최근 1시간 5분 단위 / 최근 24시간 1시간 단위) + 그래프 2개 + 표로 보기.
+// 요청 수와 응답 시간은 단위가 달라(건 vs ms) 한 그래프에 섞지 않고 나눠 그림.
+function TrendSection({
+  points,
+  range,
+  onRangeChange,
+}: {
+  points: ApiDashboardTrendPoint[];
+  range: Range;
+  onRangeChange: (range: Range) => void;
+}) {
+  const [showTable, setShowTable] = useState(false);
+  const hourly = range === "DAY";
+  const labels = points.map((point) => clock(point.startAt));
+  const step = hourly ? 60 : 5;
+  const titles = points.map((point) => {
+    const start = new Date(point.startAt);
+    const end = new Date(start.getTime() + step * 60_000);
+    return `${clock(point.startAt)} ~ ${clock(end.toISOString())}`;
+  });
+  const hasData = points.some((point) => point.requests > 0);
+  // 요청이 없던 구간의 응답 시간은 0이 아니라 "기록 없음"이라 선을 끊음.
+  const responseValue = (point: ApiDashboardTrendPoint, value: number) =>
+    point.requests === 0 ? null : value < 0 ? 5000 : value;
+  const requestSeries: LineSeries[] = [
+    {
+      key: "requests",
+      label: "요청",
+      color: REQUEST_COLOR,
+      values: points.map((point) => point.requests),
+    },
+    {
+      key: "errors",
+      label: "오류(4xx·5xx)",
+      color: ERROR_COLOR,
+      dashed: true,
+      values: points.map((point) => point.errors),
+    },
+  ];
+  const responseSeries: LineSeries[] = [
+    {
+      key: "avg",
+      label: "평균",
+      color: AVG_COLOR,
+      values: points.map((point) => responseValue(point, point.avgMs)),
+    },
+    {
+      key: "p95",
+      label: "p95",
+      color: P95_COLOR,
+      dashed: true,
+      values: points.map((point) => responseValue(point, point.p95Ms)),
+    },
+  ];
+
   return (
-    <div className="mt-5">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-800">시간별 요청 (최근 24시간)</h3>
-        {/* 범례: 색만으로 구분하지 않도록 이름을 함께 표시. */}
-        <div className="flex items-center gap-3 text-xs text-slate-500">
-          <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-sm" style={{ background: NORMAL_COLOR }} />
-            정상
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-sm" style={{ background: ERROR_COLOR }} />
-            오류
-          </span>
-        </div>
-      </div>
-      {total === 0 ? (
-        <p className="mt-3 rounded-xl bg-slate-50 py-10 text-center text-sm text-slate-500">
-          아직 기록된 요청이 없습니다.
-        </p>
-      ) : (
-        <div className="relative mt-3">
-          <div className="flex h-36 items-end gap-0.5 border-b border-slate-200">
-            {points.map((point, index) => {
-              const normal = point.requests - point.errors;
-              const height = (point.requests / max) * 100;
-              return (
-                // 막대보다 넓은 칸 전체를 마우스 영역으로 써서 가는 막대도 쉽게 가리킬 수 있게 함.
-                <div
-                  key={point.startAt}
-                  onMouseEnter={() => setHovered(index)}
-                  onMouseLeave={() => setHovered(null)}
-                  className={`flex h-full flex-1 flex-col justify-end rounded-t ${hovered === index ? "bg-slate-50" : ""}`}
-                  aria-label={`${hourLabel(point.startAt)} 요청 ${point.requests}건, 오류 ${point.errors}건`}
-                >
-                  <div
-                    className="flex flex-col gap-0.5 overflow-hidden rounded-t"
-                    style={{ height: `${height}%` }}
-                  >
-                    {point.errors > 0 && (
-                      <span
-                        className="w-full shrink-0"
-                        style={{
-                          background: ERROR_COLOR,
-                          flexGrow: point.errors,
-                          minHeight: 2,
-                        }}
-                      />
-                    )}
-                    {normal > 0 && (
-                      <span
-                        className="w-full"
-                        style={{ background: NORMAL_COLOR, flexGrow: normal }}
-                      />
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <div className="mt-1 flex text-[11px] text-slate-400">
-            {points.map((point, index) => (
-              <span key={point.startAt} className="flex-1 text-center">
-                {index % 6 === 0 ? hourLabel(point.startAt) : ""}
-              </span>
-            ))}
-          </div>
-          <span className="absolute -top-5 left-0 text-[11px] text-slate-400">
-            최대 {formatNumber(max)}건
-          </span>
-          {hoveredPoint && hovered !== null && (
-            <div
-              className="pointer-events-none absolute -top-2 z-10 -translate-x-1/2 -translate-y-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg"
-              style={{ left: `${((hovered + 0.5) / points.length) * 100}%` }}
+    <div className="mt-6">
+      {/* 기간 선택과 표 보기는 그래프 위 한 줄에 모음. */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div role="tablist" aria-label="기간" className="flex gap-1 rounded-lg bg-slate-100 p-1">
+          {(
+            [
+              ["HOUR", "최근 1시간 · 5분 단위"],
+              ["DAY", "최근 24시간 · 1시간 단위"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={range === value}
+              onClick={() => onRangeChange(value)}
+              className={`cursor-pointer rounded-md px-3 py-1.5 text-xs font-semibold transition ${range === value ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
             >
-              <p className="font-semibold text-slate-800">
-                {hourLabel(hoveredPoint.startAt)}~
-                {(new Date(hoveredPoint.startAt).getHours() + 1) % 24}시
-              </p>
-              <p className="mt-0.5 text-slate-600">
-                요청 {formatNumber(hoveredPoint.requests)}건 · 오류{" "}
-                {formatNumber(hoveredPoint.errors)}건
-              </p>
-            </div>
-          )}
+              {label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          aria-pressed={showTable}
+          onClick={() => setShowTable((value) => !value)}
+          className={`flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${showTable ? "bg-blue-50 text-blue-700" : "text-slate-500 hover:bg-slate-100"}`}
+        >
+          <Table2 size={14} aria-hidden="true" />
+          {showTable ? "그래프로 보기" : "표로 보기"}
+        </button>
+      </div>
+
+      {!hasData ? (
+        <p className="mt-3 rounded-xl bg-slate-50 py-12 text-center text-sm text-slate-500">
+          이 기간에 기록된 요청이 없습니다.
+        </p>
+      ) : showTable ? (
+        <TrendTable points={points} titles={titles} />
+      ) : (
+        <div className="mt-4 grid gap-6 xl:grid-cols-2">
+          <ChartCard title="요청 · 오류" unit="건" series={requestSeries}>
+            <LineChart
+              labels={labels}
+              tooltipTitles={titles}
+              series={requestSeries}
+              formatValue={(value) => `${formatNumber(Math.round(value))}`}
+              labelEvery={hourly ? 4 : 2}
+              ariaLabel={`${hourly ? "최근 24시간" : "최근 1시간"} 요청과 오류 추이`}
+            />
+          </ChartCard>
+          <ChartCard title="응답 시간" unit="ms" series={responseSeries}>
+            <LineChart
+              labels={labels}
+              tooltipTitles={titles}
+              series={responseSeries}
+              formatValue={formatMs}
+              labelEvery={hourly ? 4 : 2}
+              ariaLabel={`${hourly ? "최근 24시간" : "최근 1시간"} 평균·p95 응답 시간 추이`}
+            />
+          </ChartCard>
         </div>
       )}
+    </div>
+  );
+}
+
+function ChartCard({
+  title,
+  unit,
+  series,
+  children,
+}: {
+  title: string;
+  unit: string;
+  series: LineSeries[];
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-slate-800">
+          {title} <span className="text-xs font-normal text-slate-400">({unit})</span>
+        </h3>
+        {/* 범례: 색과 함께 선 모양(실선·점선)과 이름으로 구분. */}
+        <div className="flex items-center gap-3 text-xs text-slate-500">
+          {series.map((item) => (
+            <span key={item.key} className="flex items-center gap-1.5">
+              <LegendSwatch color={item.color} dashed={item.dashed} />
+              {item.label}
+            </span>
+          ))}
+        </div>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// 그래프와 같은 숫자를 표로(색을 구분하기 어렵거나 정확한 값을 볼 때).
+function TrendTable({ points, titles }: { points: ApiDashboardTrendPoint[]; titles: string[] }) {
+  return (
+    <div className="mt-4 max-h-80 overflow-auto rounded-xl border border-slate-200">
+      <table className="w-full text-right text-xs tabular-nums">
+        <thead className="sticky top-0 bg-slate-50 text-slate-500">
+          <tr>
+            <th className="px-3 py-2 text-left font-medium">시간</th>
+            <th className="px-3 py-2 font-medium">요청</th>
+            <th className="px-3 py-2 font-medium">오류</th>
+            <th className="px-3 py-2 font-medium">평균 응답</th>
+            <th className="px-3 py-2 font-medium">p95 응답</th>
+          </tr>
+        </thead>
+        <tbody>
+          {points
+            .map((point, index) => ({ point, title: titles[index] }))
+            .reverse()
+            .map(({ point, title }) => (
+              <tr key={point.startAt} className="border-t border-slate-100 text-slate-700">
+                <td className="px-3 py-1.5 text-left">{title}</td>
+                <td className="px-3 py-1.5">{formatNumber(point.requests)}</td>
+                <td className="px-3 py-1.5">{formatNumber(point.errors)}</td>
+                <td className="px-3 py-1.5">
+                  {point.requests === 0 ? "-" : formatMs(point.avgMs)}
+                </td>
+                <td className="px-3 py-1.5">
+                  {point.requests === 0 ? "-" : formatP95(point.p95Ms)}
+                </td>
+              </tr>
+            ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -341,7 +454,7 @@ function TrendChart({ points }: { points: ApiDashboardTrendPoint[] }) {
 function EndpointName({ endpoint }: { endpoint: string }) {
   const [method, ...rest] = endpoint.split(" ");
   const path = rest.join(" ");
-  if (!path) return <span className="truncate text-slate-600">{endpoint}</span>;
+  if (!path) return <span className="truncate text-xs text-slate-600">{endpoint}</span>;
   return (
     <span className="flex min-w-0 items-center gap-1.5">
       <span
@@ -356,6 +469,7 @@ function EndpointName({ endpoint }: { endpoint: string }) {
   );
 }
 
+// API 순위. 막대 대신 오른쪽에 24시간 점선 추이선을 붙여 "언제 많이/느리게 불렸는지"를 함께 보여 줌.
 function EndpointList({
   title,
   description,
@@ -367,7 +481,6 @@ function EndpointList({
   items: ApiDashboardEndpoint[];
   metric: "requests" | "avgMs";
 }) {
-  const max = Math.max(1, ...items.map((item) => item[metric]));
   return (
     <div>
       <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
@@ -377,29 +490,40 @@ function EndpointList({
           아직 기록이 없습니다.
         </p>
       ) : (
-        <ol className="mt-2 space-y-2">
-          {items.map((item) => (
-            <li key={item.endpoint} className="text-sm">
-              <div className="flex items-center justify-between gap-3">
-                <EndpointName endpoint={item.endpoint} />
-                <span className="shrink-0 text-xs tabular-nums text-slate-600">
-                  {metric === "requests"
-                    ? `${formatNumber(item.requests)}회`
-                    : `${formatNumber(item.avgMs)}ms`}
+        <ol className="mt-2 divide-y divide-slate-100">
+          {items.map((item, index) => {
+            const trend =
+              metric === "requests"
+                ? item.hourlyRequests
+                : item.hourlyAvgMs.map((value, hour) =>
+                    item.hourlyRequests[hour] === 0 ? null : value,
+                  );
+            return (
+              <li key={item.endpoint} className="flex items-center gap-3 py-2">
+                <span className="w-4 shrink-0 text-center text-xs font-semibold text-slate-400">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <EndpointName endpoint={item.endpoint} />
+                </span>
+                <Sparkline
+                  values={trend}
+                  color={metric === "requests" ? REQUEST_COLOR : P95_COLOR}
+                  label={`${item.endpoint} 최근 24시간 ${metric === "requests" ? "호출 수" : "평균 응답 시간"} 추이`}
+                />
+                <span className="w-20 shrink-0 text-right text-xs tabular-nums">
+                  <span className="font-semibold text-slate-800">
+                    {metric === "requests"
+                      ? `${formatNumber(item.requests)}회`
+                      : formatMs(item.avgMs)}
+                  </span>
                   {item.errors > 0 && (
-                    <span className="ml-1.5 text-red-600">오류 {formatNumber(item.errors)}</span>
+                    <span className="block text-red-600">오류 {formatNumber(item.errors)}</span>
                   )}
                 </span>
-              </div>
-              {/* 1등 대비 상대 길이 */}
-              <div className="mt-1 h-1.5 rounded-full bg-slate-100">
-                <div
-                  className="h-full rounded-full"
-                  style={{ width: `${(item[metric] / max) * 100}%`, background: NORMAL_COLOR }}
-                />
-              </div>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ol>
       )}
     </div>
@@ -415,7 +539,7 @@ function ServerList({
   mode: ApiDashboard["mode"];
 }) {
   return (
-    <div className="mt-5">
+    <div className="mt-6">
       <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-800">
         <Server size={15} className="text-slate-400" aria-hidden="true" />
         가동 중인 서버 {servers.length}대
@@ -431,7 +555,7 @@ function ServerList({
             <tr className="border-b border-slate-200">
               <th className="py-2 font-medium">서버</th>
               <th className="py-2 font-medium">가동 시간</th>
-              <th className="py-2 font-medium">메모리</th>
+              <th className="py-2 font-medium">메모리 사용</th>
               <th className="py-2 text-right font-medium">실시간 연결</th>
             </tr>
           </thead>
@@ -445,7 +569,10 @@ function ServerList({
               </tr>
             ) : (
               servers.map((server) => {
-                const ratio = server.heapMaxMb > 0 ? server.heapUsedMb / server.heapMaxMb : 0;
+                const percent =
+                  server.heapMaxMb > 0
+                    ? Math.round((server.heapUsedMb / server.heapMaxMb) * 100)
+                    : 0;
                 return (
                   <tr key={server.instanceId} className="border-b border-slate-100 last:border-0">
                     <td className="py-2.5">
@@ -464,17 +591,12 @@ function ServerList({
                     <td className="py-2.5 text-xs text-slate-600">
                       {formatUptime(server.uptimeSeconds)}
                     </td>
-                    <td className="py-2.5">
-                      <span className="flex items-center gap-2">
-                        <span className="h-1.5 w-24 rounded-full bg-slate-100">
-                          <span
-                            className={`block h-full rounded-full ${ratio > 0.85 ? "bg-red-500" : "bg-blue-500"}`}
-                            style={{ width: `${Math.min(100, ratio * 100)}%` }}
-                          />
-                        </span>
-                        <span className="text-xs tabular-nums text-slate-600">
-                          {formatNumber(server.heapUsedMb)} / {formatNumber(server.heapMaxMb)}MB
-                        </span>
+                    <td className="py-2.5 text-xs tabular-nums text-slate-600">
+                      {formatNumber(server.heapUsedMb)} / {formatNumber(server.heapMaxMb)}MB
+                      <span
+                        className={`ml-1.5 font-semibold ${percent > 85 ? "text-red-600" : "text-slate-800"}`}
+                      >
+                        {percent}%
                       </span>
                     </td>
                     <td className="py-2.5 text-right text-xs tabular-nums text-slate-600">

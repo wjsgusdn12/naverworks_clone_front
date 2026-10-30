@@ -14,12 +14,22 @@ export type ApiDashboardSummary = {
   // 요청 95%가 이 시간 안에 끝남(구간 경계). -1이면 5초 초과.
   p95Ms: number;
 };
-export type ApiDashboardTrendPoint = { startAt: string; requests: number; errors: number };
+// 추이 한 점. 요청이 없던 구간은 avgMs·p95Ms가 0.
+export type ApiDashboardTrendPoint = {
+  startAt: string;
+  requests: number;
+  errors: number;
+  avgMs: number;
+  p95Ms: number;
+};
 export type ApiDashboardEndpoint = {
   endpoint: string;
   requests: number;
   errors: number;
   avgMs: number;
+  // 최근 24시간 1시간 단위 값(작은 추이선용)
+  hourlyRequests: number[];
+  hourlyAvgMs: number[];
 };
 export type ApiDashboardServer = {
   instanceId: string;
@@ -37,7 +47,10 @@ export type ApiDashboard = {
   servers: ApiDashboardServer[];
   lastHour: ApiDashboardSummary;
   lastDay: ApiDashboardSummary;
+  // 최근 24시간 1시간 단위 24점
   trend: ApiDashboardTrendPoint[];
+  // 최근 1시간 5분 단위 12점
+  recentTrend: ApiDashboardTrendPoint[];
   topEndpoints: ApiDashboardEndpoint[];
   slowEndpoints: ApiDashboardEndpoint[];
 };
