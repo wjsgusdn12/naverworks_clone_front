@@ -35,8 +35,8 @@ const REQUEST_COLOR = "#3b82f6";
 const ERROR_COLOR = "#d97706";
 const AVG_COLOR = "#3b82f6";
 const P95_COLOR = "#d97706";
-// 응답 시간 분포(빠름·보통·느림·매우 느림) 선 색. 색약 구분·대비 검사를 통과한 4색이고,
-// 느린 두 계열은 점선으로도 구분(청록은 바탕 대비가 낮아 범례 이름·표로 보기를 함께 둠).
+// 응답 시간 분포(빠름 파랑·보통 초록·느림 노랑·매우 느림 빨강) 선 색. 색약 구분 검사를 통과한 4색이고,
+// 느린 두 계열은 점선으로도 구분(노랑은 바탕 대비가 낮아 범례 이름·표로 보기를 함께 둠).
 const SPEED_GROUPS: {
   key: string;
   label: string;
@@ -45,9 +45,9 @@ const SPEED_GROUPS: {
   bins: number[];
 }[] = [
   { key: "fast", label: "빠름 ≤200ms", color: "#2a78d6", bins: [0, 1, 2] },
-  { key: "normal", label: "보통 ≤1초", color: "#1baf7a", bins: [3, 4, 5] },
-  { key: "slow", label: "느림 ≤5초", color: "#6250d6", dashed: true, bins: [6, 7] },
-  { key: "verySlow", label: "매우 느림 >5초", color: "#eb6834", dashed: true, bins: [8] },
+  { key: "normal", label: "보통 ≤1초", color: "#008300", bins: [3, 4, 5] },
+  { key: "slow", label: "느림 ≤5초", color: "#eda100", dashed: true, bins: [6, 7] },
+  { key: "verySlow", label: "매우 느림 >5초", color: "#e34948", dashed: true, bins: [8] },
 ];
 
 type Range = "HOUR" | "DAY" | "WEEK" | "MONTH";
@@ -144,7 +144,15 @@ export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
   const [dataByRange, setDataByRange] = useState<Partial<Record<Range, ApiDashboard>>>({});
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // 탭을 바꾸기 직전에 보던 기간. 새 탭을 받는 동안 그 화면을 자리 그대로 두고 로딩 판으로 덮어 높이가 출렁이지 않게 함.
+  const [previousRange, setPreviousRange] = useState<Range | null>(null);
   const data = dataByRange[range] ?? null;
+  const shown = data ?? (previousRange ? (dataByRange[previousRange] ?? null) : null);
+  const changeRange = (next: Range) => {
+    if (next === range) return;
+    setPreviousRange(range);
+    setRange(next);
+  };
 
   const load = useCallback(async () => {
     const target = range;
@@ -214,50 +222,70 @@ export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
             label: RANGES[value].tab,
           }))}
           value={range}
-          onChange={setRange}
+          onChange={changeRange}
           ariaLabel="기간"
         />
         <span className="pb-2.5 text-xs font-medium text-slate-500">
           {data ? periodOf(data.trend, range) : ""}
         </span>
       </div>
-      {data === null ? (
-        error ? (
-          <p className="py-10 text-center text-sm text-slate-500">{error}</p>
-        ) : (
-          <LoadingState message="API 상태를 불러오는 중입니다..." className="py-10" />
-        )
-      ) : (
-        <>
-          {error && (
-            <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-              [갱신 실패] {error} · 마지막으로 받은 숫자를 보여 주는 중
-            </p>
-          )}
-          <KpiRow summary={data.summary} rangeName={RANGES[range].name} />
-          <TrendSection points={data.trend} range={range} generatedAt={data.generatedAt} />
-          <div className="mt-6 grid gap-6 lg:grid-cols-2">
-            <EndpointList
-              title={`많이 호출된 API · ${RANGES[range].name}`}
-              description={`${RANGES[range].name} 호출 수 · 오른쪽 점선은 ${RANKING_STEP[range]} 단위 흐름`}
-              ranking={data.ranking}
-              items={data.ranking.top}
-              metric="requests"
-              generatedAt={data.generatedAt}
-            />
-            <EndpointList
-              title={`느린 API · ${RANGES[range].name}`}
-              description={`${RANGES[range].name} 평균 응답 시간(5회 이상 호출) · 점선은 ${RANKING_STEP[range]} 단위 평균`}
-              ranking={data.ranking}
-              items={data.ranking.slow}
-              metric="avgMs"
-              generatedAt={data.generatedAt}
-            />
+      {/* 처음 진입할 때는 내용이 들어올 높이만큼 자리를 잡아 두고, 탭을 바꿀 때는 직전 화면 높이를 그대로 유지한 채
+          로딩 판으로 덮음 → 로딩 전후로 화면이 들썩이지 않음. */}
+      <div className="relative min-h-[1100px]">
+        {data === null && (
+          <div className="absolute inset-0 z-10 flex justify-center bg-white pt-40">
+            {error ? (
+              <p className="text-sm text-slate-500">{error}</p>
+            ) : (
+              <LoadingState message="API 상태를 불러오는 중입니다..." />
+            )}
           </div>
-          <ServerList servers={data.servers} mode={data.mode} />
-        </>
-      )}
+        )}
+        {shown && <ApiDashboardBody data={shown} range={range} error={data ? error : null} />}
+      </div>
     </section>
+  );
+}
+
+// 숫자 카드·그래프·순위·서버 목록(고른 기간의 데이터 한 벌)
+function ApiDashboardBody({
+  data,
+  range,
+  error,
+}: {
+  data: ApiDashboard;
+  range: Range;
+  error: string | null;
+}) {
+  return (
+    <>
+      {error && (
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          [갱신 실패] {error} · 마지막으로 받은 숫자를 보여 주는 중
+        </p>
+      )}
+      <KpiRow summary={data.summary} rangeName={RANGES[range].name} />
+      <TrendSection points={data.trend} range={range} generatedAt={data.generatedAt} />
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <EndpointList
+          title={`많이 호출된 API · ${RANGES[range].name}`}
+          description={`${RANGES[range].name} 호출 수 · 오른쪽 점선은 ${RANKING_STEP[range]} 단위 흐름`}
+          ranking={data.ranking}
+          items={data.ranking.top}
+          metric="requests"
+          generatedAt={data.generatedAt}
+        />
+        <EndpointList
+          title={`느린 API · ${RANGES[range].name}`}
+          description={`${RANGES[range].name} 평균 응답 시간(5회 이상 호출) · 점선은 ${RANKING_STEP[range]} 단위 평균`}
+          ranking={data.ranking}
+          items={data.ranking.slow}
+          metric="avgMs"
+          generatedAt={data.generatedAt}
+        />
+      </div>
+      <ServerList servers={data.servers} mode={data.mode} />
+    </>
   );
 }
 
