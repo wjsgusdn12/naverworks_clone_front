@@ -35,8 +35,8 @@ const REQUEST_COLOR = "#3b82f6";
 const ERROR_COLOR = "#d97706";
 const AVG_COLOR = "#3b82f6";
 const P95_COLOR = "#d97706";
-// 응답 시간 분포(빠름 파랑·보통 초록·느림 노랑·매우 느림 빨강) 선 색. 색약 구분 검사를 통과한 4색이고,
-// 느린 두 계열은 점선으로도 구분(노랑은 바탕 대비가 낮아 범례 이름·표로 보기를 함께 둠).
+// 응답 시간 분포(빠름 연파랑·보통 연두·느림 노랑·매우 느림 빨강) 선 색. 연두와 노랑은 색약(적록)에게 비슷해 보이므로
+// 느린 두 계열은 점선으로 모양도 구분하고, 범례 이름·표로 보기를 함께 둠.
 const SPEED_GROUPS: {
   key: string;
   label: string;
@@ -44,8 +44,8 @@ const SPEED_GROUPS: {
   dashed?: boolean;
   bins: number[];
 }[] = [
-  { key: "fast", label: "빠름 ≤200ms", color: "#2a78d6", bins: [0, 1, 2] },
-  { key: "normal", label: "보통 ≤1초", color: "#16a34a", bins: [3, 4, 5] },
+  { key: "fast", label: "빠름 ≤200ms", color: "#60a5fa", bins: [0, 1, 2] },
+  { key: "normal", label: "보통 ≤1초", color: "#84cc16", bins: [3, 4, 5] },
   { key: "slow", label: "느림 ≤5초", color: "#eda100", dashed: true, bins: [6, 7] },
   { key: "verySlow", label: "매우 느림 >5초", color: "#e34948", dashed: true, bins: [8] },
 ];
@@ -144,15 +144,8 @@ export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
   const [dataByRange, setDataByRange] = useState<Partial<Record<Range, ApiDashboard>>>({});
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  // 탭을 바꾸기 직전에 보던 기간. 새 탭을 받는 동안 그 화면을 자리 그대로 두고 로딩 판으로 덮어 높이가 출렁이지 않게 함.
-  const [previousRange, setPreviousRange] = useState<Range | null>(null);
+  // 아직 받지 않은 탭이면 null → 안쪽 카드마다 같은 높이 그대로 로딩 표시.
   const data = dataByRange[range] ?? null;
-  const shown = data ?? (previousRange ? (dataByRange[previousRange] ?? null) : null);
-  const changeRange = (next: Range) => {
-    if (next === range) return;
-    setPreviousRange(range);
-    setRange(next);
-  };
 
   const load = useCallback(async () => {
     const target = range;
@@ -222,70 +215,82 @@ export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
             label: RANGES[value].tab,
           }))}
           value={range}
-          onChange={changeRange}
+          onChange={setRange}
           ariaLabel="기간"
         />
         <span className="pb-2.5 text-xs font-medium text-slate-500">
           {data ? periodOf(data.trend, range) : ""}
         </span>
       </div>
-      {/* 처음 진입할 때는 내용이 들어올 높이만큼 자리를 잡아 두고, 탭을 바꿀 때는 직전 화면 높이를 그대로 유지한 채
-          로딩 판으로 덮음 → 로딩 전후로 화면이 들썩이지 않음. */}
-      <div className="relative min-h-[1100px]">
-        {data === null && (
-          <div className="absolute inset-0 z-10 flex justify-center bg-white pt-40">
-            {error ? (
-              <p className="text-sm text-slate-500">{error}</p>
-            ) : (
-              <LoadingState message="API 상태를 불러오는 중입니다..." />
-            )}
-          </div>
-        )}
-        {shown && <ApiDashboardBody data={shown} range={range} error={data ? error : null} />}
-      </div>
+      <ApiDashboardBody data={data} range={range} error={error} />
     </section>
   );
 }
 
-// 숫자 카드·그래프·순위·서버 목록(고른 기간의 데이터 한 벌)
+// 숫자 카드·그래프·순위·서버 목록. data가 null이면(이 탭을 아직 받기 전) 카드마다 같은 높이로 로딩 표시,
+// 받지 못했으면 그 자리에 실패 안내.
 function ApiDashboardBody({
   data,
   range,
   error,
 }: {
-  data: ApiDashboard;
+  data: ApiDashboard | null;
   range: Range;
   error: string | null;
 }) {
+  // 카드 안 로딩 자리에 보여 줄 안내(받기 전: 로딩, 실패: 안내 문구)
+  const waiting: CardWaiting = data ? null : error ? { error } : "loading";
   return (
     <>
-      {error && (
+      {data && error && (
         <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
           [갱신 실패] {error} · 마지막으로 받은 숫자를 보여 주는 중
         </p>
       )}
-      <KpiRow summary={data.summary} rangeName={RANGES[range].name} />
-      <TrendSection points={data.trend} range={range} generatedAt={data.generatedAt} />
+      <KpiRow summary={data?.summary ?? null} rangeName={RANGES[range].name} waiting={waiting} />
+      <TrendSection
+        points={data?.trend ?? null}
+        range={range}
+        generatedAt={data?.generatedAt ?? ""}
+        waiting={waiting}
+      />
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <EndpointList
           title={`많이 호출된 API · ${RANGES[range].name}`}
           description={`${RANGES[range].name} 호출 수 · 오른쪽 점선은 ${RANKING_STEP[range]} 단위 흐름`}
-          ranking={data.ranking}
-          items={data.ranking.top}
+          ranking={data?.ranking ?? null}
+          items={data?.ranking.top ?? []}
           metric="requests"
-          generatedAt={data.generatedAt}
+          generatedAt={data?.generatedAt ?? ""}
+          waiting={waiting}
         />
         <EndpointList
           title={`느린 API · ${RANGES[range].name}`}
           description={`${RANGES[range].name} 평균 응답 시간(5회 이상 호출) · 점선은 ${RANKING_STEP[range]} 단위 평균`}
-          ranking={data.ranking}
-          items={data.ranking.slow}
+          ranking={data?.ranking ?? null}
+          items={data?.ranking.slow ?? []}
           metric="avgMs"
-          generatedAt={data.generatedAt}
+          generatedAt={data?.generatedAt ?? ""}
+          waiting={waiting}
         />
       </div>
-      <ServerList servers={data.servers} mode={data.mode} />
+      <ServerList servers={data?.servers ?? null} mode={data?.mode ?? "LOCAL"} waiting={waiting} />
     </>
+  );
+}
+
+// 카드 안 기다림 상태: null(데이터 있음), "loading"(받는 중), { error }(받지 못함)
+type CardWaiting = null | "loading" | { error: string };
+
+// 카드 안 정해진 높이 자리에 로딩 또는 실패 안내를 보여 줌(카드 크기는 그대로라 화면이 들썩이지 않음).
+function CardWaitingState({ waiting, className }: { waiting: CardWaiting; className: string }) {
+  if (!waiting) return null;
+  return waiting === "loading" ? (
+    <LoadingState message="불러오는 중입니다..." className={className} />
+  ) : (
+    <p className={`flex items-center justify-center text-xs text-slate-500 ${className}`}>
+      {waiting.error}
+    </p>
   );
 }
 
@@ -321,7 +326,24 @@ function DatabaseBadge({ status }: { status: ApiDashboard["database"] }) {
 }
 
 // 큰 숫자 4개: 요청 수 · 서버 오류율 · 평균 응답 · p95 응답. 모두 고른 기간(탭)의 값.
-function KpiRow({ summary, rangeName }: { summary: ApiDashboardSummary; rangeName: string }) {
+function KpiRow({
+  summary: loaded,
+  rangeName,
+  waiting,
+}: {
+  summary: ApiDashboardSummary | null;
+  rangeName: string;
+  waiting: CardWaiting;
+}) {
+  // 받기 전에는 0으로 틀만 만들고, 숫자 자리에 스피너(카드 크기는 그대로)
+  const summary = loaded ?? {
+    requests: 0,
+    clientErrors: 0,
+    serverErrors: 0,
+    errorRate: 0,
+    avgMs: 0,
+    p95Ms: 0,
+  };
   const tiles: {
     label: string;
     icon: LucideIcon;
@@ -375,8 +397,20 @@ function KpiRow({ summary, rangeName }: { summary: ApiDashboardSummary; rangeNam
               <Info size={13} className="text-slate-300" aria-label={tile.help} />
             </Tooltip>
           </p>
-          <p className="mt-1 text-2xl font-bold tracking-tight text-slate-900">{tile.value}</p>
-          <p className="mt-0.5 text-xs text-slate-500">{tile.sub}</p>
+          {loaded ? (
+            <>
+              <p className="mt-1 text-2xl font-bold tracking-tight text-slate-900">{tile.value}</p>
+              <p className="mt-0.5 text-xs text-slate-500">{tile.sub}</p>
+            </>
+          ) : (
+            <div className="mt-1 flex h-12 items-center">
+              {waiting === "loading" ? (
+                <Spinner size={18} className="text-blue-500" />
+              ) : (
+                <span className="text-xs text-slate-400">-</span>
+              )}
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -387,16 +421,19 @@ function KpiRow({ summary, rangeName }: { summary: ApiDashboardSummary; rangeNam
 // 아직 오지 않은 시간은 0이 아니라 빈칸이라 선이 "지금"에서 끊김.
 // 요청 수와 응답 시간은 단위가 달라(건 vs ms) 한 그래프에 섞지 않고 나눠 그림.
 function TrendSection({
-  points,
+  points: loaded,
   range,
   generatedAt,
+  waiting,
 }: {
-  points: ApiDashboardTrendPoint[];
+  points: ApiDashboardTrendPoint[] | null;
   range: Range;
   // 이 시각보다 뒤에 시작하는 점은 아직 오지 않은 시간
   generatedAt: string;
+  waiting: CardWaiting;
 }) {
   const [showTable, setShowTable] = useState(false);
+  const points = loaded ?? [];
   const config = RANGES[range];
   const labels = points.map((point, index) => labelOf(point, index, range));
   const titles = points.map((point) => titleOf(point, range));
@@ -473,6 +510,7 @@ function TrendSection({
         <button
           type="button"
           aria-pressed={showTable}
+          disabled={!loaded}
           onClick={() => setShowTable((value) => !value)}
           className={`flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${showTable ? "bg-blue-50 text-blue-700" : "text-slate-500 hover:bg-slate-100"}`}
         >
@@ -481,18 +519,20 @@ function TrendSection({
         </button>
       </div>
 
-      {!hasData ? (
-        <p className="mt-3 rounded-xl bg-slate-50 py-12 text-center text-sm text-slate-500">
-          이 기간에 기록된 요청이 없습니다.
-        </p>
-      ) : showTable ? (
+      {loaded && showTable ? (
         <TrendTable
           points={tableIndexes.map((index) => points[index])}
           titles={tableIndexes.map((index) => titles[index])}
         />
       ) : (
         <div className="mt-4 grid gap-6 xl:grid-cols-2">
-          <ChartCard title="요청 · 오류" unit="건" series={requestSeries}>
+          <ChartCard
+            title="요청 · 오류"
+            unit="건"
+            series={requestSeries}
+            waiting={waiting}
+            empty={!!loaded && !hasData}
+          >
             <LineChart
               labels={labels}
               tooltipTitles={titles}
@@ -502,7 +542,13 @@ function TrendSection({
               ariaLabel={`${config.name} 요청과 오류 추이`}
             />
           </ChartCard>
-          <ChartCard title="응답 시간" unit="ms" series={responseSeries}>
+          <ChartCard
+            title="응답 시간"
+            unit="ms"
+            series={responseSeries}
+            waiting={waiting}
+            empty={!!loaded && !hasData}
+          >
             <LineChart
               labels={labels}
               tooltipTitles={titles}
@@ -518,6 +564,8 @@ function TrendSection({
             unit="건"
             series={speedSeries}
             className="xl:col-span-2"
+            waiting={waiting}
+            empty={!!loaded && !hasData}
           >
             <LineChart
               labels={labels}
@@ -534,17 +582,23 @@ function TrendSection({
   );
 }
 
+// 그래프 카드. 그래프 자리는 높이 고정(200px)이라 받는 중·기록 없음일 때도 카드 크기가 그대로.
 function ChartCard({
   title,
   unit,
   series,
   className = "",
+  waiting,
+  empty,
   children,
 }: {
   title: string;
   unit: string;
   series: LineSeries[];
   className?: string;
+  waiting: CardWaiting;
+  // 이 기간에 기록된 요청이 없음
+  empty: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -563,7 +617,15 @@ function ChartCard({
           ))}
         </div>
       </div>
-      {children}
+      {waiting ? (
+        <CardWaitingState waiting={waiting} className="h-[200px]" />
+      ) : empty ? (
+        <p className="flex h-[200px] items-center justify-center rounded-lg bg-slate-50 text-sm text-slate-500">
+          이 기간에 기록된 요청이 없습니다.
+        </p>
+      ) : (
+        children
+      )}
     </div>
   );
 }
@@ -632,78 +694,90 @@ function EndpointList({
   items,
   metric,
   generatedAt,
+  waiting,
 }: {
   title: string;
   description: string;
-  // 작은 추이선 칸의 시작 시각(bins)을 쓰기 위해 순위 전체를 받음.
-  ranking: ApiDashboardRanking;
+  // 작은 추이선 칸의 시작 시각(bins)을 쓰기 위해 순위 전체를 받음(받기 전에는 null).
+  ranking: ApiDashboardRanking | null;
   items: ApiDashboardEndpoint[];
   metric: "requests" | "avgMs";
   // 이 시각보다 뒤에 시작하는 칸은 아직 오지 않아 추이선을 비움.
   generatedAt: string;
+  waiting: CardWaiting;
 }) {
   const now = new Date(generatedAt).getTime();
-  const future = ranking.bins.map((bin) => new Date(bin).getTime() > now);
+  const future = (ranking?.bins ?? []).map((bin) => new Date(bin).getTime() > now);
   return (
     <div>
       <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
       <p className="text-xs text-slate-500">{description}</p>
-      {items.length === 0 ? (
-        <p className="mt-2 rounded-lg bg-slate-50 py-6 text-center text-xs text-slate-500">
-          아직 기록이 없습니다.
-        </p>
-      ) : (
-        <ol className="mt-2 divide-y divide-slate-100">
-          {items.map((item, index) => {
-            const trend = (metric === "requests" ? item.trendRequests : item.trendAvgMs).map(
-              (value, bin) =>
-                future[bin] || (metric === "avgMs" && item.trendRequests[bin] === 0) ? null : value,
-            );
-            return (
-              <li key={item.endpoint} className="flex items-center gap-3 py-2">
-                <span className="w-4 shrink-0 text-center text-xs font-semibold text-slate-400">
-                  {index + 1}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <EndpointName endpoint={item.endpoint} />
-                </span>
-                <Sparkline
-                  values={trend}
-                  color={metric === "requests" ? REQUEST_COLOR : P95_COLOR}
-                  label={`${item.endpoint} ${title} ${metric === "requests" ? "호출 수" : "평균 응답 시간"} 추이`}
-                />
-                <span className="w-20 shrink-0 text-right text-xs tabular-nums">
-                  <span className="font-semibold text-slate-800">
-                    {metric === "requests"
-                      ? `${formatNumber(item.requests)}회`
-                      : formatMs(item.avgMs)}
+      {/* 목록 자리는 5줄 높이만큼 잡아 두어, 받는 중·기록 없음일 때도 크기가 그대로. */}
+      <div className="min-h-[264px]">
+        {waiting ? (
+          <CardWaitingState waiting={waiting} className="h-[264px]" />
+        ) : items.length === 0 ? (
+          <p className="mt-2 flex h-[256px] items-center justify-center rounded-lg bg-slate-50 text-xs text-slate-500">
+            아직 기록이 없습니다.
+          </p>
+        ) : (
+          <ol className="mt-2 divide-y divide-slate-100">
+            {items.map((item, index) => {
+              const trend = (metric === "requests" ? item.trendRequests : item.trendAvgMs).map(
+                (value, bin) =>
+                  future[bin] || (metric === "avgMs" && item.trendRequests[bin] === 0)
+                    ? null
+                    : value,
+              );
+              return (
+                <li key={item.endpoint} className="flex items-center gap-3 py-2">
+                  <span className="w-4 shrink-0 text-center text-xs font-semibold text-slate-400">
+                    {index + 1}
                   </span>
-                  {item.errors > 0 && (
-                    <span className="block text-red-600">오류 {formatNumber(item.errors)}</span>
-                  )}
-                </span>
-              </li>
-            );
-          })}
-        </ol>
-      )}
+                  <span className="min-w-0 flex-1">
+                    <EndpointName endpoint={item.endpoint} />
+                  </span>
+                  <Sparkline
+                    values={trend}
+                    color={metric === "requests" ? REQUEST_COLOR : P95_COLOR}
+                    label={`${item.endpoint} ${title} ${metric === "requests" ? "호출 수" : "평균 응답 시간"} 추이`}
+                  />
+                  <span className="w-20 shrink-0 text-right text-xs tabular-nums">
+                    <span className="font-semibold text-slate-800">
+                      {metric === "requests"
+                        ? `${formatNumber(item.requests)}회`
+                        : formatMs(item.avgMs)}
+                    </span>
+                    {item.errors > 0 && (
+                      <span className="block text-red-600">오류 {formatNumber(item.errors)}</span>
+                    )}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </div>
     </div>
   );
 }
 
 // 지금 살아 있는 서버 목록. 10초마다 보고하고, 30초 끊기면 목록에서 빠짐.
 function ServerList({
-  servers,
+  servers: loaded,
   mode,
+  waiting,
 }: {
-  servers: ApiDashboard["servers"];
+  servers: ApiDashboard["servers"] | null;
   mode: ApiDashboard["mode"];
+  waiting: CardWaiting;
 }) {
+  const servers = loaded ?? [];
   return (
     <div className="mt-6">
       <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-800">
         <Server size={15} className="text-slate-400" aria-hidden="true" />
-        가동 중인 서버 {servers.length}대
+        가동 중인 서버 {loaded ? `${servers.length}대` : ""}
       </h3>
       <p className="text-xs text-slate-500">
         {mode === "SHARED"
@@ -721,7 +795,13 @@ function ServerList({
             </tr>
           </thead>
           <tbody>
-            {servers.length === 0 ? (
+            {waiting ? (
+              <tr>
+                <td colSpan={4}>
+                  <CardWaitingState waiting={waiting} className="h-14" />
+                </td>
+              </tr>
+            ) : servers.length === 0 ? (
               <tr>
                 <td colSpan={4} className="py-4 text-center text-xs text-slate-500">
                   <XCircle size={14} className="mr-1 inline text-red-500" aria-hidden="true" />
