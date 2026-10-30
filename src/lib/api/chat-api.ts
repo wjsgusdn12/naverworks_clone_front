@@ -73,20 +73,26 @@ export type ChatAttachmentItem = {
 };
 export type ChatAttachmentPage = { items: ChatAttachmentItem[]; nextCursor: number | null };
 
-// 상단 검색 결과가 속한 방. name은 화면에 보일 이름, hidden은 내가 목록에서 숨긴 방인지.
+// 상단 검색 결과가 속한 방. name은 화면에 보일 이름, hidden은 내가 목록에서 숨긴 방인지,
+// directMembershipId는 1:1 방 상대(아바타 접속 상태용).
 export type ChatSearchRoom = {
   id: number;
   type: "SELF" | "DIRECT" | "GROUP";
   name: string;
   hidden: boolean;
+  memberCount: number;
+  directMembershipId: number | null;
 };
-// 상단 검색 [메시지] 한 줄.
+// 상단 검색 [메시지] 왼쪽 방 목록 한 줄: 방과 그 방에서 키워드가 들어간 메시지 수.
+export type ChatMessageSearchRoomItem = { room: ChatSearchRoom; count: number };
+// 상단 검색 [메시지] 오른쪽 한 줄. forwarded는 전달받은 메시지인지.
 export type ChatMessageSearchItem = {
   messageId: number;
   room: ChatSearchRoom;
   senderMembershipId: number;
   senderName: string;
   content: string;
+  forwarded: boolean;
   createdAt: string;
 };
 // 상단 검색 [파일] 한 줄.
@@ -336,12 +342,19 @@ export const chatApi = {
   // 숨긴 방을 목록에 다시 보이게 함(검색 결과에서 숨긴 방을 열 때).
   unhide: (token: string, roomId: number) =>
     request<void>(`/api/v1/chatRoom/unhide?chatRoomId=${roomId}`, token, { method: "POST" }),
-  // 상단 검색: 참여 중인 모든 방에서 키워드가 들어간 메시지 / 파일 이름. 30개씩, cursor는 이전 nextCursor.
-  searchMessages: (token: string, keyword: string, cursor?: number) =>
-    request<ChatSearchPage<ChatMessageSearchItem>>(
-      `/api/v1/chatRoom/search/message?keyword=${encodeURIComponent(keyword)}${cursor ? `&cursor=${cursor}` : ""}`,
+  // 상단 검색 [메시지]: 왼쪽은 키워드가 들어간 메시지가 있는 방과 방별 개수, 오른쪽은 고른 방의 메시지.
+  // 30개씩, cursor는 이전 nextCursor.
+  searchMessageRooms: (token: string, keyword: string) =>
+    request<ChatMessageSearchRoomItem[]>(
+      `/api/v1/chatRoom/search/message/room?keyword=${encodeURIComponent(keyword)}`,
       token,
     ),
+  searchMessages: (token: string, keyword: string, roomId: number, cursor?: number) =>
+    request<ChatSearchPage<ChatMessageSearchItem>>(
+      `/api/v1/chatRoom/search/message?keyword=${encodeURIComponent(keyword)}&chatRoomId=${roomId}${cursor ? `&cursor=${cursor}` : ""}`,
+      token,
+    ),
+  // 상단 검색 [파일]: 참여 중인 모든 방에서 파일 이름에 키워드가 들어간 첨부.
   searchFiles: (token: string, keyword: string, cursor?: number) =>
     request<ChatSearchPage<ChatFileSearchItem>>(
       `/api/v1/chatRoom/search/file?keyword=${encodeURIComponent(keyword)}${cursor ? `&cursor=${cursor}` : ""}`,
