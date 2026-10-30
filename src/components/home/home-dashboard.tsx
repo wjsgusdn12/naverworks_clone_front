@@ -1,6 +1,8 @@
 "use client";
 
 import { FavoriteBadge } from "@/components/address-book/favorite-badge";
+import { useAuth } from "@/components/auth/auth-provider";
+import { ApiDashboardSection } from "@/components/home/api-dashboard";
 import { GroupAvatar } from "@/components/chat/group-avatar";
 import { useChatNotification } from "@/components/chat/chat-notification-provider";
 import { LoadingInline, Spinner } from "@/components/common/loading";
@@ -59,6 +61,7 @@ export function HomeDashboard({
   showToast,
 }: HomeDashboardProps) {
   const router = useRouter();
+  const { member } = useAuth();
   const {
     presenceByMembershipId,
     memberStatusByMembershipId,
@@ -379,6 +382,9 @@ export function HomeDashboard({
             </Card>
           </div>
         </section>
+
+        {/* 관리자에게만 보이는 API 상태. 서버도 ROLE_ADMIN을 다시 검사함(화면 숨김은 편의일 뿐). */}
+        {member?.role === "ADMIN" && <ApiDashboardSection accessToken={accessToken} />}
       </div>
     </main>
   );
