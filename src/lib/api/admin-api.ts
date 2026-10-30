@@ -21,6 +21,9 @@ export type ApiDashboardTrendPoint = {
   errors: number;
   avgMs: number;
   p95Ms: number;
+  // 이 점이 담은 시간(분). 보통은 그래프 한 칸 길이, 잘게 쪼갠 기록이 없는 구간을 큰 단위(1시간·5분 합계)로
+  // 채운 점은 그 길이, 그 묶음에 포함돼 따로 값이 없는 나머지 칸은 0(빈칸으로 그림).
+  spanMinutes: number;
 };
 export type ApiDashboardEndpoint = {
   endpoint: string;

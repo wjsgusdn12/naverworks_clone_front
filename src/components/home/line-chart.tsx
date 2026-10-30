@@ -4,11 +4,13 @@ import { useEffect, useRef, useState } from "react";
 
 // 선 그래프 한 줄(계열). dashed면 점선으로 그려 색뿐 아니라 모양으로도 구분.
 // values의 null은 "값 없음"(예: 요청이 없던 구간의 응답 시간)이라 선을 끊음.
+// connectGaps면 끊지 않고 값 없는 칸을 건너뛰어 앞뒤 점을 바로 이음(응답 시간처럼 흐름을 볼 때).
 export type LineSeries = {
   key: string;
   label: string;
   color: string;
   dashed?: boolean;
+  connectGaps?: boolean;
   values: (number | null)[];
 };
 
@@ -73,13 +75,13 @@ export function LineChart({
   const y = (value: number) => PADDING.top + plotHeight - (value / max) * plotHeight;
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => ratio * max);
 
-  // null에서 끊어 여러 조각의 선으로 만듦.
-  const pathOf = (items: (number | null)[]) => {
+  // null에서 끊어 여러 조각의 선으로 만듦(connectGaps면 null을 건너뛰고 이음).
+  const pathOf = (items: (number | null)[], connectGaps = false) => {
     let path = "";
     let drawing = false;
     items.forEach((value, index) => {
       if (value === null) {
-        drawing = false;
+        if (!connectGaps) drawing = false;
         return;
       }
       path += `${drawing ? "L" : "M"}${x(index).toFixed(1)},${y(value).toFixed(1)}`;
@@ -89,8 +91,11 @@ export function LineChart({
   };
 
   // 앞뒤가 비어 선으로 이어지지 않는 혼자인 값. 점을 숨기는 그래프에서도 이런 점은 보여 줘야 값이 안 사라짐.
-  const isolated = (items: (number | null)[], index: number) =>
-    (items[index - 1] ?? null) === null && (items[index + 1] ?? null) === null;
+  // (이어 그리는 계열은 값이 하나뿐일 때만 혼자)
+  const isolated = (series: LineSeries, index: number) =>
+    series.connectGaps
+      ? series.values.filter((value) => value !== null).length === 1
+      : (series.values[index - 1] ?? null) === null && (series.values[index + 1] ?? null) === null;
 
   // 마우스 x 위치에서 가장 가까운 칸 번호. 점이 수백 개여도 칸마다 영역을 만들지 않고 계산으로 찾음.
   const indexAt = (mouseX: number) => {
@@ -152,7 +157,7 @@ export function LineChart({
           {series.map((item) => (
             <g key={item.key}>
               <path
-                d={pathOf(item.values)}
+                d={pathOf(item.values, item.connectGaps)}
                 fill="none"
                 stroke={item.color}
                 strokeWidth={2}
@@ -163,7 +168,7 @@ export function LineChart({
               {/* 각 시점의 점(모든 계열 같은 모양: 채운 점 + 흰 테두리). 점이 너무 촘촘하면 마우스 위치만 표시. */}
               {item.values.map((value, index) =>
                 value === null ||
-                (!showMarkers && hovered !== index && !isolated(item.values, index)) ? null : (
+                (!showMarkers && hovered !== index && !isolated(item, index)) ? null : (
                   <circle
                     key={index}
                     cx={x(index)}

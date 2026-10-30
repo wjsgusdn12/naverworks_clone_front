@@ -121,13 +121,18 @@ const labelOf = (point: ApiDashboardTrendPoint, index: number, range: Range) => 
   return date.getHours() === 0 && (date.getDate() - 1) % 5 === 0 ? shortDay(point.startAt) : "";
 };
 // 마우스를 올렸을 때 제목: 14:05(1분) / 14:05 ~ 14:09 / 10/27(화) 13:00 ~ 13:59
+// 큰 단위 기록으로 채운 점은 그 길이와 함께: 13:00 ~ 13:59 (1시간 합계)
 const titleOf = (point: ApiDashboardTrendPoint, range: Range) => {
   const step = RANGES[range].stepMinutes;
+  const minutes = point.spanMinutes > 0 ? point.spanMinutes : step;
   const span =
-    step === 1
+    minutes === 1
       ? clock(point.startAt)
-      : `${clock(point.startAt)} ~ ${clock(lastMinute(point.startAt, step))}`;
-  return range === "WEEK" || range === "MONTH" ? `${monthDay(point.startAt)} ${span}` : span;
+      : `${clock(point.startAt)} ~ ${clock(lastMinute(point.startAt, minutes))}`;
+  const merged = minutes !== step ? ` (${minutes >= 60 ? "1시간" : `${minutes}분`} 합계)` : "";
+  return range === "WEEK" || range === "MONTH"
+    ? `${monthDay(point.startAt)} ${span}${merged}`
+    : `${span}${merged}`;
 };
 
 // 홈 화면의 관리자 전용 "API 상태". 서버 여러 대의 요청을 합친 숫자(배포)나 이 서버 숫자(로컬)를 30초마다 갱신.
@@ -369,13 +374,19 @@ function TrendSection({
   const titles = points.map((point) => titleOf(point, range));
   const now = new Date(generatedAt).getTime();
   const isFuture = (point: ApiDashboardTrendPoint) => new Date(point.startAt).getTime() > now;
-  const pastPoints = points.filter((point) => !isFuture(point));
+  // 큰 단위 기록(1시간·5분 합계) 묶음에 포함돼 따로 값이 없는 칸
+  const isMerged = (point: ApiDashboardTrendPoint) => point.spanMinutes === 0;
+  // 표에는 이미 지난 칸만(묶음에 포함된 칸은 빼고 합계 줄 하나로).
+  const tableIndexes = points
+    .map((_, index) => index)
+    .filter((index) => !isFuture(points[index]) && !isMerged(points[index]));
   const hasData = points.some((point) => point.requests > 0);
-  // 아직 오지 않은 시간은 빈칸. 요청이 없던 구간의 응답 시간도 0이 아니라 "기록 없음"이라 선을 끊음.
+  // 아직 오지 않은 시간·묶음에 포함된 칸은 빈칸.
   const countValue = (point: ApiDashboardTrendPoint, value: number) =>
-    isFuture(point) ? null : value;
+    isFuture(point) || isMerged(point) ? null : value;
+  // 요청이 없던 구간의 응답 시간은 0이 아니라 "기록 없음". 응답 시간 선은 그 칸을 건너뛰고 앞뒤 점을 바로 이음.
   const responseValue = (point: ApiDashboardTrendPoint, value: number) =>
-    isFuture(point) || point.requests === 0 ? null : value < 0 ? 5000 : value;
+    isFuture(point) || isMerged(point) || point.requests === 0 ? null : value < 0 ? 5000 : value;
   const requestSeries: LineSeries[] = [
     {
       key: "requests",
@@ -396,6 +407,7 @@ function TrendSection({
       key: "avg",
       label: "평균",
       color: AVG_COLOR,
+      connectGaps: true,
       values: points.map((point) => responseValue(point, point.avgMs)),
     },
     {
@@ -403,6 +415,7 @@ function TrendSection({
       label: "p95",
       color: P95_COLOR,
       dashed: true,
+      connectGaps: true,
       values: points.map((point) => responseValue(point, point.p95Ms)),
     },
   ];
@@ -427,7 +440,10 @@ function TrendSection({
           이 기간에 기록된 요청이 없습니다.
         </p>
       ) : showTable ? (
-        <TrendTable points={pastPoints} titles={titles} />
+        <TrendTable
+          points={tableIndexes.map((index) => points[index])}
+          titles={tableIndexes.map((index) => titles[index])}
+        />
       ) : (
         <div className="mt-4 grid gap-6 xl:grid-cols-2">
           <ChartCard title="요청 · 오류" unit="건" series={requestSeries}>
