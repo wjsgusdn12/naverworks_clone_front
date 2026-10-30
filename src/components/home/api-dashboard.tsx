@@ -45,7 +45,7 @@ const SPEED_GROUPS: {
   bins: number[];
 }[] = [
   { key: "fast", label: "빠름 ≤200ms", color: "#2a78d6", bins: [0, 1, 2] },
-  { key: "normal", label: "보통 ≤1초", color: "#008300", bins: [3, 4, 5] },
+  { key: "normal", label: "보통 ≤1초", color: "#16a34a", bins: [3, 4, 5] },
   { key: "slow", label: "느림 ≤5초", color: "#eda100", dashed: true, bins: [6, 7] },
   { key: "verySlow", label: "매우 느림 >5초", color: "#e34948", dashed: true, bins: [8] },
 ];
