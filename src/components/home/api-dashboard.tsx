@@ -256,14 +256,14 @@ function ModeBadge({ mode }: { mode: ApiDashboard["mode"] }) {
       multiline
       label={
         mode === "SHARED"
-          ? "모든 서버의 요청을 공용 저장소(Redis)에 함께 모아 합친 숫자입니다."
-          : "Redis 없이 실행 중이라 지금 이 서버의 요청만 셉니다(로컬 개발). 배포 때 Redis를 켜면 서버 통합 집계로 바뀝니다."
+          ? "모든 서버의 요청을 DB에 함께 모아 합친 숫자입니다. 서버·Redis를 재시작해도 기록이 남습니다."
+          : "요청 집계는 DB에 모아 재시작해도 남습니다. Redis 없이 실행 중이라(로컬 개발) 아래 서버 목록에는 이 서버만 보입니다."
       }
     >
       <span
         className={`rounded-full px-2 py-1 font-medium ${mode === "SHARED" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}
       >
-        {mode === "SHARED" ? "서버 통합 집계" : "이 서버만 집계"}
+        {mode === "SHARED" ? "서버 통합 집계" : "DB 보관 집계"}
       </span>
     </Tooltip>
   );
