@@ -88,6 +88,10 @@ export function LineChart({
     return path;
   };
 
+  // 앞뒤가 비어 선으로 이어지지 않는 혼자인 값. 점을 숨기는 그래프에서도 이런 점은 보여 줘야 값이 안 사라짐.
+  const isolated = (items: (number | null)[], index: number) =>
+    (items[index - 1] ?? null) === null && (items[index + 1] ?? null) === null;
+
   const slotWidth = count > 1 ? plotWidth / (count - 1) : plotWidth;
   return (
     <div ref={ref} className="relative w-full" role="img" aria-label={ariaLabel}>
@@ -153,7 +157,8 @@ export function LineChart({
               />
               {/* 각 시점의 점(모든 계열 같은 모양: 채운 점 + 흰 테두리). 점이 너무 촘촘하면 마우스 위치만 표시. */}
               {item.values.map((value, index) =>
-                value === null || (!showMarkers && hovered !== index) ? null : (
+                value === null ||
+                (!showMarkers && hovered !== index && !isolated(item.values, index)) ? null : (
                   <circle
                     key={index}
                     cx={x(index)}

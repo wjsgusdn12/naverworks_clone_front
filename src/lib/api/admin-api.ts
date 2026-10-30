@@ -50,12 +50,15 @@ export type ApiDashboard = {
   thisHour: ApiDashboardSummary;
   today: ApiDashboardSummary;
   thisWeek: ApiDashboardSummary;
+  thisMonth: ApiDashboardSummary;
   // 이번 시간 ??:00~??:59 5분 단위 12점
   hourTrend: ApiDashboardTrendPoint[];
   // 오늘 00:00~23:59 1시간 단위 24점
   dayTrend: ApiDashboardTrendPoint[];
   // 이번 주 일 00시~토 23시 1시간 단위 168점(DB의 1시간 요약)
   weekTrend: ApiDashboardTrendPoint[];
+  // 이번 달 1일~말일 1일 단위
+  monthTrend: ApiDashboardTrendPoint[];
   topEndpoints: ApiDashboardEndpoint[];
   slowEndpoints: ApiDashboardEndpoint[];
 };

@@ -34,15 +34,13 @@ const ERROR_COLOR = "#d97706";
 const AVG_COLOR = "#3b82f6";
 const P95_COLOR = "#d97706";
 
-type Range = "HOUR" | "DAY" | "WEEK";
-// 기간별 탭 글자, 점 간격(분), 아래쪽 글자를 몇 칸마다 보일지.
-const RANGES: Record<
-  Range,
-  { tab: string; name: string; stepMinutes: number; labelEvery: number }
-> = {
-  HOUR: { tab: "이번 시간 · 5분 단위", name: "이번 시간", stepMinutes: 5, labelEvery: 2 },
-  DAY: { tab: "오늘 · 1시간 단위", name: "오늘", stepMinutes: 60, labelEvery: 3 },
-  WEEK: { tab: "이번 주 · 1시간 단위", name: "이번 주", stepMinutes: 60, labelEvery: 24 },
+type Range = "HOUR" | "DAY" | "WEEK" | "MONTH";
+// 기간별 탭 글자, 이름, 점 하나의 길이(분). 모두 달력 기준(이번 시간·오늘·이번 주 일~토·이번 달 1일~말일).
+const RANGES: Record<Range, { tab: string; name: string; stepMinutes: number }> = {
+  HOUR: { tab: "이번 시간 · 5분 단위", name: "이번 시간", stepMinutes: 5 },
+  DAY: { tab: "오늘 · 1시간 단위", name: "오늘", stepMinutes: 60 },
+  WEEK: { tab: "이번 주 · 1시간 단위", name: "이번 주", stepMinutes: 60 },
+  MONTH: { tab: "이번 달 · 1일 단위", name: "이번 달", stepMinutes: 1440 },
 };
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
 // "10/27(화)"
@@ -54,6 +52,10 @@ const monthDay = (value: string) => {
 const lastMinute = (start: string, stepMinutes: number) =>
   new Date(new Date(start).getTime() + (stepMinutes - 1) * 60_000).toISOString();
 const hourOnly = (value: string) => `${String(new Date(value).getHours()).padStart(2, "0")}시`;
+const shortDay = (value: string) => {
+  const date = new Date(value);
+  return `${date.getMonth() + 1}/${date.getDate()}`;
+};
 
 const formatNumber = (value: number) => value.toLocaleString("ko-KR");
 const formatMs = (value: number) => `${formatNumber(Math.round(value))}ms`;
@@ -72,6 +74,38 @@ const clock = (value: string) =>
     minute: "2-digit",
     hour12: false,
   });
+
+const pointsOf = (data: ApiDashboard, range: Range) =>
+  ({ HOUR: data.hourTrend, DAY: data.dayTrend, WEEK: data.weekTrend, MONTH: data.monthTrend })[
+    range
+  ];
+const summaryOf = (data: ApiDashboard, range: Range) =>
+  ({ HOUR: data.thisHour, DAY: data.today, WEEK: data.thisWeek, MONTH: data.thisMonth })[range];
+
+// 전체 구간 글자: 14:00 ~ 14:59 / 10/30(금) 00:00 ~ 23:59 / 10/25(일) 00시 ~ 10/31(토) 23시 / 10/1(목) ~ 10/31(토)
+const periodOf = (points: ApiDashboardTrendPoint[], range: Range) => {
+  const first = points[0]?.startAt;
+  const last = points.at(-1)?.startAt;
+  if (!first || !last) return "";
+  const end = clock(lastMinute(last, RANGES[range].stepMinutes));
+  if (range === "HOUR") return `${clock(first)} ~ ${end}`;
+  if (range === "DAY") return `${monthDay(first)} ${clock(first)} ~ ${end}`;
+  if (range === "WEEK")
+    return `${monthDay(first)} ${hourOnly(first)} ~ ${monthDay(last)} ${hourOnly(last)}`;
+  return `${monthDay(first)} ~ ${monthDay(last)}`;
+};
+// 아래쪽 글자(빈 글자는 표시 안 함): 이번 시간 10분마다, 오늘 3시간마다, 이번 주는 날마다(그날 정오 위치), 이번 달 5일마다
+const labelOf = (point: ApiDashboardTrendPoint, index: number, range: Range) => {
+  if (range === "HOUR") return index % 2 === 0 ? clock(point.startAt) : "";
+  if (range === "DAY") return index % 3 === 0 ? hourOnly(point.startAt) : "";
+  if (range === "WEEK") return index % 24 === 12 ? monthDay(point.startAt) : "";
+  return index % 5 === 0 ? shortDay(point.startAt) : "";
+};
+// 마우스를 올렸을 때 제목: 14:05 ~ 14:09 / 13:00 ~ 13:59 / 10/27(화) 13:00 ~ 13:59 / 10/27(화) 00:00 ~ 23:59
+const titleOf = (point: ApiDashboardTrendPoint, range: Range) => {
+  const span = `${clock(point.startAt)} ~ ${clock(lastMinute(point.startAt, RANGES[range].stepMinutes))}`;
+  return range === "WEEK" || range === "MONTH" ? `${monthDay(point.startAt)} ${span}` : span;
+};
 
 // 홈 화면의 관리자 전용 "API 상태". 서버 여러 대의 요청을 합친 숫자(배포)나 이 서버 숫자(로컬)를 30초마다 갱신.
 export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
@@ -119,7 +153,8 @@ export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
             </span>
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            모든 API 요청을 모아 이번 시간·오늘·이번 주(일~토) 흐름을 보여 줍니다.
+            모든 API 요청을 모아 이번 시간·오늘·이번 주(일~토)·이번 달 흐름을 보여 줍니다. 숫자
+            카드와 그래프는 고른 기간을 따라갑니다.
           </p>
         </div>
         <div className="flex items-center gap-2 text-xs text-slate-500">
@@ -157,14 +192,35 @@ export function ApiDashboardSection({ accessToken }: { accessToken: string }) {
               [갱신 실패] {error} · 마지막으로 받은 숫자를 보여 주는 중
             </p>
           )}
-          <KpiRow thisHour={data.thisHour} today={data.today} thisWeek={data.thisWeek} />
+          {/* 기간 탭: 숫자 카드와 그래프가 모두 이 기간을 따라감. */}
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
+            <div
+              role="tablist"
+              aria-label="기간"
+              className="flex gap-1 rounded-lg bg-slate-100 p-1"
+            >
+              {(Object.keys(RANGES) as Range[]).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  aria-selected={range === value}
+                  onClick={() => setRange(value)}
+                  className={`cursor-pointer rounded-md px-3 py-1.5 text-xs font-semibold transition ${range === value ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                >
+                  {RANGES[value].tab}
+                </button>
+              ))}
+            </div>
+            <span className="text-xs font-medium text-slate-500">
+              {periodOf(pointsOf(data, range), range)}
+            </span>
+          </div>
+          <KpiRow summary={summaryOf(data, range)} rangeName={RANGES[range].name} />
           <TrendSection
-            points={
-              range === "HOUR" ? data.hourTrend : range === "WEEK" ? data.weekTrend : data.dayTrend
-            }
+            points={pointsOf(data, range)}
             range={range}
             generatedAt={data.generatedAt}
-            onRangeChange={setRange}
           />
           <div className="mt-6 grid gap-6 lg:grid-cols-2">
             <EndpointList
@@ -220,16 +276,8 @@ function DatabaseBadge({ status }: { status: ApiDashboard["database"] }) {
   );
 }
 
-// 큰 숫자 4개: 요청 수 · 서버 오류율 · 평균 응답 · p95 응답. 큰 글씨는 이번 시간, 작은 글씨는 오늘·이번 주.
-function KpiRow({
-  thisHour,
-  today,
-  thisWeek,
-}: {
-  thisHour: ApiDashboardSummary;
-  today: ApiDashboardSummary;
-  thisWeek: ApiDashboardSummary;
-}) {
+// 큰 숫자 4개: 요청 수 · 서버 오류율 · 평균 응답 · p95 응답. 모두 고른 기간(탭)의 값.
+function KpiRow({ summary, rangeName }: { summary: ApiDashboardSummary; rangeName: string }) {
   const tiles: {
     label: string;
     icon: LucideIcon;
@@ -241,30 +289,30 @@ function KpiRow({
     {
       label: "요청 수",
       icon: Activity,
-      value: `${formatNumber(thisHour.requests)}건`,
-      sub: `오늘 ${formatNumber(today.requests)}건 · 이번 주 ${formatNumber(thisWeek.requests)}건`,
+      value: `${formatNumber(summary.requests)}건`,
+      sub: `오류 ${formatNumber(summary.clientErrors + summary.serverErrors)}건 포함`,
       help: "API가 처리한 요청 개수",
     },
     {
       label: "서버 오류율",
-      icon: thisHour.serverErrors > 0 ? AlertTriangle : CheckCircle2,
-      value: `${thisHour.errorRate}%`,
-      sub: `5xx ${formatNumber(thisHour.serverErrors)}건 · 4xx ${formatNumber(thisHour.clientErrors)}건`,
+      icon: summary.serverErrors > 0 ? AlertTriangle : CheckCircle2,
+      value: `${summary.errorRate}%`,
+      sub: `5xx ${formatNumber(summary.serverErrors)}건 · 4xx ${formatNumber(summary.clientErrors)}건`,
       help: "서버 잘못(5xx)으로 실패한 비율. 4xx는 잘못된 요청·권한 없음처럼 요청 쪽 문제",
-      warn: thisHour.serverErrors > 0,
+      warn: summary.serverErrors > 0,
     },
     {
       label: "평균 응답",
       icon: Timer,
-      value: formatMs(thisHour.avgMs),
-      sub: `오늘 ${formatMs(today.avgMs)}`,
+      value: formatMs(summary.avgMs),
+      sub: `요청 ${formatNumber(summary.requests)}건 기준`,
       help: "요청 하나를 처리하는 데 걸린 평균 시간",
     },
     {
       label: "p95 응답",
       icon: Gauge,
-      value: formatP95(thisHour.p95Ms),
-      sub: `오늘 ${formatP95(today.p95Ms)}`,
+      value: formatP95(summary.p95Ms),
+      sub: "100건 중 95건이 이 안에 끝남",
       help: "100건 중 95건이 이 시간 안에 끝났다는 뜻. 평균에 묻히는 느린 요청을 잡아내는 숫자",
     },
   ];
@@ -278,7 +326,7 @@ function KpiRow({
               className={tile.warn ? "text-red-500" : "text-slate-400"}
               aria-hidden="true"
             />
-            {tile.label} · 이번 시간
+            {tile.label} · {rangeName}
             <Tooltip label={tile.help} multiline className="ml-auto">
               <Info size={13} className="text-slate-300" aria-label={tile.help} />
             </Tooltip>
@@ -291,48 +339,25 @@ function KpiRow({
   );
 }
 
-// 추이 영역: 기간 선택(이번 시간 5분 단위 / 오늘 1시간 단위 / 이번 주 1시간 단위) + 그래프 2개 + 표로 보기.
+// 추이 영역: 고른 기간의 그래프 2개 + 표로 보기.
 // 아직 오지 않은 시간은 0이 아니라 빈칸이라 선이 "지금"에서 끊김.
 // 요청 수와 응답 시간은 단위가 달라(건 vs ms) 한 그래프에 섞지 않고 나눠 그림.
 function TrendSection({
   points,
   range,
   generatedAt,
-  onRangeChange,
 }: {
   points: ApiDashboardTrendPoint[];
   range: Range;
   // 이 시각보다 뒤에 시작하는 점은 아직 오지 않은 시간
   generatedAt: string;
-  onRangeChange: (range: Range) => void;
 }) {
   const [showTable, setShowTable] = useState(false);
   const config = RANGES[range];
-  const week = range === "WEEK";
-  // 아래쪽 글자: 이번 시간은 14:00, 오늘은 03시, 이번 주는 10/27(화)
-  const labels = points.map((point) =>
-    week
-      ? monthDay(point.startAt)
-      : range === "DAY"
-        ? hourOnly(point.startAt)
-        : clock(point.startAt),
-  );
-  // 점마다 "14:05 ~ 14:09" / "13:00 ~ 13:59" / "10/27(화) 13:00 ~ 13:59"
-  const titles = points.map(
-    (point) =>
-      `${week ? `${monthDay(point.startAt)} ` : ""}${clock(point.startAt)} ~ ${clock(lastMinute(point.startAt, config.stepMinutes))}`,
-  );
-  // 화면 위에 보일 전체 구간: 14:00 ~ 14:59 / 10/30(금) 00:00 ~ 23:59 / 10/25(일) 00시 ~ 10/31(토) 23시
-  const first = points[0]?.startAt;
-  const last = points.at(-1)?.startAt;
-  const period =
-    !first || !last
-      ? ""
-      : week
-        ? `${monthDay(first)} ${hourOnly(first)} ~ ${monthDay(last)} ${hourOnly(last)}`
-        : range === "DAY"
-          ? `${monthDay(first)} ${clock(first)} ~ ${clock(lastMinute(last, config.stepMinutes))}`
-          : `${clock(first)} ~ ${clock(lastMinute(last, config.stepMinutes))}`;
+  // 이번 주(168점)는 점을 숨기고 마우스 위치만 표시
+  const denseChart = range === "WEEK";
+  const labels = points.map((point, index) => labelOf(point, index, range));
+  const titles = points.map((point) => titleOf(point, range));
   const now = new Date(generatedAt).getTime();
   const isFuture = (point: ApiDashboardTrendPoint) => new Date(point.startAt).getTime() > now;
   const pastPoints = points.filter((point) => !isFuture(point));
@@ -375,23 +400,8 @@ function TrendSection({
 
   return (
     <div className="mt-6">
-      {/* 기간 선택과 표 보기는 그래프 위 한 줄에 모음. */}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div role="tablist" aria-label="기간" className="flex gap-1 rounded-lg bg-slate-100 p-1">
-          {(Object.keys(RANGES) as Range[]).map((value) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={range === value}
-              onClick={() => onRangeChange(value)}
-              className={`cursor-pointer rounded-md px-3 py-1.5 text-xs font-semibold transition ${range === value ? "bg-white text-blue-600 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
-            >
-              {RANGES[value].tab}
-            </button>
-          ))}
-        </div>
-        <span className="ml-auto text-xs font-medium text-slate-500">{period}</span>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-slate-800">{config.name} 추이</h3>
         <button
           type="button"
           aria-pressed={showTable}
@@ -417,8 +427,8 @@ function TrendSection({
               tooltipTitles={titles}
               series={requestSeries}
               formatValue={(value) => `${formatNumber(Math.round(value))}`}
-              labelEvery={config.labelEvery}
-              showMarkers={!week}
+              labelEvery={1}
+              showMarkers={!denseChart}
               ariaLabel={`${config.name} 요청과 오류 추이`}
             />
           </ChartCard>
@@ -428,8 +438,8 @@ function TrendSection({
               tooltipTitles={titles}
               series={responseSeries}
               formatValue={formatMs}
-              labelEvery={config.labelEvery}
-              showMarkers={!week}
+              labelEvery={1}
+              showMarkers={!denseChart}
               ariaLabel={`${config.name} 평균·p95 응답 시간 추이`}
             />
           </ChartCard>
