@@ -48,7 +48,30 @@ export type ChatMessage = {
   reactions: ChatReaction[];
   // 다른 방에서 전달해 온 메시지면 true("전달된 메시지" 라벨 표시).
   forwarded: boolean;
+  // 사진·파일 메시지의 첨부. 일반 메시지·삭제된 메시지는 null.
+  attachment: ChatAttachment | null;
 };
+
+// 첨부 정보. IMAGE는 말풍선에 바로 보여 주고, FILE은 내려받기 카드로 보여 줌.
+// width·height는 사진을 받기 전에 자리를 잡는 용도(알 수 없으면 null).
+export type ChatAttachment = {
+  id: number;
+  kind: "IMAGE" | "FILE";
+  name: string;
+  contentType: string;
+  size: number;
+  width: number | null;
+  height: number | null;
+};
+// 방 상세의 사진·파일 모아보기 한 줄.
+export type ChatAttachmentItem = {
+  attachment: ChatAttachment;
+  messageId: number;
+  senderMembershipId: number;
+  senderName: string;
+  createdAt: string;
+};
+export type ChatAttachmentPage = { items: ChatAttachmentItem[]; nextCursor: number | null };
 
 // 주소록 "그룹" 탭의 그룹 채팅방 요약. joined는 내가 참여 중, owner는 내가 방장.
 export type ChatGroupSummary = {
@@ -163,7 +186,85 @@ const request = async <T>(path: string, accessToken: string, init: RequestInit =
   return body.data;
 };
 
+// 첨부 업로드. fetch는 업로드 진행률을 알려 주지 않아 XMLHttpRequest로 보냄(브라우저 기본 기능).
+const uploadAttachment = (
+  token: string,
+  roomId: number,
+  file: File,
+  replyToMessageId: number | undefined,
+  onProgress: (percent: number) => void,
+) =>
+  new Promise<ChatMessage>((resolve, reject) => {
+    const form = new FormData();
+    form.append("file", file);
+    const query = `chatRoomId=${roomId}${replyToMessageId ? `&replyToMessageId=${replyToMessageId}` : ""}`;
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${apiBaseUrl()}/api/v1/chatRoom/message/attachment/create?${query}`);
+    xhr.withCredentials = true;
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
+    };
+    xhr.onload = () => {
+      let body: Partial<ApiResponse<ChatMessage>> = {};
+      try {
+        body = JSON.parse(xhr.responseText) as Partial<ApiResponse<ChatMessage>>;
+      } catch {
+        // 본문이 JSON이 아니면 아래 공통 오류로 처리.
+      }
+      if (xhr.status >= 200 && xhr.status < 300 && body.success && body.data) resolve(body.data);
+      else
+        reject(
+          new ApiClientError(
+            body.message ?? "파일을 보내지 못했습니다.",
+            xhr.status,
+            body.code ?? "UNKNOWN_ERROR",
+          ),
+        );
+    };
+    xhr.onerror = () =>
+      reject(
+        new ApiClientError(
+          "메시지 서버에 연결할 수 없습니다. 서버 상태를 확인해 주세요.",
+          0,
+          "NETWORK_ERROR",
+        ),
+      );
+    xhr.send(form);
+  });
+
+// 첨부 내용을 받아 옴. 토큰을 헤더로 보내야 해서 <img src>에 주소를 바로 넣지 않고 Blob으로 받음.
+// inline=true면 사진을 화면 표시용 형식으로 받음.
+const attachmentBlob = async (token: string, attachmentId: number, inline: boolean) => {
+  let response: Response;
+  try {
+    response = await fetch(
+      `${apiBaseUrl()}/api/v1/chatRoom/message/attachment/download?attachmentId=${attachmentId}&inline=${inline}`,
+      { credentials: "include", headers: { Authorization: `Bearer ${token}` } },
+    );
+  } catch {
+    throw new ApiClientError("메시지 서버에 연결할 수 없습니다.", 0, "NETWORK_ERROR");
+  }
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as Partial<ApiResponse<unknown>>;
+    throw new ApiClientError(
+      body.message ?? "파일을 불러오지 못했습니다.",
+      response.status,
+      body.code ?? "UNKNOWN_ERROR",
+    );
+  }
+  return response.blob();
+};
+
 export const chatApi = {
+  uploadAttachment,
+  attachmentBlob,
+  // 사진·파일 모아보기(최신순). cursor는 이전 페이지의 nextCursor.
+  attachments: (token: string, roomId: number, kind: ChatAttachment["kind"], cursor?: number) =>
+    request<ChatAttachmentPage>(
+      `/api/v1/chatRoom/message/attachment/list?chatRoomId=${roomId}&kind=${kind}${cursor ? `&cursor=${cursor}` : ""}`,
+      token,
+    ),
   rooms: (token: string) => request<ChatRoom[]>("/api/v1/chatRoom", token),
   // 주소록 "그룹" 탭: 내 회사의 그룹 채팅방 전체(참여 여부 무관).
   groupRooms: (token: string) => request<ChatGroupSummary[]>("/api/v1/chatRoom/group/list", token),
