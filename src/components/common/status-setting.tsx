@@ -2,6 +2,7 @@
 
 import { Check } from "lucide-react";
 import { useState } from "react";
+import { RadioControl } from "@/components/common/custom-radio";
 import { DateTimePicker } from "@/components/common/date-time-picker";
 import {
   formatStatusUntil,
@@ -84,8 +85,9 @@ export function StatusSetting({ statusType, statusUntil, saving, onSave }: Statu
 
   const now = new Date();
   const maxUntil = new Date(now.getTime() + MAX_DAYS * 24 * 60 * 60 * 1000);
-  const radioClassName = (selected: boolean) =>
-    `flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition ${selected ? "border-blue-600" : "border-slate-300"}`;
+  // 고른 줄은 연한 파란 배경으로 강조. 라디오 표시는 공통 RadioControl.
+  const rowClassName = (selected: boolean) =>
+    `group flex w-full cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 text-left text-sm transition ${selected ? "bg-blue-50" : "hover:bg-slate-50"}`;
 
   return (
     <div className="space-y-3">
@@ -97,11 +99,9 @@ export function StatusSetting({ statusType, statusUntil, saving, onSave }: Statu
             aria-checked={draft === null}
             disabled={saving}
             onClick={() => choose(null)}
-            className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-left text-sm transition hover:bg-slate-50"
+            className={rowClassName(draft === null)}
           >
-            <span className={radioClassName(draft === null)}>
-              {draft === null && <span className="h-2 w-2 rounded-full bg-blue-600" />}
-            </span>
+            <RadioControl checked={draft === null} />
             <span className={draft === null ? "font-semibold text-blue-600" : "text-slate-700"}>
               설정 안 함
             </span>
@@ -117,11 +117,9 @@ export function StatusSetting({ statusType, statusUntil, saving, onSave }: Statu
                 aria-checked={selected}
                 disabled={saving}
                 onClick={() => choose(type)}
-                className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-left text-sm transition hover:bg-slate-50"
+                className={rowClassName(selected)}
               >
-                <span className={radioClassName(selected)}>
-                  {selected && <span className="h-2 w-2 rounded-full bg-blue-600" />}
-                </span>
+                <RadioControl checked={selected} />
                 <span
                   className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${className}`}
                 >
