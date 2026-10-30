@@ -3,6 +3,7 @@
 import { MessageMemberAvatar } from "@/components/chat/message-member-avatar";
 import type { AddressBookMember } from "@/lib/api/address-book-api";
 import type { ReadModalState } from "@/lib/chat-page-helpers";
+import { useMemberBadge } from "@/hooks/use-member-badge";
 import { X } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 
@@ -25,6 +26,8 @@ export function ReadMemberModal({
     () => new Map(contactMembers.map((member) => [member.membershipId, member])),
     [contactMembers],
   );
+  // 본인·실시간 상태까지 반영한 배지 값.
+  const badgeOf = useMemberBadge(profileByMemberId);
   const members = modal.read ? modal.readMembers : modal.unreadMembers;
   const tabs = [
     { read: true, label: "읽음", count: modal.readMembers.length },
@@ -102,10 +105,8 @@ export function ReadMemberModal({
               >
                 <MessageMemberAvatar
                   name={member.displayName}
-                  presenceStatus={
-                    profileByMemberId.get(member.membershipId)?.presenceStatus ?? "OFFLINE"
-                  }
-                  statusType={profileByMemberId.get(member.membershipId)?.statusType}
+                  presenceStatus={badgeOf(member.membershipId).presenceStatus}
+                  statusType={badgeOf(member.membershipId).statusType}
                 />
                 <span className="min-w-0 flex-1">
                   <b className="block truncate text-sm text-slate-900">{member.displayName}</b>

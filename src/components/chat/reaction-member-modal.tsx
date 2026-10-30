@@ -4,6 +4,7 @@ import { MessageMemberAvatar } from "@/components/chat/message-member-avatar";
 import { ReactionEmoji } from "@/components/chat/reaction-emoji";
 import type { AddressBookMember } from "@/lib/api/address-book-api";
 import type { ReactionModalState } from "@/lib/chat-page-helpers";
+import { useMemberBadge } from "@/hooks/use-member-badge";
 import { reactionLabel } from "@/lib/chat-reactions";
 import { X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -21,6 +22,8 @@ export function ReactionMemberModal({
   onClose: () => void;
   onProfileClick: (membershipId: number) => void;
 }) {
+  // 본인·실시간 상태까지 반영한 배지 값(읽은 멤버 모달과 같은 기준).
+  const badgeOf = useMemberBadge(contactMemberById);
   // 칩을 누르면 그 이모지를 고른 사람만 보여 주고, 다시 누르면 전체로 돌아감.
   const [filterEmoji, setFilterEmoji] = useState<string | null>(null);
   const summary = useMemo(() => {
@@ -95,10 +98,8 @@ export function ReactionMemberModal({
               >
                 <MessageMemberAvatar
                   name={member.displayName}
-                  presenceStatus={
-                    contactMemberById.get(member.membershipId)?.presenceStatus ?? "OFFLINE"
-                  }
-                  statusType={contactMemberById.get(member.membershipId)?.statusType}
+                  presenceStatus={badgeOf(member.membershipId).presenceStatus}
+                  statusType={badgeOf(member.membershipId).statusType}
                 />
                 <span className="min-w-0 flex-1">
                   <b className="block truncate text-sm text-slate-900">{member.displayName}</b>
