@@ -126,6 +126,9 @@ export const connectChatRoom = ({
     brokerURL: websocketUrl(),
     connectHeaders: { Authorization: `Bearer ${accessToken}` },
     reconnectDelay: 3_000,
+    // 서버와 10초마다 "살아 있음" 신호를 주고받아, 끊긴 연결을 서버가 빨리 알아채게 함(접속 상태 정확도).
+    heartbeatIncoming: 10_000,
+    heartbeatOutgoing: 10_000,
     debug: () => undefined,
     onConnect: () => {
       // 참여 중인 모든 방을 구독해, 다른 방의 입력 상태도 목록에서 즉시 표시.
@@ -192,6 +195,9 @@ export const connectChatNotification = ({
     brokerURL: websocketUrl(),
     connectHeaders: { Authorization: `Bearer ${accessToken}` },
     reconnectDelay: 3_000,
+    // 서버와 10초마다 "살아 있음" 신호를 주고받아, 끊긴 연결을 서버가 빨리 알아채게 함(접속 상태 정확도).
+    heartbeatIncoming: 10_000,
+    heartbeatOutgoing: 10_000,
     debug: () => undefined,
     onConnect: () => {
       client.subscribe("/topic/presence", (frame) => {
