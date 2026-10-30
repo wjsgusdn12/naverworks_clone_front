@@ -1,4 +1,3 @@
-import { trackRequest } from "@/lib/api/request-tracker";
 import { ApiClientError } from "@/lib/api/auth-api";
 
 type ApiResponse<T> = { success: boolean; code: string; message: string; data: T };
@@ -25,17 +24,15 @@ const apiBaseUrl = () => {
 const request = async <T>(path: string, accessToken: string, init: RequestInit = {}) => {
   let response: Response;
   try {
-    response = await trackRequest(
-      fetch(`${apiBaseUrl()}${path}`, {
-        ...init,
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-          ...init.headers,
-        },
-      }),
-    );
+    response = await fetch(`${apiBaseUrl()}${path}`, {
+      ...init,
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        ...init.headers,
+      },
+    });
   } catch {
     throw new ApiClientError(
       "알림 서버에 연결할 수 없습니다. 서버 상태를 확인해 주세요.",

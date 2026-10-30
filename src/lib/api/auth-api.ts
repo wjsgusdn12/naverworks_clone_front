@@ -1,5 +1,3 @@
-import { trackRequest } from "@/lib/api/request-tracker";
-
 // 백엔드 공통 응답 형식과 일치하는 API 응답 껍데기.
 type ApiResponse<T> = {
   success: boolean;
@@ -125,17 +123,15 @@ const request = async <T>(path: string, init: RequestInit): Promise<T> => {
   let response: Response;
 
   try {
-    response = await trackRequest(
-      fetch(`${getApiBaseUrl()}${path}`, {
-        ...init,
-        // Refresh Token HttpOnly 쿠키를 백엔드에 자동으로 함께 전송.
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...init.headers,
-        },
-      }),
-    );
+    response = await fetch(`${getApiBaseUrl()}${path}`, {
+      ...init,
+      // Refresh Token HttpOnly 쿠키를 백엔드에 자동으로 함께 전송.
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...init.headers,
+      },
+    });
   } catch {
     // 네트워크 단절·서버 미기동처럼 HTTP 응답이 없는 경우를 구분.
     throw new ApiClientError(
@@ -225,12 +221,10 @@ export const authApi = {
     let response: Response;
 
     try {
-      response = await trackRequest(
-        fetch(`${getApiBaseUrl()}/api/v1/auth/logout`, {
-          method: "POST",
-          credentials: "include",
-        }),
-      );
+      response = await fetch(`${getApiBaseUrl()}/api/v1/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      });
     } catch {
       throw new ApiClientError(
         "인증 서버에 연결할 수 없습니다. 서버 상태를 확인해 주세요.",
