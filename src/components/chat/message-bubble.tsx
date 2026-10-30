@@ -13,6 +13,7 @@ import {
 import { MessageMemberAvatar } from "@/components/chat/message-member-avatar";
 import { MessageQuote } from "@/components/chat/message-quote";
 import { ReactionEmoji } from "@/components/chat/reaction-emoji";
+import { isEmojiOnly } from "@/lib/emoji-only";
 import { ReactionPicker } from "@/components/chat/reaction-picker";
 import { Tooltip } from "@/components/common/tooltip";
 import { UserAvatar } from "@/components/common/user-avatar";
@@ -244,6 +245,9 @@ export const MessageBubble = memo(function MessageBubble({
         className="w-[280px] max-w-full"
       />
     )
+  ) : isEmojiOnly(message.content) ? (
+    // 이모지만 1~3개 보낸 메시지는 크게
+    <span className="text-4xl leading-tight">{message.content.trim()}</span>
   ) : (
     <MentionText content={message.content} />
   );
